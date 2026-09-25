@@ -13,6 +13,7 @@ described with adjustments and template in [TSWiki](https://tswiki.corp.saab.se/
 - Configurable near-distance foliage culling with gradual visibility fade-out.
 - Geodetic camera control for projected and spherical maps, with geodesy-aware orientation and origin-locked shader synchronization.
 - Terrain-aware ground drag, pointer-anchored zoom, and pointer or viewport-center orbit for UTM, SWEREF99, and geocentric WGS84 maps, with configurable orbit pivots and optional pitch limits. Navigation falls back to the coordinate-model surface, retains its reference throughout each gesture, safely rejects invalid queries, keeps bounded orbit upright and its pivot fixed on screen, allows inward zoom to one metre from the selected surface, and derives the outward bound from valid active-map framing.
+- A generated top-level ROI that remains active at every finite camera distance for map databases without an authored ROI, preventing whole-map unloads during navigation while preserving authored ROI activation and lower-level detail streaming.
 - Atomic camera positioning and repeatable host-defined initial views through `TrySetPose`, `TrySetInitialViewPose`, and `RequestInitialView`.
 
 ### Changed
