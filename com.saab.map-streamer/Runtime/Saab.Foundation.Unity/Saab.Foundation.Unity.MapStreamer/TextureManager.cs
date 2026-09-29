@@ -41,6 +41,7 @@ using System.Collections.Generic;
 
 // Unity
 using UnityEngine;
+using UnityEngine.Experimental.Rendering;
 
 // GizmoSDK
 
@@ -262,7 +263,15 @@ namespace Saab.Foundation.Unity.MapStreamer
             }
 
             _texturesCreated++;
-            
+
+            // Unity 6 sometimes maps TextureFormat.R8 to R8_UINT. 
+            // We must force it to UNorm, or compute sampling breaks.
+            if (format == TextureFormat.R8)
+            {
+                return new Texture2D(width, height, GraphicsFormat.R8_UNorm, 
+                    mipChain ? TextureCreationFlags.MipChain : TextureCreationFlags.None);
+            }
+
             return new Texture2D(width, height, format, mipChain);
         }
 

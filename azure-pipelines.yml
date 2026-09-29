@@ -5,8 +5,8 @@ trigger:
 variables:
   ArticleFull: 8866027201
   ProjectID: MapStreamer
-  Major: 4
-  Minor: 7
+  Major: 5
+  Minor: 0
 
 # Build number format
 name: $(ArticleFull).$(Major).$(Minor).$(rev:r)
