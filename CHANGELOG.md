@@ -10,6 +10,9 @@ described with adjustments and template in [TSWiki](https://tswiki.corp.saab.se/
 ### Changed
 - Upgraded to Unity 6000.3.5f2
 
+### Fixed
+- UTM and SWEREF99 local orientation now follows true north instead of grid north by applying position-dependent meridian convergence from GizmoSDK. #413147
+
 ## 4.7
 
 ### Added

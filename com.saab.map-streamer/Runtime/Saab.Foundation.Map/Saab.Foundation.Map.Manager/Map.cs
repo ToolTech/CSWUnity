@@ -712,9 +712,26 @@ namespace Saab.Foundation.Map
                     }
 
                 case MapType.UTM:
-                case MapType.PROJ_SWEREF99:
+                    {
+                        UTMPos utmpos = new UTMPos(
+                            _metaData.Zone(),
+                            _metaData.North(),
+                            -(global_position.z + _origin.z),
+                            global_position.x + _origin.x,
+                            global_position.y + _origin.y);
 
-                    return new Matrix3(new Vec3(1, 0, 0), new Vec3(0, 0, -1), new Vec3(0, 1, 0));    // East North Up vectors
+                        return Coordinate.GetOrientationMatrix(utmpos);
+                    }
+
+                case MapType.PROJ_SWEREF99:
+                    {
+                        ProjPos projpos = new ProjPos(
+                            -(global_position.z + _origin.z),
+                            global_position.x + _origin.x,
+                            global_position.y + _origin.y);
+
+                        return Coordinate.GetOrientationMatrix(projpos, FlatGaussProjection.SWEREF99);
+                    }
 
                 case MapType.GEOCENTRIC:
 
@@ -739,10 +756,30 @@ namespace Saab.Foundation.Map
                     }
 
                 case MapType.UTM:
+                    {
+                        UTMPos utmpos;
+
+                        if (!_converter.GetUTMPos(out utmpos))
+                        {
+                            Message.Send("Controller", MessageLevel.WARNING, "Failed to convert to UTM");
+                            return new Matrix3();
+                        }
+
+                        return Coordinate.GetOrientationMatrix(utmpos);
+                    }
+
                 case MapType.PROJ_SWEREF99:
+                    {
+                        ProjPos projpos;
 
-                    return new Matrix3(new Vec3(1, 0, 0), new Vec3(0, 0, -1), new Vec3(0, 1, 0));    // East North Up vectors
+                        if (!_converter.GetProjPos(out projpos, FlatGaussProjection.SWEREF99))
+                        {
+                            Message.Send("Controller", MessageLevel.WARNING, "Failed to convert to Projected");
+                            return new Matrix3();
+                        }
 
+                        return Coordinate.GetOrientationMatrix(projpos, FlatGaussProjection.SWEREF99);
+                    }
 
                 case MapType.GEOCENTRIC:
 
