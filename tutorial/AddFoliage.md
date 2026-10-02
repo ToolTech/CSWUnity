@@ -39,6 +39,10 @@ Foliage placement is anchored to a world-space lattice so overlapping nodes at d
 
 When random displacement is disabled for diagnostics, adjacent base points should remain exactly `1 / Density` metres apart. Uneven repeating spacing, clustered points, or periodically missing points indicates that the lattice coordinate was discarded or that a candidate rejected the rest of its dispatch lane.
 
+<b>Mesh coverage</b>
+
+Feature data alone does not guarantee a valid placement position. The pixel-to-object lookup stores an object-space position and an explicit mesh-coverage flag for each pixel, and is cleared before rasterizing the node mesh. Foliage candidates are skipped unless all four lookup samples used for bilinear interpolation have mesh coverage. This prevents undefined or stale positions from placing foliage where the feature texture extends beyond the mesh, but can omit candidates immediately adjacent to coverage boundaries and holes.
+
 The rendering settings you can define are:
 -
 
