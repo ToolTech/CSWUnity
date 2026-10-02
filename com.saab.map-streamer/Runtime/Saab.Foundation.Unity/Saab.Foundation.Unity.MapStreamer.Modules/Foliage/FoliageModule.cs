@@ -576,7 +576,11 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             if (_pixelToWorld != null)
                 _pixelToWorld.Release();
 
-            _pixelToWorld = new ComputeBuffer(Mathf.CeilToInt(texSize.x * texSize.y), sizeof(float) * 3, ComputeBufferType.Default);
+            _pixelToWorld = new ComputeBuffer(Mathf.CeilToInt(texSize.x * texSize.y), sizeof(float) * 4, ComputeBufferType.Default);
+
+            int kernelClear = ComputeShader.FindKernel("CSClearPixelToObject");
+            ComputeShader.SetBuffer(kernelClear, PlacementParameterID.PixelToObjectCoord, _pixelToWorld);
+            ComputeShader.Dispatch(kernelClear, Mathf.CeilToInt(_pixelToWorld.count / 128f), 1, 1);
 
             int triangleCount = Mathf.CeilToInt(indicesCount / 3f);
             ComputeShader.SetInt(PlacementParameterID.IndexCount, triangleCount);

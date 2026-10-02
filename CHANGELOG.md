@@ -29,6 +29,7 @@ described with adjustments and template in [TSWiki](https://tswiki.corp.saab.se/
 - Foliage occlusion now uses Hi-Z depth-pyramid culling.
 
 ### Fixed
+- Foliage placement now rejects missing mesh coverage in the pixel-to-object lookup instead of interpolating undefined or stale positions.
 - Null reference exception when unloading a map containing asset instances #309075
 - Foliage Occlusion on Embedded Linux #407581
 - Visible pattern for foliage at far nodes. #412176
