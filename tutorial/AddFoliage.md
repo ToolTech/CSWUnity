@@ -43,6 +43,8 @@ When random displacement is disabled for diagnostics, adjacent base points shoul
 
 Feature data alone does not guarantee a valid placement position. The pixel-to-object lookup stores an object-space position and an explicit mesh-coverage flag for each pixel, and is cleared before rasterizing the node mesh. Foliage candidates are skipped unless all four lookup samples used for bilinear interpolation have mesh coverage. This prevents undefined or stale positions from placing foliage where the feature texture extends beyond the mesh, but can omit candidates immediately adjacent to coverage boundaries and holes.
 
+Culling also uses the actual number of points appended during placement, copied into a per-node GPU count buffer. Allocated capacity is not a point count: resetting an append counter does not erase previous records. Entries beyond the current count are never read or updated, so unused positions and colors cannot reappear after a tile reload.
+
 The rendering settings you can define are:
 -
 
