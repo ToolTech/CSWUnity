@@ -48,6 +48,7 @@ RWStructuredBuffer<uint> BufferSize;
 StructuredBuffer<bool> FeatureMap; // feature map => int[255] 
 AppendStructuredBuffer<FoliagePoint> TerrainPoints;     // Calculated points for one mesh
 RWStructuredBuffer<FoliagePoint> InputBuffer;           // buffer with all points
+ByteAddressBuffer InputCount;                          // actual append count, not buffer capacity
 StructuredBuffer<float> PixelToWorld;                   // matrix pixel to world (worldpixel coord)VertexBuffer
 AppendStructuredBuffer<FoliagePoint> OutputBuffer;      // buffer with all (frustum) culled points 
 RWStructuredBuffer<float4> PixelToObjectCoord;          // xyz: object position, w: mesh coverage
@@ -652,9 +653,11 @@ bool GetRandomizedData(FoliagePoint data, out FoliageShaderData output)
 [numthreads(128, 1, 1)]
 void CSCull(uint3 id : SV_DispatchThreadID)
 {
+    if (id.x >= InputCount.Load(0))
+        return;
+
     FoliagePoint data = InputBuffer[id.x];
             
-    // handle points with no value. (allocated points in buffer is by default float3(0,0,0))
     if (dot(data.Position, data.Position) == 0)
         return;
     

@@ -21,6 +21,7 @@ described with adjustments and template in [TSWiki](https://tswiki.corp.saab.se/
 - Foliage occlusion now uses Hi-Z depth-pyramid culling.
 
 ### Fixed
+- Foliage culling now respects each node's actual placement count, preventing stale positions and colors in unused GPU buffer entries from reappearing after tile reloads.
 - Foliage placement now rejects missing mesh coverage in the pixel-to-object lookup instead of interpolating undefined or stale positions.
 - Null reference exception when unloading a map containing asset instances #309075
 - Foliage Occlusion on Embedded Linux #407581
