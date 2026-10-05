@@ -1017,8 +1017,8 @@ namespace Saab.Foundation.Map
 
                             RoiNode roiNode = new RoiNode
                             {
-                                LoadDistance = double.MaxValue,
-                                PurgeDistance = double.MaxValue
+                                LoadDistance = 8 * _maxLODDistance,
+                                PurgeDistance = 10 * _maxLODDistance
                             };
 
                             if (_nodeURL != null)  // We have an URL
