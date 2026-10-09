@@ -107,6 +107,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
         // **************** Generate HeightMap ****************
         private RenderTexture _surfaceheightMap;
         private bool _hasCullingResult;
+        private bool _hasEnabledFeatures;
         private UnityEngine.Camera _cullingCamera;
         private int _lastCullingFrame = -1;
 
@@ -159,7 +160,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                 var count = 0;
                 foreach (var feature in Features)
                 {
-                    count += feature.FoliageFeature.FoliageCount;
+                    count += feature.FoliageFeature?.FoliageCount ?? 0;
                 }
                 return count;
             }
@@ -168,6 +169,22 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
         // Start is called before the first frame update
         void Start()
         {
+            for (int i = 0; i < Features.Count; i++)
+            {
+                var featureSet = Features[i];
+                var settings = GetSettings(featureSet.SettingsType);
+                featureSet.Enabled = settings.Enabled;
+                featureSet.NearCullDistance = settings.NearCullDistance;
+                _hasEnabledFeatures |= featureSet.Enabled;
+            }
+
+            if (!_hasEnabledFeatures)
+            {
+                if (HiZDepthPyramid != null)
+                    HiZDepthPyramid.enabled = false;
+                return;
+            }
+
             _mappingTable = TerrainMapping.MapFeatureData();
 
             SceneManager.OnNewTerrain += SceneManager_OnNewTerrain;
@@ -177,10 +194,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             for (int i = 0; i < Features.Count; i++)
             {
                 var featureSet = Features[i];
+                if (!featureSet.Enabled)
+                    continue;
                 var settings = GetSettings(featureSet.SettingsType);
-                featureSet.Enabled = settings.Enabled;
-                featureSet.NearCullDistance = settings.NearCullDistance;
-
                 featureSet.FoliageFeature = new FoliageFeature(Mathf.CeilToInt(featureSet.BufferSize * settings.Density), featureSet.Density * settings.Density, TerrainMapping.FeatureTruthTable(_mappingTable, featureSet.mapFeature), ComputeShader);
 
                 var inderectBuffer = new ComputeBuffer(4, sizeof(uint), ComputeBufferType.IndirectArguments);
@@ -304,7 +320,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                 Texture2D temporaryTexture = new Texture2D(textureResolution, textureResolution, TextureFormat.ARGB32, true);
                 temporaryTexture.ReadPixels(new Rect(0, 0, temporaryTexture.width, temporaryTexture.height), 0, 0);
                 RenderTexture.active = null;
-                temporaryTexture.Apply(true);
+                temporaryTexture.Apply(updateMipmaps: true);
                 temporaryTexture.Compress(true);
                 Graphics.CopyTexture(temporaryTexture, 0, textureArray, i);
 
@@ -618,6 +634,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         private void SceneManager_OnPostTraverse(bool locked)
         {
+            if (Disabled || !_hasEnabledFeatures)
+                return;
+
             _profilerMarker.Begin();
 
             var camera = SceneManager.SceneManagerCamera?.Camera;

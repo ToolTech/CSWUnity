@@ -152,6 +152,45 @@ namespace Saab.Foundation.Unity.MapStreamer
         };
     }
 
+    public readonly struct MeshBuildDiagnostics
+    {
+        public readonly long TotalMeshes;
+        public readonly long TotalBytes;
+        public readonly TimeSpan TotalTime;
+        public readonly TimeSpan WorstTime;
+
+        internal MeshBuildDiagnostics(
+            long totalMeshes,
+            long totalBytes,
+            TimeSpan totalTime,
+            TimeSpan worstTime)
+        {
+            TotalMeshes = totalMeshes;
+            TotalBytes = totalBytes;
+            TotalTime = totalTime;
+            WorstTime = worstTime;
+        }
+    }
+
+    public readonly struct TextureBuildDiagnostics
+    {
+        public readonly long TotalTextures;
+        public readonly long TotalBytes;
+        public readonly TimeSpan TotalTime;
+        public readonly TimeSpan WorstTime;
+
+        internal TextureBuildDiagnostics(
+            long totalTextures,
+            long totalBytes,
+            TimeSpan totalTime,
+            TimeSpan worstTime)
+        {
+            TotalTextures = totalTextures;
+            TotalBytes = totalBytes;
+            TotalTime = totalTime;
+            WorstTime = worstTime;
+        }
+    }
 
     public class SceneManager : MonoBehaviour
     {
@@ -277,6 +316,25 @@ namespace Saab.Foundation.Unity.MapStreamer
         // A queue for post build work
         private readonly Queue<BuildInfo> pendingBuilds = new Queue<BuildInfo>(1000);
 
+        private static long _frameMeshCount;
+        private static long _frameMeshBytes;
+        private static long _frameMeshTicks;
+        private static long _frameMeshWorstTicks;
+        private static long _frameTextureCount;
+        private static long _frameTextureBytes;
+        private static long _frameTextureTicks;
+        private static long _frameTextureWorstTicks;
+        private static long _totalMeshCount;
+        private static long _totalMeshBytes;
+        private static long _totalMeshTicks;
+        private static long _totalMeshWorstTicks;
+        private static long _totalTextureCount;
+        private static long _totalTextureBytes;
+        private static long _totalTextureTicks;
+        private static long _totalTextureWorstTicks;
+        private static long _buildDiagnosticsResetVersion;
+        private static int _buildDiagnosticsFrame = -1;
+
         // A queue for AssetLoading
         private readonly Stack<AssetLoadInfo> pendingAssetLoads = new Stack<AssetLoadInfo>(100);
 
@@ -297,6 +355,9 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         // Used by builders to share and manage texture resources
         private readonly TextureManager _textureManager = new TextureManager();
+
+        public TextureManagerDiagnostics TextureDiagnostics =>
+            _textureManager.Diagnostics;
 
         // Used by builders to share and manage Material resources
         private readonly MaterialManager _materialManager = new MaterialManager();
@@ -1351,11 +1412,15 @@ namespace Saab.Foundation.Unity.MapStreamer
 
                 var nodeHandle = buildInfo.NodeHandle;
                 if (buildInfo.Version != nodeHandle.version)
+                {
                     continue;
+                }
 
                 var activeStateNode = buildInfo.ActiveStateNode;
                 if (activeStateNode != null && activeStateNode.node == null)
+                {
                     continue;
+                }
 
                 if (buildInfo.Builder.Build(nodeHandle, activeStateNode))
                     buildInfo.NodeHandle.builder = buildInfo.Builder;
@@ -1367,7 +1432,157 @@ namespace Saab.Foundation.Unity.MapStreamer
                 }
             }
         }
-        
+
+        public static void ResetTotalBuildDiagnostics()
+        {
+            _totalMeshCount = 0;
+            _totalMeshBytes = 0;
+            _totalMeshTicks = 0;
+            _totalMeshWorstTicks = 0;
+            _totalTextureCount = 0;
+            _totalTextureBytes = 0;
+            _totalTextureTicks = 0;
+            _totalTextureWorstTicks = 0;
+            _buildDiagnosticsResetVersion++;
+        }
+
+        public void ResetStreamingDiagnostics()
+        {
+            ResetTotalBuildDiagnostics();
+            _textureManager.ResetDiagnostics();
+        }
+
+        public static MeshBuildDiagnostics MeshFrameDiagnostics
+        {
+            get
+            {
+                RollBuildDiagnosticsFrame();
+                return CreateMeshBuildDiagnostics(
+                    _frameMeshCount,
+                    _frameMeshBytes,
+                    _frameMeshTicks,
+                    _frameMeshWorstTicks);
+            }
+        }
+
+        public static TextureBuildDiagnostics TextureFrameDiagnostics
+        {
+            get
+            {
+                RollBuildDiagnosticsFrame();
+                return CreateTextureBuildDiagnostics(
+                    _frameTextureCount,
+                    _frameTextureBytes,
+                    _frameTextureTicks,
+                    _frameTextureWorstTicks);
+            }
+        }
+
+        public static MeshBuildDiagnostics MeshTotalDiagnostics
+        {
+            get => CreateMeshBuildDiagnostics(
+                _totalMeshCount,
+                _totalMeshBytes,
+                _totalMeshTicks,
+                _totalMeshWorstTicks);
+        }
+
+        public static TextureBuildDiagnostics TextureTotalDiagnostics
+        {
+            get => CreateTextureBuildDiagnostics(
+                _totalTextureCount,
+                _totalTextureBytes,
+                _totalTextureTicks,
+                _totalTextureWorstTicks);
+        }
+
+        internal static void RecordMeshBuild(
+            long totalBytes,
+            long elapsedTicks)
+        {
+            RollBuildDiagnosticsFrame();
+            _frameMeshCount++;
+            _frameMeshBytes += totalBytes;
+            _frameMeshTicks += elapsedTicks;
+            _frameMeshWorstTicks =
+                Math.Max(_frameMeshWorstTicks, elapsedTicks);
+            _totalMeshCount++;
+            _totalMeshBytes += totalBytes;
+            _totalMeshTicks += elapsedTicks;
+            _totalMeshWorstTicks =
+                Math.Max(_totalMeshWorstTicks, elapsedTicks);
+        }
+
+        internal static void RecordTextureBuild(
+            long totalBytes,
+            long elapsedTicks)
+        {
+            RollBuildDiagnosticsFrame();
+            _frameTextureCount++;
+            _frameTextureBytes += totalBytes;
+            _frameTextureTicks += elapsedTicks;
+            _frameTextureWorstTicks =
+                Math.Max(_frameTextureWorstTicks, elapsedTicks);
+            _totalTextureCount++;
+            _totalTextureBytes += totalBytes;
+            _totalTextureTicks += elapsedTicks;
+            _totalTextureWorstTicks =
+                Math.Max(_totalTextureWorstTicks, elapsedTicks);
+        }
+
+        internal static long BuildDiagnosticsResetVersion =>
+            _buildDiagnosticsResetVersion;
+
+        private static MeshBuildDiagnostics CreateMeshBuildDiagnostics(
+            long totalMeshes,
+            long totalBytes,
+            long totalTicks,
+            long worstTicks)
+        {
+            return new MeshBuildDiagnostics(
+                totalMeshes,
+                totalBytes,
+                TimeSpan.FromSeconds(
+                    (double)totalTicks /
+                    System.Diagnostics.Stopwatch.Frequency),
+                TimeSpan.FromSeconds(
+                    (double)worstTicks /
+                    System.Diagnostics.Stopwatch.Frequency));
+        }
+
+        private static TextureBuildDiagnostics CreateTextureBuildDiagnostics(
+            long totalTextures,
+            long totalBytes,
+            long totalTicks,
+            long worstTicks)
+        {
+            return new TextureBuildDiagnostics(
+                totalTextures,
+                totalBytes,
+                TimeSpan.FromSeconds(
+                    (double)totalTicks /
+                    System.Diagnostics.Stopwatch.Frequency),
+                TimeSpan.FromSeconds(
+                    (double)worstTicks /
+                    System.Diagnostics.Stopwatch.Frequency));
+        }
+
+        private static void RollBuildDiagnosticsFrame()
+        {
+            var frame = UnityEngine.Time.frameCount;
+            if (_buildDiagnosticsFrame == frame)
+                return;
+            _buildDiagnosticsFrame = frame;
+            _frameMeshCount = 0;
+            _frameMeshBytes = 0;
+            _frameMeshTicks = 0;
+            _frameMeshWorstTicks = 0;
+            _frameTextureCount = 0;
+            _frameTextureBytes = 0;
+            _frameTextureTicks = 0;
+            _frameTextureWorstTicks = 0;
+        }
+
         private void UpdateNodeInternals()
         {
             // Only called if SceneManagerCamera is not null
@@ -1714,6 +1929,3 @@ namespace Saab.Foundation.Unity.MapStreamer
 
 
 }
-
-
-
