@@ -24,6 +24,7 @@ described with adjustments and template in [TSWiki](https://tswiki.corp.saab.se/
 
 ### Fixed
 - `FoliageModule` now skips initialization, Hi-Z generation, culling, and drawing when CAPS disables all tree and grass feature sets.
+- Geometry streaming now accepts source meshes with multiple texture-coordinate units by explicitly exporting UV0 for the current Unity mesh layout.
 - UTM and SWEREF99 local orientation now follows true north instead of grid north by applying position-dependent meridian convergence from GizmoSDK. #413147
 
 ## 4.7

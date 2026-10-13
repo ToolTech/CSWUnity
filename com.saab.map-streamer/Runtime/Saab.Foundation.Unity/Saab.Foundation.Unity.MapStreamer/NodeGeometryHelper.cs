@@ -186,7 +186,7 @@ namespace Saab.Foundation.Unity.MapStreamer
                     var hasColors =
                         (info.AvailableAttributes & GeometryMeshExport.Attributes.Color) != 0;
                     var hasTexCoords =
-                        (info.AvailableAttributes & GeometryMeshExport.Attributes.TexCoord0) != 0;
+                        preparation.HasTextureCoordinateUnit(0);
                     var descriptors = CreateVertexDescriptors(hasColors, hasTexCoords);
                     var vertexCount = (int)info.VertexCount;
                     var indexCount = (int)info.IndexCount;

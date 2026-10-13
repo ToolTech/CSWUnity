@@ -62,14 +62,16 @@ namespace Saab.Foundation.Unity.MapStreamer.Interop
                     vertexStrideBytes);
             }
 
-            if ((info.AvailableAttributes & GeometryMeshExport.Attributes.TexCoord0) != 0)
+            if (preparation.HasTextureCoordinateUnit(0))
             {
-                destination.TexCoord0 = CreateAttributeDestination(
-                    meshData,
-                    VertexAttribute.TexCoord0,
-                    vertexPointer,
-                    vertexCapacityBytes,
-                    vertexStrideBytes);
+                destination.SetTexCoord(
+                    0,
+                    CreateAttributeDestination(
+                        meshData,
+                        VertexAttribute.TexCoord0,
+                        vertexPointer,
+                        vertexCapacityBytes,
+                        vertexStrideBytes));
             }
 
             if (indexFormat == IndexFormat.UInt16)
@@ -95,7 +97,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Interop
                 dataBytes = (long)vertexCapacityBytes + indexCapacityBytes;
             }
 
-            return preparation.Copy(ref destination);
+            return preparation.Copy(destination);
         }
 
         private static unsafe GeometryMeshExport.AttributeDestination
