@@ -370,7 +370,8 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         // Stores objects that have been unloaded but not yet freed, objects will eventually be returned to the free list,
         // this is to reduce the time spent freeing nodes in a single frame
-        private readonly Stack<unTransform> _pendingFrees = new Stack<unTransform>();
+        private readonly Stack<PendingFree> _pendingFrees =
+            new Stack<PendingFree>();
 
         // Used during pre allocation to spread allocations evenly across pools
         private readonly Queue<byte> _preAllocationRoundRobinQueue = new Queue<byte>();
@@ -389,6 +390,20 @@ namespace Saab.Foundation.Unity.MapStreamer
         {
             public Node AssetNode;
             public TraversalStateData TraversalState;
+        }
+
+        private readonly struct PendingFree
+        {
+            public readonly unTransform Transform;
+            public readonly bool ChildrenProcessed;
+
+            public PendingFree(
+                unTransform transform,
+                bool childrenProcessed)
+            {
+                Transform = transform;
+                ChildrenProcessed = childrenProcessed;
+            }
         }
 
         public void AddBuilder(INodeBuilder builder)
@@ -1775,7 +1790,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             transform.hideFlags = HideFlags.HideInHierarchy;
 #endif
             
-            _pendingFrees.Push(transform);
+            _pendingFrees.Push(new PendingFree(transform, false));
         }
 
         private void UnloadHierarchy(unTransform transform)
@@ -1804,14 +1819,29 @@ namespace Saab.Foundation.Unity.MapStreamer
             _profilerFree.Begin();
             while (_pendingFrees.Count > 0 && count > 0)
             {
-                var free = _pendingFrees.Pop();
-        
-                // orphan all children and put them on the free frontier
-                for (var i = free.childCount - 1; i >= 0; --i)
-                    Free(free.GetChild(i));
-        
+                var pendingFree = _pendingFrees.Pop();
+                var free = pendingFree.Transform;
+
+                if (!pendingFree.ChildrenProcessed &&
+                    free.childCount > 0)
+                {
+                    _pendingFrees.Push(new PendingFree(free, true));
+                    for (var i = 0; i < free.childCount; ++i)
+                    {
+                        var child = free.GetChild(i);
+                        child.gameObject.SetActive(false);
+#if UNITY_EDITOR
+                        child.hideFlags = HideFlags.HideInHierarchy;
+#endif
+                        _pendingFrees.Push(new PendingFree(child, false));
+                    }
+                    continue;
+                }
+
+                if (free.parent != null)
+                    free.SetParent(null);
+
                 FreeInternal(free);
-        
                 --count;
             }
             _profilerFree.End();
@@ -1856,7 +1886,6 @@ namespace Saab.Foundation.Unity.MapStreamer
                 _free[poolId].Push(nh);
             }
         }
-        
 
         private void FreeInternal(unTransform transform)
         {

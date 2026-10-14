@@ -134,6 +134,7 @@ GameObject:
   - component: {fileID: 44396062}
   - component: {fileID: 44396064}
   - component: {fileID: 44396065}
+  - component: {fileID: 44396066}
   m_Layer: 0
   m_Name: SceneManager
   m_TagString: Untagged
@@ -251,11 +252,29 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0c0db3da88904e1ea13132c620f30af6, type: 3}
   m_Name:
   m_EditorClassIdentifier:
+  _tests:
+  - {fileID: 44396066}
+  _testIterations: 1
+  _reloadMapBetweenTests: 0
+  _progressionMode: 1
   _lapDurationSeconds: 15
+  _stepsPerLap: 2048
   _measuredLaps: 5
   _saveDiagnosticsToFile: 1
   _altitudeMeters: 100
   _mapMargin: 0.15
+--- !u!114 &44396066
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 44396058}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 44c44330834c4db1acdb41e668730e7b, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
 --- !u!1 &705507993
 GameObject:
   m_ObjectHideFlags: 0

@@ -27,6 +27,8 @@ using GizmoMatrix3 = GizmoSDK.GizmoBase.Matrix3;
 using GizmoVector3 = GizmoSDK.GizmoBase.Vec3;
 using GizmoVector3D = GizmoSDK.GizmoBase.Vec3D;
 
+namespace Saab.MapStreamer.Benchmark
+{
 public sealed class MeshStreamingBenchmark : MonoBehaviour
 {
     private enum RunState
@@ -36,6 +38,12 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
         Measuring,
         Complete,
         Error,
+    }
+
+    private enum CameraProgressionMode
+    {
+        Realtime,
+        FixedSamplesPerLap,
     }
 
     private const float StandardEastRadiusMeters = 1200.0f;
@@ -48,10 +56,31 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
     private const string RunIdentity = "New";
     private const string ReportDirectoryName = "MapStreamerBenchmarks";
 
+    [Header("Tests")]
+    [SerializeField]
+    [Tooltip("Ordered tests run once per iteration. Test references may be repeated.")]
+    private BenchmarkTest[] _tests;
+
+    [SerializeField, Min(1)]
+    [Tooltip("Number of times to execute the complete ordered test sequence.")]
+    private int _testIterations = 1;
+
+    [SerializeField]
+    [Tooltip("Reset and reload the map before each test.")]
+    private bool _reloadMapBetweenTests;
+
     [Header("Scenario")]
+    [SerializeField]
+    private CameraProgressionMode _progressionMode =
+        CameraProgressionMode.Realtime;
+
     [SerializeField, Min(0.1f)]
     [Tooltip("Seconds per complete figure-eight lap. Lower values mean higher speed.")]
     private float _lapDurationSeconds = 15.0f;
+
+    [SerializeField, Min(1)]
+    [Tooltip("Camera poses per lap in FixedSamplesPerLap mode. One pose is applied per frame.")]
+    private int _stepsPerLap = 4096;
 
     [SerializeField, Min(1)]
     private int _measuredLaps = 5;
@@ -138,6 +167,9 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
         public double MaximumBuildBudgetMilliseconds;
         public DateTime RunStartUtc;
         public DateTime RunStartLocal;
+        public double TotalDurationSeconds;
+        public double MeasuredDurationSeconds;
+        public BenchmarkTestReport Test;
 
         public void Reset()
         {
@@ -155,6 +187,9 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
             MaximumBuildBudgetMilliseconds = 0.0;
             RunStartUtc = default;
             RunStartLocal = default;
+            TotalDurationSeconds = 0.0;
+            MeasuredDurationSeconds = 0.0;
+            Test = null;
             Frames.Reset();
         }
     }
@@ -169,12 +204,26 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
         public string startedLocal;
         public string completedUtc;
         public string completedLocal;
+        public SuiteReport suite;
+        public BenchmarkTestReport test;
         public RuntimeReport runtime;
         public ScenarioReport scenario;
         public FrameReport frames;
         public BuildReport meshes;
         public BuildReport textures;
         public TextureManagerReport textureManager;
+    }
+
+    [Serializable]
+    private sealed class SuiteReport
+    {
+        public string suiteRunId;
+        public int iteration;
+        public int iterationCount;
+        public int testIndex;
+        public int testsPerIteration;
+        public int runIndex;
+        public int totalRuns;
     }
 
     [Serializable]
@@ -202,9 +251,17 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
         public string mapUrl;
         public bool cleanMapReload;
         public string validityWarning;
+        public string cameraProgressionMode;
+        public string routeParameterization;
         public int warmUpLaps;
         public int measuredLaps;
         public double lapDurationSeconds;
+        public int stepsPerLap;
+        public double cameraSampleDistanceMeters;
+        public int measuredCameraSamples;
+        public double totalDurationSeconds;
+        public double measuredDurationSeconds;
+        public double cameraSamplesPerSecond;
         public double altitudeMeters;
         public double eastRadiusMeters;
         public double northRadiusMeters;
@@ -256,6 +313,8 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
     }
 
     private readonly RunResult _result = new RunResult();
+    private readonly double[] _routeCumulativeLengths =
+        new double[RouteLengthSegments + 1];
     private GeodeticCameraControl _cameraControl;
     private SceneManager _sceneManager;
     private GizmoVector3D _routeCenter;
@@ -267,11 +326,24 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
     private bool _routePrepared;
     private RunState _state;
     private double _stateStartTime;
+    private double _runStartTime;
+    private int _stateStep;
+    private bool _suiteRunning;
+    private int _suiteIterationIndex;
+    private int _suiteTestIndex;
+    private int _suiteRunIndex;
+    private string _suiteRunId;
+    private BenchmarkTest _activeTest;
+    private string _progressText;
+    private GUIStyle _progressStyle;
 
     private void Update()
     {
         if (Input.GetKeyDown(KeyCode.F5))
-            StartRun();
+            StartSuite();
+
+        if (_suiteRunning && _state == RunState.Complete)
+            StartNextTest();
 
         if (_state == RunState.WarmUp || _state == RunState.Measuring)
             UpdateFlight();
@@ -283,42 +355,113 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
 
     }
 
-    private void StartRun()
+    private void OnGUI()
+    {
+        if (string.IsNullOrEmpty(_progressText))
+            return;
+
+        _progressStyle ??= new GUIStyle(GUI.skin.label)
+        {
+            alignment = TextAnchor.MiddleRight,
+            fontSize = 18,
+        };
+        GUI.Label(
+            new Rect(8.0f, Screen.height - 40.0f, Screen.width - 16.0f, 32.0f),
+            _progressText,
+            _progressStyle);
+    }
+
+    private void StartSuite()
     {
         if (_state == RunState.WarmUp || _state == RunState.Measuring)
             return;
 
+        if (_tests == null || _tests.Length == 0)
+        {
+            Fail("No benchmark tests are configured.");
+            _state = RunState.Error;
+            return;
+        }
+
+        for (var index = 0; index < _tests.Length; index++)
+        {
+            if (_tests[index] != null)
+                continue;
+
+            Fail($"Benchmark test {index + 1} is not assigned.");
+            _state = RunState.Error;
+            return;
+        }
+
+        _testIterations = Mathf.Max(1, _testIterations);
+        _suiteIterationIndex = 0;
+        _suiteTestIndex = 0;
+        _suiteRunIndex = 0;
+        _suiteRunId =
+            $"{DateTime.UtcNow:yyyyMMddTHHmmss.fffffffZ}-" +
+            $"{System.Diagnostics.Process.GetCurrentProcess().Id}-" +
+            Guid.NewGuid().ToString("N");
+        _suiteRunning = true;
+        StartTest();
+    }
+
+    private void StartTest()
+    {
+        _activeTest = _tests[_suiteTestIndex];
+        UpdateProgressText();
         _lapDurationSeconds = Mathf.Max(0.1f, _lapDurationSeconds);
         _measuredLaps = Mathf.Max(1, _measuredLaps);
+        _stepsPerLap = Mathf.Clamp(
+            _stepsPerLap,
+            1,
+            Math.Max(1, MaximumFrameSamples / _measuredLaps));
         _result.Reset();
+        _runStartTime = Time.realtimeSinceStartupAsDouble;
         _result.RunStartUtc = DateTime.UtcNow;
         _result.RunStartLocal = DateTime.Now;
         if (_sceneManager == null)
             _sceneManager = FindFirstObjectByType<SceneManager>();
-        if (!TryReloadMapForCleanRun(out var warning))
+        if (_sceneManager == null)
         {
-            GetActiveResult().ValidityWarning = warning;
-            _state = RunState.Error;
-            Fail(warning);
+            StopSuiteWithError("SceneManager unavailable.");
             return;
         }
 
-        GetActiveResult().CleanMapReload = true;
+        try
+        {
+            _activeTest.SetUp(_sceneManager);
+        }
+        catch (Exception exception)
+        {
+            AbortActiveTest(
+                $"Test {_activeTest.TestName} setup failed: {exception}");
+            return;
+        }
+
+        if (!TryPrepareMapForTest(out var warning))
+        {
+            GetActiveResult().ValidityWarning = warning;
+            AbortActiveTest(warning);
+            return;
+        }
+
+        GetActiveResult().CleanMapReload = _reloadMapBetweenTests;
         GetActiveResult().MapUrl = _sceneManager.MapUrl;
         GetActiveResult().MinimumBuildBudgetMilliseconds =
             _sceneManager.Settings.MinBuildTime * 1000.0;
         GetActiveResult().MaximumBuildBudgetMilliseconds =
             _sceneManager.Settings.MaxBuildTime * 1000.0;
-        GetActiveResult().ValidityWarning =
-            "MapStreamer active and pooled textures were reset. Gizmo native " +
-            "process caches are not observable; use a fresh process for " +
-            "publication-quality results.";
+        if (_reloadMapBetweenTests)
+        {
+            GetActiveResult().ValidityWarning =
+                "MapStreamer active and pooled textures were reset. Gizmo " +
+                "native process caches are not observable.";
+        }
 
         if (!TryPrepareRoute(out warning))
         {
             GetActiveResult().ValidityWarning = warning;
-            _state = RunState.Error;
-            Fail(warning);
+            AbortActiveTest(warning);
             return;
         }
 
@@ -329,13 +472,76 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
         _state = RunState.WarmUp;
         _stateStartTime = Time.realtimeSinceStartupAsDouble;
         ApplyFlightPose(0.0);
+        if (_state == RunState.Error)
+            return;
+
+        _stateStep =
+            _progressionMode == CameraProgressionMode.FixedSamplesPerLap
+                ? 1
+                : 0;
         Debug.Log(
-            "Streaming benchmark: clean reload complete; warm-up started. " +
+            $"Streaming benchmark: {_activeTest.TestName}, " +
+            $"iteration {_suiteIterationIndex + 1}/{_testIterations}, " +
+            $"test {_suiteTestIndex + 1}/{_tests.Length}; " +
+            (_reloadMapBetweenTests ? "map reloaded; " : "") +
+            "warm-up started. " +
             $"Route {_routeLengthMeters:F0} m, scale {_routeScale:F3}, " +
-            $"lap {_lapDurationSeconds:F1} s.");
+            GetProgressionDescription() + ".");
     }
 
-    private bool TryReloadMapForCleanRun(out string warning)
+    private void StartNextTest()
+    {
+        _suiteRunIndex++;
+        _suiteTestIndex++;
+        if (_suiteTestIndex >= _tests.Length)
+        {
+            _suiteTestIndex = 0;
+            _suiteIterationIndex++;
+        }
+
+        if (_suiteIterationIndex >= _testIterations)
+        {
+            _suiteRunning = false;
+            _activeTest = null;
+            _progressText =
+                $"{CreateTestSequenceText(-1)} " +
+                $"Complete ({_testIterations}/{_testIterations})";
+            Debug.Log(
+                $"Streaming benchmark suite {_suiteRunId} complete: " +
+                $"{_suiteRunIndex} runs.");
+            return;
+        }
+
+        StartTest();
+    }
+
+    private void UpdateProgressText()
+    {
+        _progressText =
+            $"{CreateTestSequenceText(_suiteTestIndex)} " +
+            $"({_suiteIterationIndex + 1}/{_testIterations})";
+    }
+
+    private string CreateTestSequenceText(int activeTestIndex)
+    {
+        var builder = new StringBuilder();
+        for (var index = 0; index < _tests.Length; index++)
+        {
+            if (index > 0)
+                builder.Append(' ');
+            if (index == activeTestIndex)
+                builder.Append('[');
+
+            builder.Append(_tests[index].TestName);
+
+            if (index == activeTestIndex)
+                builder.Append(']');
+        }
+
+        return builder.ToString();
+    }
+
+    private bool TryPrepareMapForTest(out string warning)
     {
         warning = null;
         if (_sceneManager == null)
@@ -343,6 +549,15 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
         if (_sceneManager == null)
         {
             warning = "SceneManager unavailable; clean run was not started.";
+            return false;
+        }
+
+        if (!_reloadMapBetweenTests)
+        {
+            if (MapControl.SystemMap?.CurrentMap != null)
+                return true;
+
+            warning = "Map unavailable; benchmark test was not started.";
             return false;
         }
 
@@ -426,7 +641,7 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
             _eastRadiusMeters = eastRadius;
             _northRadiusMeters = northRadius;
             _routeScale = scale;
-            _routeLengthMeters = CalculateRouteLength(
+            _routeLengthMeters = PrepareRouteArcLengths(
                 eastRadius,
                 northRadius);
             _routePrepared = true;
@@ -546,13 +761,14 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
         return !double.IsNaN(value) && !double.IsInfinity(value);
     }
 
-    private static double CalculateRouteLength(
+    private double PrepareRouteArcLengths(
         float eastRadius,
         float northRadius)
     {
         var length = 0.0;
         var previousEast = 0.0;
         var previousNorth = 0.0;
+        _routeCumulativeLengths[0] = 0.0;
         for (var segment = 1; segment <= RouteLengthSegments; segment++)
         {
             var angle =
@@ -563,6 +779,7 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
             var deltaNorth = north - previousNorth;
             length += Math.Sqrt(
                 deltaEast * deltaEast + deltaNorth * deltaNorth);
+            _routeCumulativeLengths[segment] = length;
             previousEast = east;
             previousNorth = north;
         }
@@ -570,8 +787,43 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
         return length;
     }
 
+    private double GetRouteParameter(double distanceProgress)
+    {
+        distanceProgress -= Math.Floor(distanceProgress);
+        if (distanceProgress <= 0.0 || _routeLengthMeters <= 0.0)
+            return 0.0;
+
+        var targetLength = distanceProgress * _routeLengthMeters;
+        var lower = 0;
+        var upper = RouteLengthSegments;
+        while (lower + 1 < upper)
+        {
+            var middle = (lower + upper) / 2;
+            if (_routeCumulativeLengths[middle] <= targetLength)
+                lower = middle;
+            else
+                upper = middle;
+        }
+
+        var segmentLength =
+            _routeCumulativeLengths[upper] -
+            _routeCumulativeLengths[lower];
+        var segmentProgress = segmentLength > 0.0
+            ? (targetLength - _routeCumulativeLengths[lower]) /
+              segmentLength
+            : 0.0;
+        return (lower + segmentProgress) / RouteLengthSegments;
+    }
+
     private void UpdateFlight()
     {
+        if (_progressionMode ==
+            CameraProgressionMode.FixedSamplesPerLap)
+        {
+            UpdateDeterministicFlight();
+            return;
+        }
+
         var elapsed = Time.realtimeSinceStartupAsDouble - _stateStartTime;
         var lapDuration = _lapDurationSeconds;
 
@@ -605,6 +857,43 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
         ApplyFlightPose(elapsed / lapDuration);
     }
 
+    private void UpdateDeterministicFlight()
+    {
+        if (_state == RunState.WarmUp)
+        {
+            if (_stateStep >= _stepsPerLap)
+            {
+                BeginMeasurement();
+                return;
+            }
+
+            ApplyFlightPose((double)_stateStep / _stepsPerLap);
+            if (_state == RunState.Error)
+                return;
+
+            _stateStep++;
+            return;
+        }
+
+        var totalSteps = _stepsPerLap * _measuredLaps;
+        if (_stateStep >= totalSteps)
+        {
+            ApplyFlightPose(0.0);
+            if (_state != RunState.Error)
+                CompleteMeasurement();
+            return;
+        }
+
+        ApplyFlightPose(
+            (double)(_stateStep % _stepsPerLap) / _stepsPerLap);
+        if (_state == RunState.Error)
+            return;
+
+        _stateStep++;
+        GetActiveResult().CompletedLaps =
+            Math.Min(_measuredLaps, _stateStep / _stepsPerLap);
+    }
+
     private void BeginMeasurement()
     {
         _sceneManager.ResetStreamingDiagnostics();
@@ -614,8 +903,16 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
         _state = RunState.Measuring;
         _stateStartTime = Time.realtimeSinceStartupAsDouble;
         ApplyFlightPose(0.0);
+        if (_state == RunState.Error)
+            return;
+
+        _stateStep =
+            _progressionMode == CameraProgressionMode.FixedSamplesPerLap
+                ? 1
+                : 0;
         Debug.Log(
-            $"Streaming benchmark: {_measuredLaps} measured laps started.");
+            $"Streaming benchmark: {_measuredLaps} measured laps started; " +
+            GetProgressionDescription() + ".");
     }
 
     private void CompleteMeasurement()
@@ -623,7 +920,21 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
         var result = GetActiveResult();
         result.Meshes = SceneManager.MeshTotalDiagnostics;
         result.Textures = SceneManager.TextureTotalDiagnostics;
+        var now = Time.realtimeSinceStartupAsDouble;
+        result.MeasuredDurationSeconds = now - _stateStartTime;
+        result.TotalDurationSeconds = now - _runStartTime;
         result.Frames.Complete();
+        try
+        {
+            result.Test = CreateTestReport();
+        }
+        catch (Exception exception)
+        {
+            AbortActiveTest(
+                $"Test {_activeTest.TestName} report failed: {exception}");
+            return;
+        }
+
         _state = RunState.Complete;
         if (_saveDiagnosticsToFile)
             PersistReport(result);
@@ -631,6 +942,62 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
             Debug.Log(
                 "Streaming benchmark complete.\n" +
                 FormatStatistics(result));
+
+        if (_state == RunState.Complete)
+            TearDownActiveTest();
+    }
+
+    private BenchmarkTestReport CreateTestReport()
+    {
+        var report = new BenchmarkTestReport
+        {
+            name = _activeTest.TestName,
+            type = _activeTest.GetType().FullName,
+        };
+        _activeTest.AddReportData(report, _sceneManager);
+        return report;
+    }
+
+    private void TearDownActiveTest()
+    {
+        if (_activeTest == null)
+            return;
+
+        try
+        {
+            _activeTest.TearDown(_sceneManager);
+        }
+        catch (Exception exception)
+        {
+            StopSuiteWithError(
+                $"Test {_activeTest.TestName} teardown failed: {exception}");
+        }
+    }
+
+    private void StopSuiteWithError(string reason)
+    {
+        _suiteRunning = false;
+        _state = RunState.Error;
+        _progressText = string.IsNullOrEmpty(_progressText)
+            ? "Benchmark error"
+            : _progressText + " - Error";
+        Fail(reason);
+    }
+
+    private void AbortActiveTest(string reason)
+    {
+        try
+        {
+            _activeTest?.TearDown(_sceneManager);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError(
+                $"Streaming benchmark test teardown after failure also " +
+                $"failed: {exception}");
+        }
+
+        StopSuiteWithError(reason);
     }
 
     private void ApplyFlightPose(double lapProgress)
@@ -638,7 +1005,8 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
         if (!_routePrepared || _cameraControl == null)
             return;
 
-        var angle = (float)(lapProgress * Mathf.PI * 2.0);
+        var routeParameter = GetRouteParameter(lapProgress);
+        var angle = (float)(routeParameter * Mathf.PI * 2.0);
         var eastOffset = Mathf.Sin(angle) * _eastRadiusMeters;
         var northOffset = Mathf.Sin(angle * 2.0f) * _northRadiusMeters;
         var globalPosition = _routeCenter + _routeOrientation *
@@ -663,13 +1031,25 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
             return;
 
         GetActiveResult().ValidityWarning = "Camera route failed during run.";
-        _state = RunState.Error;
-        Fail(GetActiveResult().ValidityWarning);
+        AbortActiveTest(GetActiveResult().ValidityWarning);
     }
 
     private RunResult GetActiveResult()
     {
         return _result;
+    }
+
+    private string GetProgressionDescription()
+    {
+        if (_progressionMode ==
+            CameraProgressionMode.FixedSamplesPerLap)
+        {
+            var sampleDistance = _routeLengthMeters / _stepsPerLap;
+            return $"{_stepsPerLap} fixed camera samples/lap " +
+                   $"({sampleDistance:F2} m/sample, uniform distance)";
+        }
+
+        return $"lap {_lapDurationSeconds:F1} s, uniform distance";
     }
 
     private string FormatStatistics(
@@ -685,14 +1065,17 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
 
         var builder = new StringBuilder(768);
         builder.Append("HEADER\n")
+            .Append("Test: ")
+            .Append(result.Test?.name ?? _activeTest?.TestName ?? "None")
+            .Append('\n')
             .Append("Mode / Status: ")
             .Append("Production GeometryMeshExport + TextureExport | ")
             .Append(GetDisplayStatus(result)).Append('\n')
             .Append("Configuration / Scenario: ")
             .Append("1 warm-up + ")
-            .Append(_measuredLaps).Append(" measured laps @ ")
-            .Append(_lapDurationSeconds.ToString("F1"))
-            .Append(" s | figure-eight ")
+            .Append(_measuredLaps).Append(" measured laps | ")
+            .Append(GetProgressionDescription())
+            .Append(" | figure-eight ")
             .Append(result.RouteLengthMeters.ToString("F0"))
             .Append(" m | scale ")
             .Append(result.RouteScale.ToString("F3")).Append('\n')
@@ -704,7 +1087,9 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
             .Append(result.Frames.P95Milliseconds.ToString("F2"))
             .Append(" | ")
             .Append(result.Frames.P99Milliseconds.ToString("F2"))
-            .Append(" ms\nAverage FPS: ")
+            .Append(" ms\nMeasured duration: ")
+            .Append(result.MeasuredDurationSeconds.ToString("F3"))
+            .Append(" s\nAverage FPS: ")
             .Append(result.Frames.AverageFps.ToString("F1")).Append('\n')
             .Append("MESH\nMeshes / Payload: ")
             .Append(meshes.TotalMeshes.ToString("N0")).Append(" | ")
@@ -789,7 +1174,10 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
                 Application.persistentDataPath,
                 ReportDirectoryName);
             Directory.CreateDirectory(directory);
-            var prefix = $"new-{runId}";
+            var prefix =
+                $"{GetSafeFileName(result.Test.name)}-" +
+                $"i{_suiteIterationIndex + 1:D2}-" +
+                $"t{_suiteTestIndex + 1:D2}-{runId}";
             var jsonPath = Path.Combine(directory, prefix + ".json");
             var textPath = Path.Combine(directory, prefix + ".txt");
             var json = JsonUtility.ToJson(report, true);
@@ -805,10 +1193,16 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
         }
         catch (Exception exception)
         {
-            _state = RunState.Error;
-            Debug.LogError(
+            AbortActiveTest(
                 $"Streaming benchmark report write failed: {exception}");
         }
+    }
+
+    private static string GetSafeFileName(string value)
+    {
+        foreach (var character in Path.GetInvalidFileNameChars())
+            value = value.Replace(character, '-');
+        return value;
     }
 
     private BenchmarkReport CreateReport(
@@ -820,13 +1214,24 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
     {
         return new BenchmarkReport
         {
-            schemaVersion = 3,
+            schemaVersion = 4,
             runIdentity = RunIdentity,
             runId = runId,
             startedUtc = result.RunStartUtc.ToString("O", CultureInfo.InvariantCulture),
             startedLocal = result.RunStartLocal.ToString("O", CultureInfo.InvariantCulture),
             completedUtc = completedUtc.ToString("O", CultureInfo.InvariantCulture),
             completedLocal = completedLocal.ToString("O", CultureInfo.InvariantCulture),
+            suite = new SuiteReport
+            {
+                suiteRunId = _suiteRunId,
+                iteration = _suiteIterationIndex + 1,
+                iterationCount = _testIterations,
+                testIndex = _suiteTestIndex + 1,
+                testsPerIteration = _tests.Length,
+                runIndex = _suiteRunIndex + 1,
+                totalRuns = _tests.Length * _testIterations,
+            },
+            test = result.Test,
             runtime = new RuntimeReport
             {
                 unityVersion = Application.unityVersion,
@@ -849,9 +1254,22 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
                 mapUrl = result.MapUrl,
                 cleanMapReload = result.CleanMapReload,
                 validityWarning = result.ValidityWarning,
+                cameraProgressionMode = _progressionMode.ToString(),
+                routeParameterization = "UniformDistance",
                 warmUpLaps = 1,
                 measuredLaps = result.CompletedLaps,
                 lapDurationSeconds = _lapDurationSeconds,
+                stepsPerLap = _stepsPerLap,
+                cameraSampleDistanceMeters =
+                    result.RouteLengthMeters / _stepsPerLap,
+                measuredCameraSamples = result.Frames.Count,
+                totalDurationSeconds = result.TotalDurationSeconds,
+                measuredDurationSeconds = result.MeasuredDurationSeconds,
+                cameraSamplesPerSecond =
+                    result.MeasuredDurationSeconds > 0.0
+                        ? result.Frames.Count /
+                          result.MeasuredDurationSeconds
+                        : 0.0,
                 altitudeMeters = _altitudeMeters,
                 eastRadiusMeters = result.EastRadiusMeters,
                 northRadiusMeters = result.NorthRadiusMeters,
@@ -928,9 +1346,20 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
         RunResult result)
     {
         var culture = CultureInfo.InvariantCulture;
+        var progression = report.scenario.cameraProgressionMode ==
+                          CameraProgressionMode.FixedSamplesPerLap.ToString()
+            ? $"{report.scenario.stepsPerLap.ToString(culture)} samples/lap | " +
+              $"{report.scenario.cameraSampleDistanceMeters.ToString("F3", culture)} m/sample"
+            : $"{report.scenario.lapDurationSeconds.ToString("F1", culture)} s/lap";
         return new StringBuilder(2048)
             .AppendLine($"Run identity: {report.runIdentity}")
             .AppendLine($"Run ID: {report.runId}")
+            .AppendLine($"Suite run ID: {report.suite.suiteRunId}")
+            .AppendLine(
+                $"Test: {report.test.name} | " +
+                $"iteration {report.suite.iteration}/{report.suite.iterationCount} | " +
+                $"slot {report.suite.testIndex}/{report.suite.testsPerIteration} | " +
+                $"run {report.suite.runIndex}/{report.suite.totalRuns}")
             .AppendLine($"Started UTC: {report.startedUtc}")
             .AppendLine($"Completed UTC: {report.completedUtc}")
             .AppendLine($"Unity: {report.runtime.unityVersion}")
@@ -943,16 +1372,52 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
             .AppendLine(
                 $"Scenario: 1 warm-up + " +
                 $"{report.scenario.measuredLaps.ToString(culture)} measured laps | " +
-                $"{report.scenario.lapDurationSeconds.ToString("F1", culture)} s/lap")
+                $"{report.scenario.cameraProgressionMode} | " +
+                $"{report.scenario.routeParameterization} | " +
+                progression)
+            .AppendLine(
+                $"Duration: measured " +
+                $"{report.scenario.measuredDurationSeconds.ToString("F3", culture)} s | " +
+                $"total {report.scenario.totalDurationSeconds.ToString("F3", culture)} s | " +
+                $"{report.scenario.cameraSamplesPerSecond.ToString("F2", culture)} samples/s")
             .AppendLine(
                 $"Frames: {report.frames.count.ToString(culture)} | " +
                 $"Avg {report.frames.averageMilliseconds.ToString("F3", culture)} ms | " +
                 $"P95 {report.frames.p95Milliseconds.ToString("F3", culture)} ms | " +
                 $"P99 {report.frames.p99Milliseconds.ToString("F3", culture)} ms | " +
                 $"Worst {report.frames.worstMilliseconds.ToString("F3", culture)} ms")
+            .Append(FormatTestReport(report.test, culture))
             .AppendLine()
             .AppendLine(FormatStatistics(result))
             .ToString();
+    }
+
+    private static string FormatTestReport(
+        BenchmarkTestReport report,
+        CultureInfo culture)
+    {
+        var builder = new StringBuilder();
+        if (report.properties.Count > 0 || report.metrics.Count > 0)
+            builder.AppendLine().AppendLine("TEST");
+
+        foreach (var property in report.properties)
+        {
+            builder.Append(property.name)
+                .Append(": ")
+                .AppendLine(property.value);
+        }
+
+        foreach (var metric in report.metrics)
+        {
+            builder.Append(metric.name)
+                .Append(": ")
+                .Append(metric.value.ToString("G17", culture));
+            if (!string.IsNullOrEmpty(metric.unit))
+                builder.Append(' ').Append(metric.unit);
+            builder.AppendLine();
+        }
+
+        return builder.ToString();
     }
 
     private static void Fail(string reason)
@@ -960,4 +1425,5 @@ public sealed class MeshStreamingBenchmark : MonoBehaviour
         Debug.LogError($"Streaming benchmark failed: {reason}");
     }
 
+}
 }

@@ -12,12 +12,15 @@ described with adjustments and template in [TSWiki](https://tswiki.corp.saab.se/
 - Constant-time texture diagnostics for active references, cache usage, peak usage, allocations, reuse, destruction, and discarded uploads.
 - Optional F1 streaming diagnostics overlay with rolling frame, mesh, texture, and texture-cache statistics; F2 resets accumulated measurements and F3 toggles VSync.
 - Project-local F5 streaming benchmark with a map-centered figure-eight route, one warm-up lap, configurable lap duration and measured laps, and optional JSON and text reports.
+- Extensible benchmark test sequences with ordered test components, repeated iterations, per-test report data, and on-screen suite progress.
+- Deterministic benchmark camera progression with configurable, uniformly spaced route samples and duration and sample-throughput reporting.
 
 ### Changed
 - Upgraded to Unity 6000.3.5f2
 - Updated to GizmoSDK 2.12.345.1
 - Replaced legacy geometry and texture streaming with the GizmoSDK GeometryExport and TextureExport APIs, writing directly into Unity mesh and texture storage for improved streaming performance.
 - Texture recycling now preserves the exported graphics format and mip layout.
+- Scene hierarchies are recycled in post-order to avoid repeatedly moving transform subtrees while streamed nodes are released.
 
 ### Fixed
 - `FoliageModule` now skips initialization, Hi-Z generation, culling, and drawing when CAPS disables all tree and grass feature sets.
