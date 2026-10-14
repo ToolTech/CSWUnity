@@ -669,6 +669,10 @@ namespace Saab.Foundation.Unity.MapStreamer
                     var childPtr = child.GetNativeReference();
                     if (!NodeUtils.HasGameObjectsUnsafe(childPtr))
                     {
+                        // Do not expose a newly loaded asset LOD before native traversal has provided its initial state.
+                        if (data.TraversalStateFlags.HasFlag(TraversalState.AssetInstance))
+                            gameObject.SetActive(false);
+
                         NodeUtils.AddGameObjectReferenceUnsafe(childPtr, gameObject);
 
                         childNodeHandle.inNodeUtilsRegistry = true;

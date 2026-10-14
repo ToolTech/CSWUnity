@@ -17,7 +17,7 @@ described with adjustments and template in [TSWiki](https://tswiki.corp.saab.se/
 
 ### Changed
 - Upgraded to Unity 6000.3.5f2
-- Updated to GizmoSDK 2.12.345.1
+- Updated to GizmoSDK 2.12.346.1
 - Replaced legacy geometry and texture streaming with the GizmoSDK GeometryExport and TextureExport APIs, writing directly into Unity mesh and texture storage for improved streaming performance.
 - Texture recycling now preserves the exported graphics format and mip layout.
 - Scene hierarchies are recycled in post-order to avoid repeatedly moving transform subtrees while streamed nodes are released.
@@ -25,6 +25,7 @@ described with adjustments and template in [TSWiki](https://tswiki.corp.saab.se/
 ### Fixed
 - `FoliageModule` now skips initialization, Hi-Z generation, culling, and drawing when CAPS disables all tree and grass feature sets.
 - Geometry streaming now accepts source meshes with multiple texture-coordinate units by explicitly exporting UV0 for the current Unity mesh layout.
+- Newly loaded `RefNode` LOD branches remain inactive until native traversal reports them traversable, preventing out-of-range buildings from briefly appearing.
 - UTM and SWEREF99 local orientation now follows true north instead of grid north by applying position-dependent meridian convergence from GizmoSDK. #413147
 
 ## 4.7

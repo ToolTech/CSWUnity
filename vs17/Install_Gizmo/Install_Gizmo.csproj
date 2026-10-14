@@ -8,10 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Coordinate" Version="2.12.345.1" />
-    <PackageReference Include="Gizmo3D" Version="2.12.345.1" />
-    <PackageReference Include="GizmoBase" Version="2.12.345.1" />
-    <PackageReference Include="GizmoDistribution" Version="2.12.345.1" />
+    <PackageReference Include="Coordinate" Version="2.12.346.1" />
+    <PackageReference Include="Gizmo3D" Version="2.12.346.1" />
+    <PackageReference Include="GizmoBase" Version="2.12.346.1" />
+    <PackageReference Include="GizmoDistribution" Version="2.12.346.1" />
   </ItemGroup>
 
   <Target Name="CopyFilesAfterBuild" AfterTargets="Build" DependsOnTargets="CustomPostbuildTarget">

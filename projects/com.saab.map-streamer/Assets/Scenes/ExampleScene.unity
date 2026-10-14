@@ -152,7 +152,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4247e51c3496f4042a0b4726f65a39a6, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: 
   Settings:
     MaxBuildTime: 0.016
@@ -174,7 +174,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a284ca71ed695f84385934cf4c567931, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: 
 --- !u!4 &44396061
 Transform:
@@ -201,9 +201,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 25734977c93f1f341b6ba330af04bd14, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
-  _mode: 1
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _mode: 0
   _fallbackMaterial: {fileID: 2100000, guid: aaa1d8c29d6c5924296633de6b87f492, type: 2}
   _material: {fileID: 2100000, guid: 7b3b84139d8f3354e927c3e2d99d2e53, type: 2}
   _mask: 2056
@@ -237,7 +237,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: f71310ed7d3c4a1f999e5f00ae933612, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: MAPSTREAMER::Saab.Foundation.Unity.MapStreamer.StreamingDiagnosticsOverlay
   _sceneManager: {fileID: 44396059}
 --- !u!114 &44396065
@@ -250,13 +250,13 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 0c0db3da88904e1ea13132c620f30af6, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   _tests:
   - {fileID: 44396066}
   _testIterations: 1
   _reloadMapBetweenTests: 0
-  _progressionMode: 1
+  _progressionMode: 0
   _lapDurationSeconds: 15
   _stepsPerLap: 2048
   _measuredLaps: 5
@@ -273,8 +273,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 44c44330834c4db1acdb41e668730e7b, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &705507993
 GameObject:
   m_ObjectHideFlags: 0
