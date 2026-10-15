@@ -16,33 +16,14 @@
 #pragma kernel CSPlacement
 #pragma kernel CSSurfaceHeightMap
 #pragma kernel CSPixelToObject
+#pragma kernel CSClearPixelToObject
 #pragma kernel CSCull
 #pragma kernel CSFindBufferSize
 #pragma kernel CSClear
 
 #include "UnityCG.cginc"
 #include "CompressionUtil.cginc"
-
-struct FoliagePoint
-{
-    float3 Position;    // 12 bytes
-    uint ColorA;        // 4 bytes
-
-    uint up; // 4 bytes
-    uint right; // 4 bytes
-    
-    uint packed0; // 4  -> 28  (Height16 | Random16)
-    uint packed1; // 4  -> 32  (Visibility16 | unused/pad16)
-    
-}; // 32 bytes: AMD require data to be divisible by 16 bytes (caused by float3 => 16 bytes padding). Nvidia and Intel drivers automatically pads.
-
-struct FoliageShaderData
-{
-    float2 MaxMin;
-    float2 Offset;
-    float Weight;
-    float CullAreaWidth;
-};
+#include "FoliageBufferTypes.cginc"
 
 // mesh buffers
 
@@ -67,9 +48,10 @@ RWStructuredBuffer<uint> BufferSize;
 StructuredBuffer<bool> FeatureMap; // feature map => int[255] 
 AppendStructuredBuffer<FoliagePoint> TerrainPoints;     // Calculated points for one mesh
 RWStructuredBuffer<FoliagePoint> InputBuffer;           // buffer with all points
+ByteAddressBuffer InputCount;                          // actual append count, not buffer capacity
 StructuredBuffer<float> PixelToWorld;                   // matrix pixel to world (worldpixel coord)VertexBuffer
 AppendStructuredBuffer<FoliagePoint> OutputBuffer;      // buffer with all (frustum) culled points 
-RWStructuredBuffer<float3> PixelToObjectCoord;          // pixelIndex to objectspace
+RWStructuredBuffer<float4> PixelToObjectCoord;          // xyz: object position, w: mesh coverage
 StructuredBuffer<FoliageShaderData> FoliageData;
 
 // textures input
@@ -178,24 +160,27 @@ float Random2D(float2 input, float mutator = 0.546)
     return Random(i, mutator);
 }
 
-float3 BilinearPosition(int2 texCoord, float2 frac)
+bool TryBilinearPosition(int2 texCoord, float2 frac, out float3 position)
 {
-    float3 dl, dr, ul, ur;
-
     uint index_dl = PixelToIndex(texCoord, terrainResolution);
     uint index_dr = PixelToIndex(int2(texCoord.x + 1, texCoord.y), terrainResolution);
     uint index_ul = PixelToIndex(int2(texCoord.x, texCoord.y + 1), terrainResolution);
     uint index_ur = PixelToIndex(int2(texCoord.x + 1, texCoord.y + 1), terrainResolution);
     
-    dl = PixelToObjectCoord[index_dl];
-    dr = PixelToObjectCoord[index_dr];
-    ul = PixelToObjectCoord[index_ul];
-    ur = PixelToObjectCoord[index_ur];
+    float4 dl = PixelToObjectCoord[index_dl];
+    float4 dr = PixelToObjectCoord[index_dr];
+    float4 ul = PixelToObjectCoord[index_ul];
+    float4 ur = PixelToObjectCoord[index_ur];
 
-    float3 dx = lerp(dl, dr, frac.x);
-    float3 ux = lerp(ul, ur, frac.x);
+    position = 0;
+    if (dl.w == 0 || dr.w == 0 || ul.w == 0 || ur.w == 0)
+        return false;
 
-    return lerp(ux, dx, frac.y);
+    float3 dx = lerp(dl.xyz, dr.xyz, frac.x);
+    float3 ux = lerp(ul.xyz, ur.xyz, frac.x);
+
+    position = lerp(ux, dx, frac.y);
+    return true;
 }
 
 float2 GetWorldCoord(uint2 texCoord, float3x3 worldToTexCoord, float2 nodeCoord)
@@ -329,6 +314,16 @@ void CSSurfaceHeightMap(uint3 id : SV_DispatchThreadID)
 }
 
 // ************* PixelToObject ************* //
+[numthreads(128, 1, 1)]
+void CSClearPixelToObject(uint3 id : SV_DispatchThreadID)
+{
+    uint pixelCount = uint(terrainResolution.x) * uint(terrainResolution.y);
+    if (id.x >= pixelCount)
+        return;
+
+    PixelToObjectCoord[id.x] = 0;
+}
+
 [numthreads(4, 4, 4)]
 void CSPixelToObject(uint3 id : SV_DispatchThreadID)
 {
@@ -378,7 +373,7 @@ void CSPixelToObject(uint3 id : SV_DispatchThreadID)
             if (PositionFromUVInTri(uv, uv1, uv2, uv3, v1, v2, v3, result))
             {
                 uint index = PixelToIndex(uv, terrainResolution);
-                PixelToObjectCoord[index] = result;
+                PixelToObjectCoord[index] = float4(result, 1);
             }
         }
     }
@@ -474,7 +469,9 @@ void CSPlacement(uint3 id : SV_DispatchThreadID)
                 continue;
 
             feature = uint(SplatMap[placementUv] * 255);
-            float3 movedCoord = BilinearPosition(placementUv, uvfrac);
+            float3 movedCoord;
+            if (!TryBilinearPosition(placementUv, uvfrac, movedCoord))
+                continue;
                 
             if (FeatureMap[feature])
             {
@@ -656,9 +653,11 @@ bool GetRandomizedData(FoliagePoint data, out FoliageShaderData output)
 [numthreads(128, 1, 1)]
 void CSCull(uint3 id : SV_DispatchThreadID)
 {
+    if (id.x >= InputCount.Load(0))
+        return;
+
     FoliagePoint data = InputBuffer[id.x];
             
-    // handle points with no value. (allocated points in buffer is by default float3(0,0,0))
     if (dot(data.Position, data.Position) == 0)
         return;
     

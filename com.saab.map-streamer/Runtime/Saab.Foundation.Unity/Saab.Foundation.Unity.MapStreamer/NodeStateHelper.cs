@@ -1,4 +1,4 @@
-﻿//******************************************************************************
+//******************************************************************************
 //
 // Copyright (C) SAAB AB
 //
@@ -36,10 +36,11 @@
 
 // Framework
 using System;
-using System.Collections.Generic;
+using Saab.Foundation.Unity.MapStreamer.Interop;
 
 // Unity
 using UnityEngine;
+using UnityEngine.Experimental.Rendering;
 
 // GizmoSDK
 using GizmoSDK.GizmoBase;
@@ -62,19 +63,28 @@ namespace Saab.Foundation.Unity.MapStreamer
         public Matrix3D SurfaceHeight_homography;
     }
 
-    public class TextureImageInfo
+    public sealed class TextureImageInfo : IDisposable
     {
         public DynamicType homography;
 
         public DynamicType border_x;
         public DynamicType border_y;
+
+        public void Dispose()
+        {
+            homography?.Dispose();
+            border_x?.Dispose();
+            border_y?.Dispose();
+            homography = null;
+            border_x = null;
+            border_y = null;
+        }
     }
+
 
     public static class StateHelper
     {
         private static readonly ProfilerMarker _profilerMarker = new ProfilerMarker(ProfilerCategory.Render, "SM-ReadTexture");
-
-        private static readonly Dictionary<TextureFormat, bool> _supportedFormats = new Dictionary<TextureFormat, bool>();
 
         public static bool Build(State state, out StateBuildOutput output, TextureManager textureCache = null)
         {
@@ -85,26 +95,50 @@ namespace Saab.Foundation.Unity.MapStreamer
 
             output.Texture = texture;
 
-            if (ReadTextureFromState(state, out Texture2D feature, textureCache, out TextureImageInfo info, 1, false))       // Features always singletons and no mipmap force
+            if (ReadTextureFromState(
+                    state,
+                    out Texture2D feature,
+                    textureCache,
+                    out TextureImageInfo info,
+                    1,
+                    false))
             {
-                if (info != null && info.homography.Is("gzImageHomography"))
+                if (info?.homography != null &&
+                    info.homography.Is("gzImageHomography"))
                 {
                     output.Feature = feature;
                     output.Feature_homography = ((ImageHomography)info.homography);
+                    if (textureCache == null)
+                        info.Dispose();
                 }
                 else
+                {
+                    ReleaseOptionalTexture(textureCache, feature, info);
                     output.Feature = null;
+                }
             }
 
-            if (ReadTextureFromState(state, out Texture2D surface, textureCache, out info, 2, false))       // Features always singletons and no mipmap force
+            if (ReadTextureFromState(
+                    state,
+                    out Texture2D surface,
+                    textureCache,
+                    out info,
+                    2,
+                    false))
             {
-                if (info != null && info.homography.Is("gzImageHomography"))
+                if (info?.homography != null &&
+                    info.homography.Is("gzImageHomography"))
                 {
                     output.SurfaceHeight = surface;
                     output.SurfaceHeight_homography = ((ImageHomography)info.homography);
+                    if (textureCache == null)
+                        info.Dispose();
                 }
                 else
+                {
+                    ReleaseOptionalTexture(textureCache, surface, info);
                     output.SurfaceHeight = null;
+                }
             }
 
             return true;
@@ -147,16 +181,43 @@ namespace Saab.Foundation.Unity.MapStreamer
 
                         info = new TextureImageInfo();
 
-                        if (!CopyTexture(texture, out result, info, useMipMap))
+                        if (!CopyTexture(
+                                texture,
+                                out result,
+                                info,
+                                unit,
+                                useMipMap))
+                        {
+                            info.Dispose();
+                            info = null;
                             return false;
+                        }
 
-                        return textureCache.TryAdd(ptr, result, info);
+                        if (textureCache.TryAdd(ptr, result, info))
+                            return true;
+
+                        Texture2DCache.Free(result);
+                        info.Dispose();
+                        result = null;
+                        info = null;
+                        return false;
                     }
 
                     info = new TextureImageInfo();
 
-                    if (!CopyTexture(texture, out result, info, useMipMap))
+                    if (!CopyTexture(
+                            texture,
+                            out result,
+                            info,
+                            unit,
+                            useMipMap))
+                    {
+                        info.Dispose();
+                        info = null;
                         return false;
+                    }
+
+                    return true;
                 }
                 finally
                 {
@@ -164,8 +225,6 @@ namespace Saab.Foundation.Unity.MapStreamer
                     texture.ReleaseAlreadyLocked();
                 }
             }
-
-            return true;
         }
 
         private static bool ReadTextureFromState(State state, out Texture2D result, TextureManager textureCache, uint unit = 0, bool useMipMap = true)
@@ -197,13 +256,19 @@ namespace Saab.Foundation.Unity.MapStreamer
                     }
 
                     result = CopyWhiteTexture();
+                    if (!result)
+                        return false;
 
-                    return textureCache.TryAdd(ptr, result, null);
+                    if (textureCache.TryAdd(ptr, result, null))
+                        return true;
+
+                    Texture2DCache.Free(result);
+                    result = null;
+                    return false;
                 }
 
                 result = CopyWhiteTexture();
-
-                return true;
+                return result;
             }
 
             using (var texture = state.GetTexture(unit))
@@ -220,14 +285,31 @@ namespace Saab.Foundation.Unity.MapStreamer
                             return true;
                         }
 
-                        if (!CopyTexture(texture, out result, null, useMipMap))
+                        if (!CopyTexture(
+                                texture,
+                                out result,
+                                null,
+                                unit,
+                                useMipMap))
                             return false;
 
-                        return textureCache.TryAdd(ptr, result, null);
+                        if (textureCache.TryAdd(ptr, result, null))
+                            return true;
+
+                        Texture2DCache.Free(result);
+                        result = null;
+                        return false;
                     }
 
-                    if (!CopyTexture(texture, out result, null, useMipMap))
+                    if (!CopyTexture(
+                            texture,
+                            out result,
+                            null,
+                            unit,
+                            useMipMap))
                         return false;
+
+                    return true;
                 }
                 finally
                 {
@@ -235,168 +317,213 @@ namespace Saab.Foundation.Unity.MapStreamer
                     texture.ReleaseAlreadyLocked();
                 }
             }
-
-            return true;
         }
 
         private static Texture2D CopyWhiteTexture()
         {
             Texture2D src = Texture2D.whiteTexture;
-            Texture2D dst = new Texture2D(src.width, src.height, src.format, src.mipmapCount > 1);
+            var dst = Texture2DCache.GetOrCreateTexture(
+                src.width,
+                src.height,
+                src.graphicsFormat,
+                src.mipmapCount);
+            if (!dst)
+                return null;
             Graphics.CopyTexture(src, dst);
             return dst;
         }
 
-        private static bool CopyTexture(gzTexture gzTexture, out Texture2D result, TextureImageInfo info, bool mipChain = true)
+        private static void ReleaseOptionalTexture(
+            TextureManager textureManager,
+            Texture2D texture,
+            TextureImageInfo info)
+        {
+            if (!texture)
+                return;
+
+            if (textureManager != null)
+                textureManager.Free(texture);
+            else
+            {
+                info?.Dispose();
+                Texture2DCache.Free(texture);
+            }
+        }
+
+        private static bool CopyTexture(
+            gzTexture gzTexture,
+            out Texture2D result,
+            TextureImageInfo imageInfo,
+            uint textureUnit,
+            bool mipChain = true)
         {
             result = null;
+            var buildStart = System.Diagnostics.Stopwatch.GetTimestamp();
+            var selection = mipChain
+                ? TextureExport.SourceSelection.CompleteMipChain
+                : TextureExport.SourceSelection.BaseOnly;
+            var baseLevelFallback = false;
+            TextureExport.Prepared preparation = null;
+            Texture2D destination = null;
+            var copyAttempted = false;
+            var published = false;
+            long textureDataBytes = 0;
 
-            if (!gzTexture.HasImage())
-                return false;
-
-            using (var image = gzTexture.GetImage())
+            try
             {
-                ImageFormat imageFormat = image.Format;
-
-                ComponentType componentType = image.ComponentType;
-
-                TextureFormat textureFormat = GetUnityTextureFormat(imageFormat,componentType);
-
-                bool supported = IsTextureFormatSupported(textureFormat);
-
-                bool uncompress = !supported;
-
-                var nativePtr = IntPtr.Zero;
-                
-                if (!gzTexture.GetMipMapImageArray(ref nativePtr, out uint size, 
-                    out ImageFormat finalImageFormat, out ComponentType finalComponentType, out _,
-                    out uint width, out uint height, out uint depth, mipChain, uncompress))
+                if (!gzTexture.HasImage())
                     return false;
 
-                if (depth != 1)
-                    return false;
-
-                // with uncompress enabled, image might have been mutated during GetMipMapImageArray
-                if (finalImageFormat != imageFormat || finalComponentType != image.ComponentType)
+                var status = gzTexture.PrepareTextureExport(
+                    selection,
+                    out preparation);
+                if (status == TextureExport.Status.IncompleteMipChain &&
+                    selection ==
+                    TextureExport.SourceSelection.CompleteMipChain)
                 {
-                    textureFormat = GetUnityTextureFormat(finalImageFormat, finalComponentType);
-
-                    if (!IsTextureFormatSupported(textureFormat))
-                        return false;
+                    selection = TextureExport.SourceSelection.BaseOnly;
+                    baseLevelFallback = true;
+                    status = gzTexture.PrepareTextureExport(
+                        selection,
+                        out preparation);
                 }
+                if (status != TextureExport.Status.Success ||
+                    preparation == null)
+                    return false;
 
-                // we try to reuse texture objects when streaming terrain, this improves performance
-                // by almost 2X, a small cache of only 256 MB should be enough since terrain textures
-                // are quite small but frequently changed
-                result = Texture2DCache.GetOrCreateTexture((int)width, (int)height, textureFormat, mipChain, out bool canBeRecycled);
+                var sourceInfo = preparation.Info;
+                status = TextureExportInterop.ValidateInfo(
+                    in sourceInfo,
+                    selection,
+                    textureUnit,
+                    out var unityFormat);
+                if (status != TextureExport.Status.Success)
+                    return false;
 
-                result.wrapModeU = GetUnityTextureWrapMode(gzTexture.WrapS);
-                result.wrapModeV = GetUnityTextureWrapMode(gzTexture.WrapT);
-                result.wrapModeW = GetUnityTextureWrapMode(gzTexture.WrapR);
-                
+                var minFilter = gzTexture.MinFilter;
+                if (!TextureExportInterop.IsFormatSupportedForSampling(
+                        unityFormat.GraphicsFormat,
+                        RequiresLinearFiltering(minFilter)))
+                    return false;
 
-                if (!result)
+                var generateMipMaps =
+                    baseLevelFallback &&
+                    !GraphicsFormatUtility.IsCompressedFormat(
+                        unityFormat.GraphicsFormat);
+                var mipCount = generateMipMaps
+                    ? TextureExportInterop.CalculateMipCount(
+                        sourceInfo.Width,
+                        sourceInfo.Height)
+                    : sourceInfo.LevelCount;
+                destination = Texture2DCache.GetOrCreateTexture(
+                    (int)sourceInfo.Width,
+                    (int)sourceInfo.Height,
+                    unityFormat.GraphicsFormat,
+                    (int)mipCount,
+                    out var canBeRecycled);
+                if (!destination)
                     return false;
 
 #if DEBUG
-                result.name = "SM - NodeTexture";
+                destination.name = "SM - NodeTexture TextureExport";
 #endif
 
-#if false
-                unsafe
+                status = TextureExportInterop.CreateDestination(
+                    destination,
+                    in sourceInfo,
+                    in unityFormat,
+                    out var exportDestination,
+                    out var rawTextureBytes);
+                if (status != TextureExport.Status.Success)
+                    return false;
+
+                copyAttempted = true;
+                status = preparation.Copy(exportDestination);
+                if (status != TextureExport.Status.Success)
+                    return false;
+
+                preparation.Dispose();
+                preparation = null;
+                textureDataBytes = (long)rawTextureBytes;
+                destination.Apply(
+                    updateMipmaps: generateMipMaps,
+                    makeNoLongerReadable: !canBeRecycled);
+                destination.wrapModeU =
+                    GetUnityTextureWrapMode(gzTexture.WrapS);
+                destination.wrapModeV =
+                    GetUnityTextureWrapMode(gzTexture.WrapT);
+                destination.wrapModeW =
+                    GetUnityTextureWrapMode(gzTexture.WrapR);
+                SetTextureFilterMode(minFilter, destination);
+
+                if (imageInfo != null)
                 {
-                    void* pointer = nativePtr.ToPointer();
-
-                    NativeArray<byte> _image_data = NativeArrayUnsafeUtility.ConvertExistingDataToNativeArray<byte>(pointer, (int)size, Allocator.None);
-
-                    result.LoadRawTextureData(_image_data);
+                    using (var image = gzTexture.GetImage())
+                    {
+                        imageInfo.homography = image.GetAttribute(
+                            "UserDataImInfo", "ImI-Wrld-Hom");
+                        imageInfo.border_x = image.GetAttribute(
+                            "UserDataImInfo", "ImI-Pixel-X-border");
+                        imageInfo.border_y = image.GetAttribute(
+                            "UserDataImInfo", "ImI-Pixel-Y-border");
+                    }
                 }
 
-#else
-
-                result.LoadRawTextureData(nativePtr, (int)size);
-
-#endif
-                
-                switch (gzTexture.MinFilter)
+                result = destination;
+                published = true;
+                SceneManager.RecordTextureBuild(
+                    textureDataBytes,
+                    System.Diagnostics.Stopwatch.GetTimestamp() - buildStart);
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+            finally
+            {
+                preparation?.Dispose();
+                if (!published && destination)
                 {
-                    case gzTexture.TextureMinFilter.LINEAR:
-                    case gzTexture.TextureMinFilter.LINEAR_MIPMAP_NEAREST:
-                        result.filterMode = FilterMode.Bilinear;
-                        break;
-
-                    case gzTexture.TextureMinFilter.LINEAR_MIPMAP_LINEAR:
-                        result.filterMode = FilterMode.Trilinear;
-                        break;
-
-                    default:
-                        result.filterMode = FilterMode.Point;
-                        break;
-                }
-
-                // if texture was a candidate for recycling, we keep the CPU side buffer
-                // so that we can update the texture when reused
-                result.Apply(mipChain, makeNoLongerReadable: !canBeRecycled);
-
-                if (info != null)
-                {
-                    info.homography = image.GetAttribute("UserDataImInfo", "ImI-Wrld-Hom");
-
-                    info.border_x = image.GetAttribute("UserDataImInfo", "ImI-Pixel-X-border");
-                    info.border_y = image.GetAttribute("UserDataImInfo", "ImI-Pixel-Y-border");
+                    if (copyAttempted)
+                        Texture2DCache.Discard(destination);
+                    else
+                        Texture2DCache.Free(destination);
                 }
             }
-
-            return true;
         }
 
-        private static TextureFormat GetUnityTextureFormat(ImageFormat imageFormat , ComponentType compType)
+        private static void SetTextureFilterMode(
+            gzTexture.TextureMinFilter minFilter,
+            Texture2D destination)
         {
-            switch (imageFormat)
+            switch (minFilter)
             {
-                case ImageFormat.RGBA:
-                    if (compType == ComponentType.UNSIGNED_BYTE)
-                        return TextureFormat.RGBA32;
-                    if (compType == ComponentType.FLOAT)
-                        return TextureFormat.RGBA32;
-                    if (compType == ComponentType.HALF_FLOAT)
-                        return TextureFormat.RGBAHalf;
+                case gzTexture.TextureMinFilter.LINEAR:
+                case gzTexture.TextureMinFilter.LINEAR_MIPMAP_NEAREST:
+                    destination.filterMode = FilterMode.Bilinear;
                     break;
-
-                case ImageFormat.RGB:
-                    if (compType == ComponentType.UNSIGNED_BYTE)
-                        return TextureFormat.RGB24;
+                case gzTexture.TextureMinFilter.LINEAR_MIPMAP_LINEAR:
+                    destination.filterMode = FilterMode.Trilinear;
                     break;
-
-                case ImageFormat.COMPRESSED_RGBA8_ETC2:
-                    return TextureFormat.ETC2_RGBA8;
-
-                case ImageFormat.COMPRESSED_RGB8_ETC2:
-                    return TextureFormat.ETC2_RGB;
-
-                case ImageFormat.COMPRESSED_RGBA_S3TC_DXT1:
-                case ImageFormat.COMPRESSED_RGB_S3TC_DXT1:
-                    return TextureFormat.DXT1;
-
-                case ImageFormat.COMPRESSED_RGBA_S3TC_DXT5:
-                    return TextureFormat.DXT5;
-
-                case ImageFormat.LUMINANCE:
-                    if(compType==ComponentType.UNSIGNED_BYTE)
-                        return TextureFormat.R8;
-                    if (compType == ComponentType.FLOAT)
-                        return TextureFormat.RFloat;
-                    break;
-
-                case ImageFormat.LUMINANCE_ALPHA:
-                    if (compType == ComponentType.UNSIGNED_BYTE)
-                        return TextureFormat.RG16;
-                    if (compType == ComponentType.FLOAT)
-                        return TextureFormat.RGFloat;
+                default:
+                    destination.filterMode = FilterMode.Point;
                     break;
             }
+        }
 
-            throw new NotSupportedException();
+        public static bool RequiresLinearFiltering(
+            gzTexture.TextureMinFilter minFilter)
+        {
+            switch (minFilter)
+            {
+                case gzTexture.TextureMinFilter.LINEAR:
+                case gzTexture.TextureMinFilter.LINEAR_MIPMAP_NEAREST:
+                case gzTexture.TextureMinFilter.LINEAR_MIPMAP_LINEAR:
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         private static TextureWrapMode GetUnityTextureWrapMode(gzTexture.TextureWrapMode wrapMode)
@@ -416,20 +543,5 @@ namespace Saab.Foundation.Unity.MapStreamer
             }
         }
 
-        private static bool IsTextureFormatSupported(TextureFormat format)
-        {
-            if (!_supportedFormats.TryGetValue(format, out bool supported))
-            {
-                // SystemInfo.SupportsTextureFormat is a very slow operation, so
-                // we will cache the result for future queries.
-                supported = SystemInfo.SupportsTextureFormat(format);
-                _supportedFormats.Add(format, supported);
-
-                if (!supported)
-                    Message.Send("StateBuilder", MessageLevel.WARNING, $"{format} was not a supported format!");
-            }
-
-            return supported;
-        }
     }
 }

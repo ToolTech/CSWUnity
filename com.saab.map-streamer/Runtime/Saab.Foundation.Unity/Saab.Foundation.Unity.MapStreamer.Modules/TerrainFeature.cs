@@ -295,7 +295,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
                 temporaryTexture.ReadPixels(new Rect(0, 0, temporaryTexture.width, temporaryTexture.height), 0, 0);
                 RenderTexture.active = null;
-                temporaryTexture.Apply(true);
+                temporaryTexture.Apply(updateMipmaps: true);
                 temporaryTexture.Compress(true);
                 Graphics.CopyTexture(temporaryTexture, 0, textureArray, i);
                 DestroyImmediate(temporaryTexture);

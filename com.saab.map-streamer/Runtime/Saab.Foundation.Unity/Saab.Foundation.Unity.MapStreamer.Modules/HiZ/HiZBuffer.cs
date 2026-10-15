@@ -120,8 +120,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             if (!SystemInfo.supportsComputeShaders)
                 throw new NotSupportedException("Hi-Z generation requires compute shader support.");
 
-            if (!SystemInfo.IsFormatSupported(GraphicsFormat.R32_SFloat, FormatUsage.Sample) ||
-                !SystemInfo.IsFormatSupported(GraphicsFormat.R32_SFloat, FormatUsage.LoadStore))
+            if (!SystemInfo.IsFormatSupported(GraphicsFormat.R32_SFloat, GraphicsFormatUsage.Sample) ||
+                !SystemInfo.IsFormatSupported(GraphicsFormat.R32_SFloat, GraphicsFormatUsage.LoadStore))
             {
                 throw new NotSupportedException(
                     $"{GraphicsFormat.R32_SFloat} sampling and load/store support are required for Hi-Z generation.");

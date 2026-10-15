@@ -65,7 +65,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Utils
                 Texture2D temporaryTexture = new Texture2D(textureResolution, textureResolution, TextureFormat.ARGB32, true);
                 temporaryTexture.ReadPixels(new Rect(0, 0, temporaryTexture.width, temporaryTexture.height), 0, 0);
                 RenderTexture.active = null;
-                temporaryTexture.Apply(true);
+                temporaryTexture.Apply(updateMipmaps: true);
                 temporaryTexture.Compress(true);
                 Graphics.CopyTexture(temporaryTexture, 0, textureArray, i);
 
