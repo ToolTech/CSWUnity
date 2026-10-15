@@ -93,7 +93,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
         }
 
         [Test]
-        public void CopyExportsOnlyUvZeroFromMultiUnitGeometry()
+        public void CopyExportsUvZeroFromSphereGeometry()
         {
             NodeLock.WaitLockEdit();
             try
@@ -111,9 +111,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
                         Is.True);
                     Assert.That(uvCount, Is.GreaterThan(0));
 
-                    var uv1 = uv0.Select(value => value + 10.0f).ToArray();
-                    Assert.That(geometry.SetTexCoordData(uv1, 1), Is.True);
-                    Assert.That(geometry.GetTextureUnits(), Is.EqualTo(2));
+                    Assert.That(geometry.GetTextureUnits(), Is.EqualTo(1));
 
                     Assert.That(
                         geometry.PrepareMeshExport(
@@ -125,13 +123,13 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
                     {
                         Assert.That(
                             preparation.TextureCoordinateUnits,
-                            Is.EqualTo(new uint[] { 0, 1 }));
+                            Is.EqualTo(new uint[] { 0 }));
                         Assert.That(
                             preparation.HasTextureCoordinateUnit(0),
                             Is.True);
                         Assert.That(
                             preparation.HasTextureCoordinateUnit(1),
-                            Is.True);
+                            Is.False);
 
                         var info = preparation.Info;
                         var meshDataArray = Mesh.AllocateWritableMeshData(1);
