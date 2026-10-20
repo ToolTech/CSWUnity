@@ -398,13 +398,24 @@ namespace Saab.Foundation.Unity.MapStreamer
                     textureUnit,
                     out var unityFormat);
                 if (status != TextureExport.Status.Success)
+                {
+                    Debug.LogWarning(
+                        $"Texture export rejected source layout {sourceInfo.ImageFormat}/" +
+                        $"{sourceInfo.ComponentType} ({sourceInfo.Components} components) " +
+                        $"for texture unit {textureUnit}: {status}.");
                     return false;
+                }
 
                 var minFilter = gzTexture.MinFilter;
                 if (!TextureExportInterop.IsFormatSupportedForSampling(
                         unityFormat.GraphicsFormat,
                         RequiresLinearFiltering(minFilter)))
+                {
+                    Debug.LogWarning(
+                        $"Texture export cannot sample {unityFormat.GraphicsFormat} " +
+                        $"for texture unit {textureUnit} on {SystemInfo.graphicsDeviceType}.");
                     return false;
+                }
 
                 var generateMipMaps =
                     baseLevelFallback &&
@@ -476,8 +487,10 @@ namespace Saab.Foundation.Unity.MapStreamer
                     System.Diagnostics.Stopwatch.GetTimestamp() - buildStart);
                 return true;
             }
-            catch (Exception)
+            catch (Exception exception)
             {
+                Debug.LogError(
+                    $"Texture export failed for texture unit {textureUnit}: {exception}");
                 return false;
             }
             finally

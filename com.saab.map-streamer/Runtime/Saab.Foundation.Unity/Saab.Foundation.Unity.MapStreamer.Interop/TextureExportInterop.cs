@@ -116,7 +116,11 @@ namespace Saab.Foundation.Unity.MapStreamer.Interop
 
             if (unityFormat.ImageFormat != info.ImageFormat ||
                 unityFormat.ComponentType != info.ComponentType ||
-                unityFormat.Components != info.Components)
+                unityFormat.Components != info.Components ||
+                texture.graphicsFormat != unityFormat.GraphicsFormat ||
+                texture.width != (int)info.Width ||
+                texture.height != (int)info.Height ||
+                texture.mipmapCount < (int)info.LevelCount)
                 return TextureExport.Status.InconsistentMetadata;
             var rawData = texture.GetRawTextureData<byte>();
             var rawCapacity = (ulong)rawData.Length;
@@ -196,16 +200,56 @@ namespace Saab.Foundation.Unity.MapStreamer.Interop
             GraphicsFormat graphicsFormat,
             bool requireLinearFiltering)
         {
-            var samplingSupported = IsFormatSupported(
-                graphicsFormat,
-                GraphicsFormatUsage.Sample);
-            if (!requireLinearFiltering)
-                return samplingSupported;
+            var samplingFormat = graphicsFormat;
+            if (!IsFormatSupported(graphicsFormat, GraphicsFormatUsage.Sample))
+            {
+                if (!TryGetTextureFormat(graphicsFormat, out var textureFormat) ||
+                    (!SystemInfo.SupportsTextureFormat(textureFormat) &&
+                        !GraphicsFormatUtility.IsCompressedFormat(graphicsFormat)))
+                    return false;
+                samplingFormat = SystemInfo.GetCompatibleFormat(
+                    graphicsFormat, GraphicsFormatUsage.Sample);
+            }
 
-            var linearFilteringSupported = IsFormatSupported(
-                graphicsFormat,
-                GraphicsFormatUsage.Linear);
-            return samplingSupported && linearFilteringSupported;
+            return IsFormatSupported(samplingFormat, GraphicsFormatUsage.Sample) &&
+                (!requireLinearFiltering ||
+                    IsFormatSupported(samplingFormat, GraphicsFormatUsage.Linear));
+        }
+
+        public static Texture2D CreateTexture(
+            int width,
+            int height,
+            GraphicsFormat format,
+            int mipCount)
+        {
+            if (format == GraphicsFormat.None)
+                throw new ArgumentException("A source texture format is required.", nameof(format));
+            return TryGetTextureFormat(format, out var textureFormat)
+                ? new Texture2D(
+                    width, height, textureFormat, mipCount,
+                    linear: !GraphicsFormatUtility.IsSRGBFormat(format))
+                : new Texture2D(
+                    width, height, format, mipCount, TextureCreationFlags.None);
+        }
+
+        public static bool TryGetTextureFormat(
+            GraphicsFormat graphicsFormat,
+            out TextureFormat textureFormat)
+        {
+            textureFormat = default;
+            if (graphicsFormat == GraphicsFormat.None)
+                return false;
+
+            var legacyFormat = GraphicsFormatUtility.GetTextureFormat(graphicsFormat);
+            // The constructor must describe the source CPU bytes, regardless of
+            // how Unity represents them on the GPU.
+            if (!Enum.IsDefined(typeof(TextureFormat), legacyFormat) ||
+                GraphicsFormatUtility.GetGraphicsFormat(
+                    legacyFormat, GraphicsFormatUtility.IsSRGBFormat(graphicsFormat)) != graphicsFormat)
+                return false;
+
+            textureFormat = legacyFormat;
+            return true;
         }
 
         private static bool IsFormatSupported(

@@ -497,6 +497,56 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
             }
         }
 
+        [TestCase(0U, GraphicsFormat.R8G8B8_SRGB)]
+        [TestCase(1U, GraphicsFormat.R8G8B8_UNorm)]
+        public void CreatesPackedRgb24DestinationsForCompatibleUpload(
+            uint unit,
+            GraphicsFormat graphicsFormat)
+        {
+            var texture = new Texture2D(
+                7, 3, TextureFormat.RGB24, 3,
+                linear: unit != 0);
+            try
+            {
+                var info = CreateInfo(
+                    ImageFormat.RGB,
+                    ComponentType.UNSIGNED_BYTE,
+                    3,
+                    7,
+                    3,
+                    3);
+                Assert.That(
+                    TextureExportInterop.ValidateInfo(
+                        in info,
+                        TextureExport.SourceSelection.CompleteMipChain,
+                        unit,
+                        out var mapping),
+                    Is.EqualTo(TextureExport.Status.Success));
+                Assert.That(mapping.GraphicsFormat, Is.EqualTo(graphicsFormat));
+                Assert.That(
+                    TextureExportInterop.IsFormatSupportedForSampling(
+                        graphicsFormat, true),
+                    Is.True);
+                Assert.That(
+                    TextureExportInterop.CreateDestination(
+                        texture,
+                        in info,
+                        in mapping,
+                        out var destination,
+                        out var rawTextureBytes),
+                    Is.EqualTo(TextureExport.Status.Success));
+                Assert.That(destination, Is.Not.Null);
+                Assert.That(rawTextureBytes, Is.EqualTo(63 + 9 + 3));
+                Assert.That(texture.GetPixelData<byte>(0).Length, Is.EqualTo(63));
+                Assert.That(texture.GetPixelData<byte>(1).Length, Is.EqualTo(9));
+                Assert.That(texture.GetPixelData<byte>(2).Length, Is.EqualTo(3));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(texture);
+            }
+        }
+
         [Test]
         public void CreatesOpaqueContiguousCompressedDestinations()
         {
@@ -590,6 +640,95 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
                     Is.EqualTo(TextureExport.Status.InconsistentMetadata));
             }
 
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(texture);
+            }
+        }
+
+        [TestCase(GraphicsFormat.R8_UNorm, TextureFormat.R8)]
+        [TestCase(GraphicsFormat.R8G8_UNorm, TextureFormat.RG16)]
+        [TestCase(GraphicsFormat.R8G8B8_UNorm, TextureFormat.RGB24)]
+        [TestCase(GraphicsFormat.R8G8B8_SRGB, TextureFormat.RGB24)]
+        [TestCase(GraphicsFormat.R16G16B16_UNorm, TextureFormat.RGB48)]
+        [TestCase(GraphicsFormat.R8G8B8A8_SRGB, TextureFormat.RGBA32)]
+        [TestCase(GraphicsFormat.B8G8R8A8_UNorm, TextureFormat.BGRA32)]
+        [TestCase(GraphicsFormat.R32_SFloat, TextureFormat.RFloat)]
+        [TestCase(GraphicsFormat.R32G32_SFloat, TextureFormat.RGFloat)]
+        [TestCase(GraphicsFormat.R16G16B16A16_SFloat, TextureFormat.RGBAHalf)]
+        [TestCase(GraphicsFormat.R32G32B32A32_SFloat, TextureFormat.RGBAFloat)]
+        [TestCase(GraphicsFormat.E5B9G9R9_UFloatPack32, TextureFormat.RGB9e5Float)]
+        [TestCase(GraphicsFormat.RGBA_DXT1_SRGB, TextureFormat.DXT1)]
+        [TestCase(GraphicsFormat.RGBA_DXT5_SRGB, TextureFormat.DXT5)]
+        [TestCase(GraphicsFormat.RGBA_ETC2_SRGB, TextureFormat.ETC2_RGBA8)]
+        public void LegacyTextureFormatPreservesPhysicalStorage(
+            GraphicsFormat storageFormat,
+            TextureFormat expectedLegacyFormat)
+        {
+            Assert.That(
+                TextureExportInterop.TryGetTextureFormat(storageFormat, out var legacyFormat),
+                Is.True);
+            Assert.That(legacyFormat, Is.EqualTo(expectedLegacyFormat));
+            Assert.That(
+                GraphicsFormatUtility.GetGraphicsFormat(
+                    legacyFormat, GraphicsFormatUtility.IsSRGBFormat(storageFormat)),
+                Is.EqualTo(storageFormat));
+        }
+
+        [TestCase(GraphicsFormat.None)]
+        [TestCase(GraphicsFormat.B8G8R8_UNorm)]
+        [TestCase(GraphicsFormat.B8G8R8_SRGB)]
+        [TestCase(GraphicsFormat.RGBA_DXT3_UNorm)]
+        [TestCase(GraphicsFormat.RGBA_DXT3_SRGB)]
+        [TestCase(GraphicsFormat.R32_UInt)]
+        public void LegacyTextureFormatRejectsMissingOrInexactMappings(GraphicsFormat storageFormat)
+        {
+            Assert.That(
+                TextureExportInterop.TryGetTextureFormat(storageFormat, out _),
+                Is.False);
+        }
+
+        [Test]
+        public void NoFormatCannotCreateTexture()
+        {
+            Assert.Throws<ArgumentException>(
+                () => TextureExportInterop.CreateTexture(4, 4, GraphicsFormat.None, 1));
+        }
+
+        [Test]
+        public void BroaderUnityCompatibilityDoesNotEnableUnsupportedNativeSourceLayouts()
+        {
+            var info = CreateInfo(
+                ImageFormat.RGB, ComponentType.UNSIGNED_SHORT, 3, 7, 3, 1);
+            AssertStatus(
+                info, TextureExport.SourceSelection.BaseOnly, 0,
+                TextureExport.Status.UnsupportedFormat);
+        }
+
+        [TestCase(GraphicsFormat.R8G8B8A8_UNorm, 4, 4)]
+        [TestCase(GraphicsFormat.R8G8B8_UNorm, 8, 2)]
+        public void CreateDestinationRejectsDifferentPhysicalTextureLayout(
+            GraphicsFormat format,
+            int width,
+            int height)
+        {
+            var texture = new Texture2D(
+                width, height, GraphicsFormatUtility.GetTextureFormat(format), 1, true);
+            try
+            {
+                var info = CreateInfo(
+                    ImageFormat.RGB, ComponentType.UNSIGNED_BYTE, 3, 4, 4, 1);
+                Assert.That(
+                    TextureExportInterop.ValidateInfo(
+                        in info, TextureExport.SourceSelection.BaseOnly, 1, out var mapping),
+                    Is.EqualTo(TextureExport.Status.Success));
+                Assert.That(
+                    TextureExportInterop.CreateDestination(
+                        texture, in info, in mapping, out var destination, out var bytes),
+                    Is.EqualTo(TextureExport.Status.InconsistentMetadata));
+                Assert.That(destination, Is.Null);
+                Assert.That(bytes, Is.Zero);
+            }
             finally
             {
                 UnityEngine.Object.DestroyImmediate(texture);
