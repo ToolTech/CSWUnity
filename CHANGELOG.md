@@ -24,6 +24,7 @@ described with adjustments and template in [TSWiki](https://tswiki.corp.saab.se/
 - Scene hierarchies are recycled in post-order to avoid repeatedly moving transform subtrees while streamed nodes are released.
 
 ### Fixed
+- Streamed color textures now respect the project's active Gamma or Linear color space, avoiding rejected uploads in Gamma projects while keeping feature and height textures non-sRGB.
 - RGB24 map textures no longer become magenta on Direct3D 11 when native three-channel sampling is unsupported.
 - Failed Unity texture construction no longer counts as a successful texture-cache creation.
 - `FoliageModule` now skips initialization, Hi-Z generation, culling, and drawing when CAPS disables all tree and grass feature sets.

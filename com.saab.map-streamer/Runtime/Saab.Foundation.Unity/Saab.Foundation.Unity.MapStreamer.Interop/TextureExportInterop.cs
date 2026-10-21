@@ -502,7 +502,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Interop
             GraphicsFormat colorFormat,
             GraphicsFormat dataFormat)
         {
-            return textureUnit == 0 ? colorFormat : dataFormat;
+            return textureUnit == 0 && QualitySettings.activeColorSpace == ColorSpace.Linear
+                ? colorFormat
+                : dataFormat;
         }
 
         public static uint CalculateMipCount(uint width, uint height)
