@@ -32,8 +32,8 @@ not stored in the staging configuration.
 
 From the repository root, run:
 
-```powershell
-dotnet run --project tools\CSWUnity.NuGetStager -- stage
+```bat
+setup.bat
 ```
 
 The command:
@@ -54,6 +54,17 @@ artifacts\unity-packages\com.saab.map-streamer.dependencies
 
 Staging uses a temporary directory below `artifacts\nuget-staging`. The final
 package is replaced only after the new output passes verification.
+
+Windows users can double-click `setup.bat`. Git Bash users can run
+`./setup.sh`. Both launchers stage and verify the generated package. The
+current profile supports Windows x64, so `setup.sh` rejects Linux and macOS
+until complete platform profiles are available.
+
+The equivalent direct command for build agents and other hosts is:
+
+```powershell
+dotnet run --project tools\CSWUnity.NuGetStager -- stage
+```
 
 ## Verify or clean
 

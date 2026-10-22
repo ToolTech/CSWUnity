@@ -23,6 +23,11 @@ engine realization. Completing the managed structural, frame, geographic,
 error, and query contract is a prerequisite for replacing the current Unity
 `SceneManager`.
 
+The new generation is named **CSW Map Streamer**, with
+`csw-map-streamer` used as its technical working name. Existing
+`com.saab.map-streamer` package identifiers and serialized references remain
+in place during an incremental compatibility migration.
+
 ## Goals
 
 - Provide reusable Unity components and assets for arbitrary host projects.

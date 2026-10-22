@@ -8,6 +8,7 @@ described with adjustments and template in [TSWiki](https://tswiki.corp.saab.se/
 ## 5.0
 
 ### Added
+- Clickable `setup.bat` and Git Bash `setup.sh` entry points for the locked .NET dependency-staging workflow.
 - Parallel locked NuGet-to-Unity staging for `CSW.SceneManager` and GizmoSDK dependencies, with Windows x64 native validation, deterministic Unity plugin metadata, platform capability reporting, and owned cleanup.
 - Lightweight per-frame and accumulated diagnostics for streamed mesh and texture counts, payload sizes, and build times.
 - Constant-time texture diagnostics for active references, cache usage, peak usage, allocations, reuse, destruction, and discarded uploads.
@@ -17,6 +18,7 @@ described with adjustments and template in [TSWiki](https://tswiki.corp.saab.se/
 - Deterministic benchmark camera progression with configurable, uniformly spaced route samples and duration and sample-throughput reporting.
 
 ### Changed
+- Established **CSW Map Streamer** (`csw-map-streamer`) as the name of the new generation while retaining existing `com.saab.map-streamer` identifiers during incremental migration.
 - Upgraded to Unity 6000.3.5f2
 - Updated the staged dependency baseline to CSW.SceneManager 1.1.1.1 and GizmoSDK 2.12.347.1.
 - Replaced the incomplete `vs17` installer and x64 batch scripts with the locked NuGet-to-UPM staging workflow.

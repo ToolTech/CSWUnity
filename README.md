@@ -1,8 +1,40 @@
 # CSWUnity
 
-CSWUnity is the Unity realization of Saab's streaming-map capabilities. It
+CSWUnity is the Unity-based viewer and Presentation realization of the
+[Common Synthetic World (CSW)](https://saab.ghe.com/saab/CSW) architecture. It
 combines Unity runtime components with the managed CSW SceneManager and the
 managed/native GizmoSDK dependency graph.
+
+## Purpose
+
+CSW is an engine-independent architecture for representing and operating a
+shared synthetic world. CSWUnity is one engine-specific part of that
+architecture: it realizes the CSW Presentation capability in Unity, in
+parallel with the CSWUnreal viewer for Unreal Engine.
+
+The purpose of CSWUnity is to present terrain and geospatial content, dynamic
+entities, and environmental state as a synthetic representation of the world.
+The wider CSW architecture covers concepts such as vegetation, weather, wind,
+water, controlled time, and time of day. Their availability in CSWUnity
+depends on the feature modules and platform capabilities included in a given
+configuration.
+
+![CSW synthetic-world map in CSWUnity](README_IMAGES/01_CSWUnity_Synthetic_World.jpg)
+
+*Example of a CSW synthetic-world map presentation in CSWUnity (Unity).*
+
+## Naming and migration
+
+The existing implementation, Unity package identifier, and example-project
+paths retain the established **Map Streamer** and `com.saab.map-streamer`
+names for compatibility.
+
+The new generation is named **CSW Map Streamer**, with `csw-map-streamer` used
+as the technical working name for new architecture and functionality. The
+transition is incremental: new documentation and components should use the
+CSW Map Streamer name, while existing public package identifiers and serialized
+references remain unchanged until a separately planned compatibility
+migration.
 
 The repository contains:
 
@@ -32,22 +64,16 @@ Exact NuGet versions and content hashes are committed in
 
 1. Clone the repository.
 2. Open PowerShell in the repository root.
-3. Stage the locked CSW and GizmoSDK dependencies:
+3. Double-click the Windows setup:
 
-   ```powershell
-   dotnet run --project tools\CSWUnity.NuGetStager -- stage
+   ```bat
+   setup.bat
    ```
 
-4. Verify the generated Unity package:
-
-   ```powershell
-   dotnet run --project tools\CSWUnity.NuGetStager -- verify
-   ```
-
-5. Add `projects\com.saab.map-streamer` to Unity Hub.
-6. Open the project with the Unity version specified in
+4. Add `projects\com.saab.map-streamer` to Unity Hub.
+5. Open the project with the Unity version specified in
    `ProjectSettings\ProjectVersion.txt`.
-7. Open `Assets\Scenes\ExampleScene.unity` and enter Play mode.
+6. Open `Assets\Scenes\ExampleScene.unity` and enter Play mode.
 
 The example project already references the generated local package:
 
@@ -57,6 +83,26 @@ artifacts\unity-packages\com.saab.map-streamer.dependencies
 
 Run the staging command before opening Unity after a fresh clone or after
 changing dependency versions.
+
+The setup launcher restores the locked dependency graph, generates the Unity
+package, and verifies every owned file:
+
+| Shell | Setup |
+| --- | --- |
+| Windows | Double-click `setup.bat` |
+| Git Bash on Windows | Run `./setup.sh` |
+
+The current dependency profile supports Windows x64. `setup.sh` therefore
+rejects Linux and macOS until complete platform profiles are available.
+
+The equivalent direct .NET commands remain available for build agents and
+cross-platform development:
+
+```powershell
+dotnet run --project tools\CSWUnity.NuGetStager -- stage
+dotnet run --project tools\CSWUnity.NuGetStager -- verify
+dotnet run --project tools\CSWUnity.NuGetStager -- clean
+```
 
 ## Dependency staging
 
@@ -92,7 +138,7 @@ The generated package currently contains:
   libraries; and
 - the corresponding native bridge libraries.
 
-To remove only tool-owned generated output:
+To remove only tool-owned generated output, run:
 
 ```powershell
 dotnet run --project tools\CSWUnity.NuGetStager -- clean

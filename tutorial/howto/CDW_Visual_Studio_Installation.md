@@ -54,8 +54,8 @@ An SDK capable of building `net8.0` tools must be listed.
 
 The dependency package is generated with:
 
-```powershell
-dotnet run --project tools\CSWUnity.NuGetStager -- stage
+```bat
+setup.bat
 ```
 
 The complete setup and demo workflow is described in the

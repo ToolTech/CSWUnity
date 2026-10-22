@@ -58,8 +58,8 @@ Alternatively, navigate manually to the cloned `CSWUnity` folder.
 
 Open PowerShell in the repository root and run:
 
-```powershell
-dotnet run --project tools\CSWUnity.NuGetStager -- stage
+```bat
+setup.bat
 ```
 
 The stager:
@@ -80,7 +80,8 @@ The current setup baseline uses:
 
 ## 4.5 Verify the Generated Package
 
-Run:
+The setup command already verifies the generated package. To repeat only the
+verification, run:
 
 ```powershell
 dotnet run --project tools\CSWUnity.NuGetStager -- verify
@@ -93,7 +94,7 @@ If a clean regeneration is needed, run:
 
 ```powershell
 dotnet run --project tools\CSWUnity.NuGetStager -- clean
-dotnet run --project tools\CSWUnity.NuGetStager -- stage
+.\setup.bat
 ```
 
 ## 4.6 Add the Map Streamer Project to Unity Hub
