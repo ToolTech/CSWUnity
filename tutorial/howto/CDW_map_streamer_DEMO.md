@@ -1,6 +1,7 @@
 # 4. Map Streamer
 
-This section describes the complete workflow for setting up and running the **CSWUnity Map Streamer** demo after CDW, Visual Studio, and Unity are installed.
+This section describes the complete workflow for setting up and running the
+**CSWUnity Map Streamer** demo after CDW, the .NET SDK, and Unity are installed.
 ![Map Streamer demo workflow](MAP_STREAMER_IMAGES/01_Map_Streamer_Workflow.png)
 
 *Figure: Overall Map Streamer workflow from installation and cloning through build and Unity demo execution.*
@@ -38,14 +39,12 @@ The repository contains files/folders similar to:
 
     CSWUnity
     │
-    ├── Build_x64.bat
-    ├── Build_x64_d.bat
+    ├── build
     ├── README.md
     ├── projects
+    ├── tools
     ├── tutorial
-    ├── vs17
-    ├── com.saab.map-streamer
-    └── Saab.Foundation.Map.Manager.Test
+    └── com.saab.map-streamer
 
 ## 4.3 Open the Repository in File Explorer
 
@@ -55,87 +54,49 @@ From Git Bash, open the current repository folder in Windows File Explorer:
 
 Alternatively, navigate manually to the cloned `CSWUnity` folder.
 
-## 4.4 Open the GizmoSDK Solution
+## 4.4 Stage the CSW and GizmoSDK Dependencies
 
-In File Explorer, navigate to:
+Open PowerShell in the repository root and run:
 
-`CSWUnity/vs17/Install_Gizmo/`
+```powershell
+dotnet run --project tools\CSWUnity.NuGetStager -- stage
+```
 
-Open:
+The stager:
 
-`Install_Gizmo.sln`
+- restores the exact versions in
+  `build\nuget-staging\packages.lock.json`;
+- validates the Windows x64 managed and native dependency closure;
+- generates deterministic Unity plugin import settings; and
+- writes the local UPM package below
+  `artifacts\unity-packages\com.saab.map-streamer.dependencies`.
 
-The solution opens in Visual Studio.
+The example Unity project already references this generated local package.
 
-## 4.5 Build the GizmoSDK Components
+The current setup baseline uses:
 
-Building the solution:
+- `CSW.SceneManager` `1.1.1.1`; and
+- GizmoSDK `2.12.347.1`.
 
-- Downloads the required NuGet packages.
-- Builds the required libraries.
-- Generates plugin DLLs.
-- Deploys the plugin binaries required by Unity.
+## 4.5 Verify the Generated Package
 
-The available build configurations are:
+Run:
 
-    Debug | x64
-    Release | x64
+```powershell
+dotnet run --project tools\CSWUnity.NuGetStager -- verify
+```
 
-Recommended usage:
+Verification checks the ownership manifest, SHA-256 hashes, required managed
+assemblies, required native libraries, and the configured platform status.
 
-- **Release | x64** — Recommended for running the demo.
-- **Debug | x64** — Recommended for development and debugging.
-![Visual Studio Release x64 configuration](MAP_STREAMER_IMAGES/02_Visual_Studio_x64_Configuration.png)
+If a clean regeneration is needed, run:
 
-*Figure: Example Visual Studio build configuration using Release and x64.*
+```powershell
+dotnet run --project tools\CSWUnity.NuGetStager -- clean
+dotnet run --project tools\CSWUnity.NuGetStager -- stage
+```
 
-
-Use only one configuration at a time.
-
-To build the solution in Visual Studio:
-
-`Build -> Build Solution`
-
-or press:
-
-`Ctrl + Shift + B`
-![Visual Studio build solution output](MAP_STREAMER_IMAGES/03_Build_Solution_Output.png)
-
-*Figure: Example successful build output for the Install_Gizmo solution.*
-
-
-## 4.6 Switching Between Debug and Release
-
-If changing the build configuration from Debug to Release, or from Release to Debug:
-
-1. Close Unity.
-2. Run:
-
-`clean.bat`
-
-3. Reopen `Install_Gizmo.sln`.
-4. Select the required configuration.
-5. Build the solution again.
-
-> Do not mix Debug and Release plugin DLLs.
-
-## 4.7 Build Using Batch Files
-
-The SDK can also be built using the batch files available in the CSWUnity repository.
-
-For a Release build:
-
-`build_x64.bat`
-
-For a Debug build:
-
-`build_x64_d.bat`
-
-Before switching between build configurations, run:
-
-`clean.bat`
-
-## 4.8 Add the Map Streamer Project to Unity Hub
+## 4.6 Add the Map Streamer Project to Unity Hub
 
 1. Open **Unity Hub**.
 2. Select **Projects**.
@@ -153,7 +114,7 @@ Before switching between build configurations, run:
 *Figure: Example of an incorrectly selected project directory resulting in missing Assets.*
 
 
-## 4.9 Open the Project in Unity
+## 4.7 Open the Project in Unity
 
 1. In Unity Hub, click the `com.saab.map-streamer` project.
 2. Wait for Unity Editor to finish:
@@ -167,7 +128,7 @@ Before switching between build configurations, run:
 
 4. Double-click **ExampleScene** (`Assets/Scenes/ExampleScene.unity`).
 
-## 4.10 Run the Demo
+## 4.8 Run the Demo
 
 Press the **Play (▶)** button at the top of the Unity Editor.
 
@@ -177,7 +138,7 @@ The streaming map should load in the scene.
 *Figure: Expected Map Streamer demo output in the Unity Editor.*
 
 
-## 4.11 Navigation Controls
+## 4.9 Navigation Controls
 
 | Key | Action |
 |---|---|
@@ -190,13 +151,8 @@ The streaming map should load in the scene.
 | `Arrow Keys` | Rotate Camera |
 | `Shift` | Increase Movement Speed |
 
-## 4.12 Important Build Note
+## 4.10 Important Dependency Note
 
-If the plugin build is changed from **Release to Debug** or from **Debug to Release**:
-
-1. Close Unity.
-2. Run `clean.bat`.
-3. Rebuild using only the required configuration.
-4. Reopen Unity.
-
-This prevents native plugin mismatches and related Unity crashes.
+Do not copy additional CSW or GizmoSDK DLLs into the Unity project. The staged
+UPM package is the single dependency source. When package versions change,
+regenerate and verify the package before reopening Unity.

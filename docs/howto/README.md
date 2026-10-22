@@ -12,6 +12,7 @@ implemented by the current package.
 
 ## Current implementation guides
 
+- [Stage NuGet dependencies for Unity](stage-nuget-dependencies.md)
 - [Configure runtime initialization](configure-runtime-initialization.md)
 - [Load a MapGen GZD map](load-mapgen-map.md)
 

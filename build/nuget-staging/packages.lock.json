@@ -1,0 +1,249 @@
+{
+  "version": 1,
+  "dependencies": {
+    ".NETFramework,Version=v4.8": {
+      "CSW.SceneManager": {
+        "type": "Direct",
+        "requested": "[1.1.1.1, 1.1.1.1]",
+        "resolved": "1.1.1.1",
+        "contentHash": "SLTRDcWbyYtdAwV3icfzk6DtRpne/XRok2w+QI2j/Qa9S57qNh8YwFl5wZ6lKmQiZruRt8lc0ohcpm3y9Fw6Sg==",
+        "dependencies": {
+          "Coordinate": "[2.12.347.1]",
+          "Gizmo3D": "[2.12.347.1]",
+          "GizmoBase": "[2.12.347.1]",
+          "cswSceneManager": "[1.1.1.1]"
+        }
+      },
+      "GizmoDistribution": {
+        "type": "Direct",
+        "requested": "[2.12.347.1, 2.12.347.1]",
+        "resolved": "2.12.347.1",
+        "contentHash": "lFFagqXkXNUQo94qlMP3ug12L5LPFvbpsckGby0Byh+31HqzW/W2xbYTlgCAA8gN0M5f+EDnf116jj2w1aMwKw==",
+        "dependencies": {
+          "GizmoBase": "2.12.347.1",
+          "gzDistribution": "2.12.347.1"
+        }
+      },
+      "Coordinate": {
+        "type": "Transitive",
+        "resolved": "2.12.347.1",
+        "contentHash": "bLynyxb/fqFEDrH0SgQPHvS16Fjl+sJ9D6CW9fINcnCNlJCAQMGSvtWwwayOJoo/wpctMFx+nlqHW2JMLy5ktQ==",
+        "dependencies": {
+          "GizmoBase": "2.12.347.1",
+          "gzCoordinate": "2.12.347.1"
+        }
+      },
+      "cswSceneManager": {
+        "type": "Transitive",
+        "resolved": "1.1.1.1",
+        "contentHash": "X6g6lKo1jVT9ncfBBZyLWD8BnXO0MurrzqU5UzO6OjhHo2QkgmfrrrkFa8hMW1Uu8YmvWC7PpSyHCeJk1QJc9A==",
+        "dependencies": {
+          "gzBase": "[2.12.347.1]",
+          "gzCoordinate": "[2.12.347.1]",
+          "gzDb": "[2.12.347.1]",
+          "gzGraph": "[2.12.347.1]",
+          "gzImage": "[2.12.347.1]",
+          "gzSystem": "[2.12.347.1]"
+        }
+      },
+      "Gizmo3D": {
+        "type": "Transitive",
+        "resolved": "2.12.347.1",
+        "contentHash": "rRKg9SH4yVFsUW43OxdR5h8l1o2LWmlquJPAMKSo1DnKECZ7SStPB3egLQ+IETpkszkXkPa3YIGIIa0hZXZV9A==",
+        "dependencies": {
+          "GizmoBase": "2.12.347.1",
+          "gzSystem": "2.12.347.1"
+        }
+      },
+      "GizmoBase": {
+        "type": "Transitive",
+        "resolved": "2.12.347.1",
+        "contentHash": "OJ6CQ3gsrN9CMhZZyzHTBBUhZV74OwiXmCVkB3XNy+4QWWm1o6D6y6Fkj1HqBt+sMzBm/pdaqb2FUHCUUBOQbQ==",
+        "dependencies": {
+          "gzBase": "2.12.347.1"
+        }
+      },
+      "gzBase": {
+        "type": "Transitive",
+        "resolved": "2.12.347.1",
+        "contentHash": "fPtnYThJw20jbyYuoySDerqcmJg0Ak99n+xQtG24vup0ndjr7XOZThYG6fzKJpcGVpBoan73kYKKaK8XFrwuZg=="
+      },
+      "gzCoordinate": {
+        "type": "Transitive",
+        "resolved": "2.12.347.1",
+        "contentHash": "QELO8sR2gEVPn/A6dKKVfbCGVORqQkX4PCNOEZh3Pvm1nv+GcH7yk5cq3QFINRoiIBjDzx1AcwmSX5QVGdyTsw==",
+        "dependencies": {
+          "gzBase": "2.12.347.1"
+        }
+      },
+      "gzDb": {
+        "type": "Transitive",
+        "resolved": "2.12.347.1",
+        "contentHash": "HgzO54bkHhetY/bsJqckR5DGaPh+LLqJwLZJ4lxbWidYaPBIpKeRwFsQ/P6oivGLG1bq73hKNXPRwM7qem6zSQ==",
+        "dependencies": {
+          "gzBase": "2.12.347.1",
+          "gzGraph": "2.12.347.1",
+          "gzImage": "2.12.347.1"
+        }
+      },
+      "gzDistribution": {
+        "type": "Transitive",
+        "resolved": "2.12.347.1",
+        "contentHash": "xtFRCdIcIOaXwcTV4vrmBNTx+lZqudq/sYi3oJHhVD7bEZdXmdbZ9zOFCmv75rqso9ahNuLDAgiLUzcc8pEj+g==",
+        "dependencies": {
+          "gzBase": "2.12.347.1"
+        }
+      },
+      "gzGraph": {
+        "type": "Transitive",
+        "resolved": "2.12.347.1",
+        "contentHash": "y2npIfFgEyQDI0Eggu9/97JkBaF0UGbRv68Kv4l5kHtDFLd1vefxcwjjEqd+eHRoOAGctt+CMjB7tplonqv1rA==",
+        "dependencies": {
+          "gzBase": "2.12.347.1"
+        }
+      },
+      "gzImage": {
+        "type": "Transitive",
+        "resolved": "2.12.347.1",
+        "contentHash": "jz86ghrji8yM97blFkA/Ebgdd+bhhEGGlSa1ITlHcK3TZDPIQ7X9Ibo9/6vixSqLMS1gFwIiV9iVu09r6c8bHg==",
+        "dependencies": {
+          "gzBase": "2.12.347.1",
+          "gzGraph": "2.12.347.1"
+        }
+      },
+      "gzSystem": {
+        "type": "Transitive",
+        "resolved": "2.12.347.1",
+        "contentHash": "4LctbVySdTMJMiGt7SgOaL8WwugziWK/uDNkkxXnKcp9oR08KKdaEQHlccfyT5Qpd9K7sLSZ39RvDIXivnKk3Q==",
+        "dependencies": {
+          "gzBase": "2.12.347.1",
+          "gzDb": "2.12.347.1",
+          "gzGraph": "2.12.347.1",
+          "gzImage": "2.12.347.1"
+        }
+      }
+    },
+    ".NETFramework,Version=v4.8/win-x64": {
+      "CSW.SceneManager": {
+        "type": "Direct",
+        "requested": "[1.1.1.1, 1.1.1.1]",
+        "resolved": "1.1.1.1",
+        "contentHash": "SLTRDcWbyYtdAwV3icfzk6DtRpne/XRok2w+QI2j/Qa9S57qNh8YwFl5wZ6lKmQiZruRt8lc0ohcpm3y9Fw6Sg==",
+        "dependencies": {
+          "Coordinate": "[2.12.347.1]",
+          "Gizmo3D": "[2.12.347.1]",
+          "GizmoBase": "[2.12.347.1]",
+          "cswSceneManager": "[1.1.1.1]"
+        }
+      },
+      "GizmoDistribution": {
+        "type": "Direct",
+        "requested": "[2.12.347.1, 2.12.347.1]",
+        "resolved": "2.12.347.1",
+        "contentHash": "lFFagqXkXNUQo94qlMP3ug12L5LPFvbpsckGby0Byh+31HqzW/W2xbYTlgCAA8gN0M5f+EDnf116jj2w1aMwKw==",
+        "dependencies": {
+          "GizmoBase": "2.12.347.1",
+          "gzDistribution": "2.12.347.1"
+        }
+      },
+      "Coordinate": {
+        "type": "Transitive",
+        "resolved": "2.12.347.1",
+        "contentHash": "bLynyxb/fqFEDrH0SgQPHvS16Fjl+sJ9D6CW9fINcnCNlJCAQMGSvtWwwayOJoo/wpctMFx+nlqHW2JMLy5ktQ==",
+        "dependencies": {
+          "GizmoBase": "2.12.347.1",
+          "gzCoordinate": "2.12.347.1"
+        }
+      },
+      "cswSceneManager": {
+        "type": "Transitive",
+        "resolved": "1.1.1.1",
+        "contentHash": "X6g6lKo1jVT9ncfBBZyLWD8BnXO0MurrzqU5UzO6OjhHo2QkgmfrrrkFa8hMW1Uu8YmvWC7PpSyHCeJk1QJc9A==",
+        "dependencies": {
+          "gzBase": "[2.12.347.1]",
+          "gzCoordinate": "[2.12.347.1]",
+          "gzDb": "[2.12.347.1]",
+          "gzGraph": "[2.12.347.1]",
+          "gzImage": "[2.12.347.1]",
+          "gzSystem": "[2.12.347.1]"
+        }
+      },
+      "Gizmo3D": {
+        "type": "Transitive",
+        "resolved": "2.12.347.1",
+        "contentHash": "rRKg9SH4yVFsUW43OxdR5h8l1o2LWmlquJPAMKSo1DnKECZ7SStPB3egLQ+IETpkszkXkPa3YIGIIa0hZXZV9A==",
+        "dependencies": {
+          "GizmoBase": "2.12.347.1",
+          "gzSystem": "2.12.347.1"
+        }
+      },
+      "GizmoBase": {
+        "type": "Transitive",
+        "resolved": "2.12.347.1",
+        "contentHash": "OJ6CQ3gsrN9CMhZZyzHTBBUhZV74OwiXmCVkB3XNy+4QWWm1o6D6y6Fkj1HqBt+sMzBm/pdaqb2FUHCUUBOQbQ==",
+        "dependencies": {
+          "gzBase": "2.12.347.1"
+        }
+      },
+      "gzBase": {
+        "type": "Transitive",
+        "resolved": "2.12.347.1",
+        "contentHash": "fPtnYThJw20jbyYuoySDerqcmJg0Ak99n+xQtG24vup0ndjr7XOZThYG6fzKJpcGVpBoan73kYKKaK8XFrwuZg=="
+      },
+      "gzCoordinate": {
+        "type": "Transitive",
+        "resolved": "2.12.347.1",
+        "contentHash": "QELO8sR2gEVPn/A6dKKVfbCGVORqQkX4PCNOEZh3Pvm1nv+GcH7yk5cq3QFINRoiIBjDzx1AcwmSX5QVGdyTsw==",
+        "dependencies": {
+          "gzBase": "2.12.347.1"
+        }
+      },
+      "gzDb": {
+        "type": "Transitive",
+        "resolved": "2.12.347.1",
+        "contentHash": "HgzO54bkHhetY/bsJqckR5DGaPh+LLqJwLZJ4lxbWidYaPBIpKeRwFsQ/P6oivGLG1bq73hKNXPRwM7qem6zSQ==",
+        "dependencies": {
+          "gzBase": "2.12.347.1",
+          "gzGraph": "2.12.347.1",
+          "gzImage": "2.12.347.1"
+        }
+      },
+      "gzDistribution": {
+        "type": "Transitive",
+        "resolved": "2.12.347.1",
+        "contentHash": "xtFRCdIcIOaXwcTV4vrmBNTx+lZqudq/sYi3oJHhVD7bEZdXmdbZ9zOFCmv75rqso9ahNuLDAgiLUzcc8pEj+g==",
+        "dependencies": {
+          "gzBase": "2.12.347.1"
+        }
+      },
+      "gzGraph": {
+        "type": "Transitive",
+        "resolved": "2.12.347.1",
+        "contentHash": "y2npIfFgEyQDI0Eggu9/97JkBaF0UGbRv68Kv4l5kHtDFLd1vefxcwjjEqd+eHRoOAGctt+CMjB7tplonqv1rA==",
+        "dependencies": {
+          "gzBase": "2.12.347.1"
+        }
+      },
+      "gzImage": {
+        "type": "Transitive",
+        "resolved": "2.12.347.1",
+        "contentHash": "jz86ghrji8yM97blFkA/Ebgdd+bhhEGGlSa1ITlHcK3TZDPIQ7X9Ibo9/6vixSqLMS1gFwIiV9iVu09r6c8bHg==",
+        "dependencies": {
+          "gzBase": "2.12.347.1",
+          "gzGraph": "2.12.347.1"
+        }
+      },
+      "gzSystem": {
+        "type": "Transitive",
+        "resolved": "2.12.347.1",
+        "contentHash": "4LctbVySdTMJMiGt7SgOaL8WwugziWK/uDNkkxXnKcp9oR08KKdaEQHlccfyT5Qpd9K7sLSZ39RvDIXivnKk3Q==",
+        "dependencies": {
+          "gzBase": "2.12.347.1",
+          "gzDb": "2.12.347.1",
+          "gzGraph": "2.12.347.1",
+          "gzImage": "2.12.347.1"
+        }
+      }
+    }
+  }
+}

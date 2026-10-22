@@ -78,6 +78,15 @@ its dependencies to the minimal streaming runtime.
 Public runtime APIs, serialized asset schemas, and extension interfaces shall
 be versioned and documented. Breaking changes shall include a migration path.
 
+### CSWU-PKG-007: Deterministic platform dependencies
+
+Each distributed CSWUnity package set shall declare the operating systems and
+processor architectures for which its complete managed and native CSW and
+GizmoSDK dependency graph is available. Dependency staging shall use locked
+package versions, shall configure Unity native-plugin imports for the declared
+targets, and shall fail when an enabled required target is incomplete. A
+missing package or native asset shall not be silently omitted.
+
 ## Architectural boundaries
 
 ### CSWU-ARCH-001: Engine-neutral streaming core

@@ -295,6 +295,17 @@ The final package identifier and optional package split remain design
 decisions. Consumers depend only on public assemblies and serialized assets,
 not the repository example project.
 
+Native and managed CSW/GizmoSDK dependencies are first materialized as a
+separate generated UPM package. A locked NuGet graph and an explicit platform
+profile determine the package contents. The generated package records installed,
+disabled, and unavailable targets and contains deterministic Unity plugin
+import settings. An enabled required target fails packaging when any managed or
+native dependency is missing; missing assets are never silently omitted.
+
+This staging path is the single dependency-installation mechanism. Additional
+platforms are enabled only after their complete package profiles pass Unity
+import and player-build validation.
+
 ## Lifecycle
 
 ```mermaid
@@ -336,21 +347,23 @@ unrepeatable statement that the system is "fast".
 
 ## Migration sequence
 
-1. Complete the C# wrappers for CSW structural, frame, geographic, error, and
+1. Establish locked CSW/GizmoSDK NuGet-to-UPM staging, platform capability
+   reporting, and Windows x64 Unity validation.
+2. Complete the C# wrappers for CSW structural, frame, geographic, error, and
    correlated response commands.
-2. Build a headless managed contract test against the C# CSW SceneManager.
-3. Add the CSWUnity command adapter, stable identity, and frame coordinator
+3. Build a headless managed contract test against the C# CSW SceneManager.
+4. Add the CSWUnity command adapter, stable identity, and frame coordinator
    without Unity resource creation.
-4. Port basic node/transform and geometry realization behind the new registry.
-5. Add pooling and shared mesh, texture, material, and instance services.
-6. Port camera and coordinate behavior and validate against CSWUnreal.
-7. Add movement-model and asynchronous spatial-query services.
-8. Add the transport-neutral external object store and Unity presenters.
-9. Add world-time and environment contracts.
-10. Port terrain detail and foliage and add environment realizations as
+5. Port basic node/transform and geometry realization behind the new registry.
+6. Add pooling and shared mesh, texture, material, and instance services.
+7. Port camera and coordinate behavior and validate against CSWUnreal.
+8. Add movement-model and asynchronous spatial-query services.
+9. Add the transport-neutral external object store and Unity presenters.
+10. Add world-time and environment contracts.
+11. Port terrain detail and foliage and add environment realizations as
    optional modules.
-11. Establish performance profiles and optimize measured bottlenecks.
-12. Deprecate the current Unity-owned streaming `SceneManager` after feature and
+12. Establish performance profiles and optimize measured bottlenecks.
+13. Deprecate the current Unity-owned streaming `SceneManager` after feature and
    performance parity.
 
 ## Open decisions

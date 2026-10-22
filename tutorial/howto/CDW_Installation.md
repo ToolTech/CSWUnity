@@ -74,8 +74,8 @@ Suggested business justification:
 |Software|Purpose|
 |-|-|
 |Git / Git Bash|Clone the CSWUnity repository|
-|Visual Studio 2022 Professional / Visual Studio 2026 Enterprise|Build GizmoSDK components|
-|.NET Core 3.1 Support|Required for `Install\_Gizmo.sln`|
+|.NET 8-compatible SDK|Restore and stage the locked CSW/GizmoSDK dependencies|
+|Visual Studio 2022 Professional / Visual Studio 2026 Enterprise|Optional C# development and debugging environment|
 |Unity Hub|Manage Unity installation and projects|
 |Unity Editor|Run the Map Streamer demo|
 
@@ -84,15 +84,13 @@ Recommended versions used for the demo:
 |Software / Tool|Version|
 |-|-|
 |Visual Studio|Professional 2022 (v17.14.40) / Enterprise 2026 (v18.9.2)|
+|.NET SDK|8-compatible or later|
 |Git|2.55.0.5|
 |Unity Hub|3.20.0|
-|Unity Editor|2021.3.17f1 for the T&S BTA reference architecture; 6000.3.21f1 LTS may be preferred for new projects|
+|Unity Editor|6000.3.5f2 for the repository example project|
 
-The T&S BTA Map Streamer architecture in this repository is pinned to Unity
-`2021.3.17f1`. Other Saab projects can have different Unity-version
-requirements and should follow their own `ProjectSettings/ProjectVersion.txt`
-file and approved dependency set.
-
-New projects may prefer Unity `6000.3.21f1 LTS`, provided compatibility with
-the required CSWUnity, GizmoSDK, rendering, and package dependencies has been
-verified. Do not upgrade an existing project solely on the basis of this guide.
+The Map Streamer example project in this repository is pinned to Unity
+`6000.3.5f2`. Other Saab projects can have different Unity-version
+requirements and shall follow their own `ProjectSettings/ProjectVersion.txt`
+file and approved dependency set. Do not upgrade an existing project solely
+on the basis of this guide.

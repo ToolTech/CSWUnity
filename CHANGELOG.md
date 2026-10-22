@@ -8,6 +8,7 @@ described with adjustments and template in [TSWiki](https://tswiki.corp.saab.se/
 ## 5.0
 
 ### Added
+- Parallel locked NuGet-to-Unity staging for `CSW.SceneManager` and GizmoSDK dependencies, with Windows x64 native validation, deterministic Unity plugin metadata, platform capability reporting, and owned cleanup.
 - Lightweight per-frame and accumulated diagnostics for streamed mesh and texture counts, payload sizes, and build times.
 - Constant-time texture diagnostics for active references, cache usage, peak usage, allocations, reuse, destruction, and discarded uploads.
 - Optional F1 streaming diagnostics overlay with rolling frame, mesh, texture, and texture-cache statistics; F2 resets accumulated measurements and F3 toggles VSync.
@@ -17,7 +18,8 @@ described with adjustments and template in [TSWiki](https://tswiki.corp.saab.se/
 
 ### Changed
 - Upgraded to Unity 6000.3.5f2
-- Updated to GizmoSDK 2.12.346.1
+- Updated the staged dependency baseline to CSW.SceneManager 1.1.1.1 and GizmoSDK 2.12.347.1.
+- Replaced the incomplete `vs17` installer and x64 batch scripts with the locked NuGet-to-UPM staging workflow.
 - Replaced legacy geometry and texture streaming with the GizmoSDK GeometryExport and TextureExport APIs, writing directly into Unity mesh and texture storage for improved streaming performance.
 - Texture recycling now preserves the exported graphics format and mip layout.
 - Streamed textures now use Unity's `TextureFormat` compatibility path where an exact source-layout mapping exists, allowing Unity-managed expansion, conversion and decompression. Formats without that mapping retain direct `GraphicsFormat` uploads; CPU layout, mip chains and recycling remain validated.

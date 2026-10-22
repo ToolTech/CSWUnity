@@ -1,71 +1,185 @@
-Streaming Map Demo
-==================
+# CSWUnity
 
-<B>A Saab Dynamics demo of the Streaming Binary Data Architecture</B>
+CSWUnity is the Unity realization of Saab's streaming-map capabilities. It
+combines Unity runtime components with the managed CSW SceneManager and the
+managed/native GizmoSDK dependency graph.
 
-This is a generic streaming API for 3D engines (Unity,Unreal...) that allows fast streaming updates of huge 3D datasets located in cloud, from disc or procedural.
+The repository contains:
 
-This GIT repository will allow you to take a look at a Unity demo, written by the Open Saab Development community using the GizmoSDK code base from Saab Dynamics, Training & Simulation. Take a look at https://youtu.be/m2NsE8NBrB0
+- the reusable `com.saab.map-streamer` Unity package;
+- a Unity example and validation project;
+- locked CSW/GizmoSDK dependency staging;
+- runtime and editor tests;
+- architecture, requirements, and integration documentation; and
+- CDW installation guides.
 
-The open source and open documentation in here are to be considered as LGPL code and can be used in your own projects.
+## Setup baseline
 
-The binaries are licensed by Saab Dynamics. If you are interested in using this for commercial purposes, please contact 
+The current Windows setup baseline is:
 
-anders.moden@saabgroup.com
+| Component | Version or target |
+| --- | --- |
+| Unity project | `6000.3.5f2` |
+| CSW managed package | `CSW.SceneManager` `1.1.1.1` |
+| GizmoSDK packages | `2.12.347.1` |
+| Native target | Windows x64 Release |
+| Staging tool | .NET 8-compatible SDK |
 
+Exact NuGet versions and content hashes are committed in
+[`build/nuget-staging/packages.lock.json`](build/nuget-staging/packages.lock.json).
 
+## Quick start
 
+1. Clone the repository.
+2. Open PowerShell in the repository root.
+3. Stage the locked CSW and GizmoSDK dependencies:
 
-Setup
-=====
+   ```powershell
+   dotnet run --project tools\CSWUnity.NuGetStager -- stage
+   ```
 
-To run, open the Install_Gizmo.sln under directory 'vs17\Install_Gizmo' and select either Debug or Release for x64. Select only one configuration at a time. This will fetch NuGet packages for all components and update the Assets/Plugin folder with the correct binaries. The solution can deploy both Debug and Release versions for development, but only one deployed version should be used at a time. Do not mix Debug and Release versions. To clear the plugin folder, run 'Clean.bat'.
+4. Verify the generated Unity package:
 
-The maintained Install_Gizmo solution uses Visual Studio 2022 format and can also be opened by a later compatible Visual Studio version. Install .NET Core 3.1 support where it is required by the build projects. Platform-specific builds, such as ARM64 targets, require their corresponding supported solution and package configuration and must not be mixed with x64 binaries in the same Unity plugin deployment.
+   ```powershell
+   dotnet run --project tools\CSWUnity.NuGetStager -- verify
+   ```
 
-You could also simply just run the corresponding .bat script (build_x64, build_x64_d, etc..) and every thing will be setup correctly.
+5. Add `projects\com.saab.map-streamer` to Unity Hub.
+6. Open the project with the Unity version specified in
+   `ProjectSettings\ProjectVersion.txt`.
+7. Open `Assets\Scenes\ExampleScene.unity` and enter Play mode.
 
+The example project already references the generated local package:
 
-CDW installation guides
-=======================
+```text
+artifacts\unity-packages\com.saab.map-streamer.dependencies
+```
 
-The following guides apply to users who run CSWUnity from a Cloud Development
-Workstation (CDW). They describe the complete CDW setup and Map Streamer demo
-workflow:
+Run the staging command before opening Unity after a fresh clone or after
+changing dependency versions.
 
-1. [CDW installation and system requirements](tutorial/howto/CDW_Installation.md)
-2. [Visual Studio installation](tutorial/howto/CDW_Visual_Studio_Installation.md)
-3. [Unity installation](tutorial/howto/CDW_Unity_Installation.md)
-4. [Map Streamer demo](tutorial/howto/CDW_map_streamer_DEMO.md)
+## Dependency staging
 
+`tools\CSWUnity.NuGetStager` is the only supported dependency-installation
+path. It replaces the previous Visual Studio installer and DLL-copy scripts.
 
-Running the demo
-================
-Open the unity project found under the under directory 'projects\com.saab.map-streamer' and Press the "play" button in the Unity editor. 
+The stager:
 
-The T&S BTA reference architecture in this repository uses Unity 2021.3.17f1. Other Saab projects can have different Unity-version requirements and should follow their own ProjectSettings/ProjectVersion.txt file and approved dependency set. New projects may prefer Unity 6000.3.21f1 LTS after compatibility with the required CSWUnity, GizmoSDK and package dependencies has been verified.
+- restores an exact locked NuGet graph;
+- lets NuGet resolve the transitive package closure;
+- materializes assets for each enabled runtime identifier;
+- validates required managed assemblies and native libraries;
+- verifies native processor architecture;
+- places assets in a generated UPM package;
+- generates deterministic Unity `PluginImporter` metadata;
+- records installed, disabled, and unavailable platforms; and
+- owns and verifies every generated file by SHA-256.
 
-<b>keybinds:</b>
-* WASD to move around
-* space, ctrl move up and down
-* Arrow keys to rotate the view
-* shift increase speed of movement
+The generated package currently contains:
 
-<b><u>Note Win64 only right now</u></b>
-Good Luck !
+### Managed assemblies
 
+- `SceneManager.dll`
+- `GizmoBase.dll`
+- `Gizmo3D.dll`
+- `GizmoDistribution.dll`
+- `Coordinate.dll`
 
-Technology Info
-===============
+### Windows x64 native libraries
 
-The demo is based on a 3D scenegraph written in native C++ that manages the logistics for loading/unloading data, LOD levels and transitions between LOD depending on what data is currently loaded. It uses up to 16 parallel threads to load data from multiple URL based datasources dynamically.
-The demo uses a large double precision coordinate system and a ROI (Region Of Interest) subsystem that translates HUGE coordinates into local islands of single precision data. 
+- CSW SceneManager and bridge libraries;
+- GizmoSDK Base, Graph, Image, Database, System, Distribution, and Coordinate
+  libraries; and
+- the corresponding native bridge libraries.
 
-The system handles geocentric coordinate systems as well as flat UTM and other conic projections and provides a uniform WGS84 API to control all objects and queries.
+To remove only tool-owned generated output:
 
-The SceneGraph API also allows a fast intersector query to be performed to find ground features and clamp object to the ground.
+```powershell
+dotnet run --project tools\CSWUnity.NuGetStager -- clean
+```
 
-The demo shows an example of SBD maps (Streaming Binary Data) that are quad or octree based spatial data in 3D. The format allows very large databases (entire globe) to be divided on multiple servers and that can have details down to (mm) in resolution.
+The tool refuses to replace or clean an output containing modified or unowned
+files.
 
-![Screenshot](https://gizmosdk.blob.core.windows.net/maps/stock/thumb.png)
-_[A screenshot showing how feature/height data can be used to present trees with accurate position and height]_  
+## Platform profiles
+
+Platform selection is declared in
+[`build/nuget-staging/staging.json`](build/nuget-staging/staging.json).
+
+| Platform | Current status | Reason |
+| --- | --- | --- |
+| Windows x64 | Installed and verified | Complete CSW and GizmoSDK NuGet closure |
+| Android ARMv7 | Disabled | Complete CSW native closure is not published |
+| Android ARM64 | Disabled | Complete CSW native closure is not published |
+| Linux x64 | Disabled | GizmoSDK package family and complete CSW closure must be selected |
+| Linux ARM64 | Disabled | GizmoSDK package family and complete CSW closure must be selected |
+| macOS ARM64 | Disabled | Current NuGet coverage is incomplete |
+| iOS ARM64 | Disabled | No complete NuGet/static-link consumption model is published |
+
+An enabled required platform fails staging if any package or native asset is
+missing. Missing dependencies are never silently skipped.
+
+The effective supported set is the intersection of:
+
+1. platforms enabled by the staging profile;
+2. complete CSW package assets;
+3. complete GizmoSDK package assets; and
+4. Unity-supported build targets.
+
+The generated `supported-platforms.json` records the result for each build.
+
+## Validation
+
+Run the staging-tool tests with:
+
+```powershell
+dotnet test tools\CSWUnity.NuGetStager.Tests\CSWUnity.NuGetStager.Tests.csproj --configuration Release
+```
+
+The Windows baseline has also been validated by:
+
+- importing the generated package in Unity on Windows x64;
+- confirming that Unity recognizes all 15 native plugins; and
+- successfully initializing and uninitializing `GizmoBase`, `Gizmo3D`,
+  `GizmoDistribution`, `Coordinate`, and `CSW.Platform`.
+
+## Repository layout
+
+```text
+build\nuget-staging\                 Locked dependency project and profile
+com.saab.map-streamer\               Reusable Unity package
+docs\                                Requirements, designs, and how-to guides
+projects\com.saab.map-streamer\      Unity example and validation project
+tools\CSWUnity.NuGetStager\          NuGet-to-UPM staging tool
+tools\CSWUnity.NuGetStager.Tests\    Staging-tool tests
+tutorial\howto\                      CDW installation and demo guides
+artifacts\                            Generated local output; not committed
+```
+
+## Documentation
+
+- [Documentation index](docs/README.md)
+- [Stage NuGet dependencies for Unity](docs/howto/stage-nuget-dependencies.md)
+- [Integrate CSWUnity into a host project](docs/howto/integrate-into-host-project.md)
+- [Current architecture](docs/design/current-architecture.md)
+- [Next-generation architecture](docs/design/next-generation-architecture.md)
+- [CDW installation](tutorial/howto/CDW_Installation.md)
+- [CDW Map Streamer demo](tutorial/howto/CDW_map_streamer_DEMO.md)
+
+## Demo controls
+
+| Key | Action |
+| --- | --- |
+| `W`, `A`, `S`, `D` | Move |
+| `Space`, `Ctrl` | Move vertically |
+| Arrow keys | Rotate |
+| `Shift` | Increase movement speed |
+
+## Licensing and contact
+
+The open source code and documentation in this repository are provided under
+the repository's applicable LGPL terms. Saab-provided native binaries have
+separate licensing terms.
+
+For commercial use and licensing questions, contact:
+`anders.moden@saabgroup.com`.

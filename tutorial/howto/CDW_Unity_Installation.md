@@ -27,9 +27,9 @@ After successful login, the account information should appear in the top-right a
 
 ## 3.2 Install Unity Editor
 
-The T&S BTA Map Streamer architecture in this repository uses:
+The Map Streamer example project in this repository uses:
 
-`Unity 2021.3.17f1`
+`Unity 6000.3.5f2`
 
 This version is recorded in
 `projects/com.saab.map-streamer/ProjectSettings/ProjectVersion.txt` and should
@@ -37,9 +37,9 @@ be used when opening the existing demo project.
 
 Different Saab projects can have different Unity-version requirements. Always
 follow the target project's `ProjectSettings/ProjectVersion.txt` file and
-approved dependency set. For a new project, Unity `6000.3.21f1 LTS` may be
-preferred after compatibility with the required CSWUnity, GizmoSDK, rendering,
-and package dependencies has been verified.
+approved dependency set. A different Unity version shall be adopted only after
+compatibility with the required CSWUnity, GizmoSDK, rendering, and package
+dependencies has been verified.
 
 Select the required Unity build modules depending on the target platform.
 ![Unity build modules](UNITY_IMAGES/02_Unity_Build_Modules.png)

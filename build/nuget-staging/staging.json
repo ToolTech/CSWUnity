@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "profile": "phase-1-windows-x64",
+  "outputDirectory": "../../artifacts/unity-packages/com.saab.map-streamer.dependencies",
+  "workDirectory": "../../artifacts/nuget-staging",
+  "unityPackage": {
+    "name": "com.saab.map-streamer.dependencies",
+    "version": "0.1.0",
+    "displayName": "CSWUnity NuGet Dependencies",
+    "description": "Generated managed and native dependencies for CSWUnity.",
+    "unity": "6000.0",
+    "author": "SAAB AB"
+  },
+  "dependencySets": [
+    {
+      "id": "gizmosdk",
+      "project": "GizmoDependencies.csproj",
+      "anchorAssembly": "CSWUnity.GizmoDependencies.dll",
+      "requiredManagedAssemblies": [
+        "Coordinate.dll",
+        "Gizmo3D.dll",
+        "GizmoBase.dll",
+        "GizmoDistribution.dll",
+        "SceneManager.dll"
+      ]
+    }
+  ],
+  "platforms": [
+    {
+      "id": "windows-x64",
+      "displayName": "Windows x64",
+      "enabled": true,
+      "required": true,
+      "dependencySet": "gizmosdk",
+      "runtimeIdentifier": "win-x64",
+      "configuration": "Release",
+      "msbuildPlatform": "x64",
+      "nativeDestination": "Runtime/Plugins/Windows/x86_64",
+      "nativePeMachine": "Amd64",
+      "requiredNativeLibraries": [
+        "cswSceneManager64.dll",
+        "cswSceneManagerBridge.dll",
+        "gzBase64.dll",
+        "gzBaseBridge.dll",
+        "gzCoordinate64.dll",
+        "gzCoordinateBridge.dll",
+        "gzDb64.dll",
+        "gzDistribution64.dll",
+        "gzDistributionBridge.dll",
+        "gzGraph64.dll",
+        "gzGraphBridge.dll",
+        "gzImage64.dll",
+        "gzRemoteDistribution64.dll",
+        "gzRemoteDistributionBridge.dll",
+        "gzSystem64.dll"
+      ],
+      "unityPlatforms": [
+        {
+          "group": "Editor",
+          "target": "Editor",
+          "enabled": true,
+          "settings": {
+            "CPU": "x86_64",
+            "DefaultValueInitialized": "true",
+            "OS": "Windows"
+          }
+        },
+        {
+          "group": "Standalone",
+          "target": "Win64",
+          "enabled": true,
+          "settings": {
+            "CPU": "x86_64"
+          }
+        }
+      ],
+      "note": "Initial parallel staging path."
+    },
+    {
+      "id": "android-arm",
+      "displayName": "Android ARMv7",
+      "enabled": false,
+      "required": false,
+      "runtimeIdentifier": "android-arm",
+      "note": "Complete CSW Android native closure is not published."
+    },
+    {
+      "id": "android-arm64",
+      "displayName": "Android ARM64",
+      "enabled": false,
+      "required": false,
+      "runtimeIdentifier": "android-arm64",
+      "note": "Complete CSW Android native closure is not published."
+    },
+    {
+      "id": "linux-x64",
+      "displayName": "Linux x64",
+      "enabled": false,
+      "required": false,
+      "runtimeIdentifier": "linux-x64",
+      "note": "Requires selection of one GizmoSDK Linux package family."
+    },
+    {
+      "id": "linux-arm64",
+      "displayName": "Linux ARM64",
+      "enabled": false,
+      "required": false,
+      "runtimeIdentifier": "linux-arm64",
+      "note": "Requires selection of one GizmoSDK Linux package family."
+    },
+    {
+      "id": "macos-arm64",
+      "displayName": "macOS ARM64",
+      "enabled": false,
+      "required": false,
+      "runtimeIdentifier": "osx-arm64",
+      "note": "Current GizmoSDK NuGet coverage is incomplete."
+    },
+    {
+      "id": "ios-arm64",
+      "displayName": "iOS ARM64",
+      "enabled": false,
+      "required": false,
+      "note": "No GizmoSDK NuGet consumption model is currently published."
+    }
+  ]
+}

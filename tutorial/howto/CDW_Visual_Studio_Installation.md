@@ -1,6 +1,10 @@
-# 2. Visual Studio Installation
+# 2. Visual Studio and .NET SDK Installation
 
-Visual Studio is required to build the GizmoSDK components and generate the plugin DLLs used by the Unity Map Streamer demo.
+CSWUnity no longer builds or copies GizmoSDK binaries through a Visual Studio
+solution. The repository uses a .NET command-line stager to restore the locked
+CSW/GizmoSDK package graph and generate a Unity dependency package.
+
+Visual Studio remains optional for C# development and Unity debugging.
 
 ## 2.1 Install Visual Studio
 
@@ -30,7 +34,7 @@ Visual Studio is required to build the GizmoSDK components and generate the plug
 *Figure: Required Visual Studio workloads and Unity-related installation options.*
 
 
-This installs the dependencies required to build the GizmoSDK solution and work with Unity.
+This installs the tools used for CSWUnity development and Unity debugging.
 
 ## 2.3 First-Time Visual Studio Login
 
@@ -38,11 +42,21 @@ This installs the dependencies required to build the GizmoSDK solution and work 
 2. Sign in using a Microsoft or GitHub account if required.
 3. Complete any authentication steps.
 
-## 2.4 Solution Used for the Map Streamer Build
+## 2.4 Verify the .NET SDK
 
-After cloning the CSWUnity repository, the solution used for the GizmoSDK build is:
+Open PowerShell in the cloned CSWUnity repository and run:
 
-`CSWUnity/vs17/Install_Gizmo/Install_Gizmo.sln`
+```powershell
+dotnet --info
+```
 
-The complete clone and build process is described in the
+An SDK capable of building `net8.0` tools must be listed.
+
+The dependency package is generated with:
+
+```powershell
+dotnet run --project tools\CSWUnity.NuGetStager -- stage
+```
+
+The complete setup and demo workflow is described in the
 [Map Streamer demo guide](CDW_map_streamer_DEMO.md).
