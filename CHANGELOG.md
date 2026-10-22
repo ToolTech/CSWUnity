@@ -20,9 +20,13 @@ described with adjustments and template in [TSWiki](https://tswiki.corp.saab.se/
 - Updated to GizmoSDK 2.12.346.1
 - Replaced legacy geometry and texture streaming with the GizmoSDK GeometryExport and TextureExport APIs, writing directly into Unity mesh and texture storage for improved streaming performance.
 - Texture recycling now preserves the exported graphics format and mip layout.
+- Streamed textures now use Unity's `TextureFormat` compatibility path where an exact source-layout mapping exists, allowing Unity-managed expansion, conversion and decompression. Formats without that mapping retain direct `GraphicsFormat` uploads; CPU layout, mip chains and recycling remain validated.
 - Scene hierarchies are recycled in post-order to avoid repeatedly moving transform subtrees while streamed nodes are released.
 
 ### Fixed
+- Streamed color textures now respect the project's active Gamma or Linear color space, avoiding rejected uploads in Gamma projects while keeping feature and height textures non-sRGB.
+- RGB24 map textures no longer become magenta on Direct3D 11 when native three-channel sampling is unsupported.
+- Failed Unity texture construction no longer counts as a successful texture-cache creation.
 - `FoliageModule` now skips initialization, Hi-Z generation, culling, and drawing when CAPS disables all tree and grass feature sets.
 - Geometry streaming now accepts source meshes with multiple texture-coordinate units by explicitly exporting UV0 for the current Unity mesh layout.
 - Newly loaded `RefNode` LOD branches remain inactive until native traversal reports them traversable, preventing out-of-range buildings from briefly appearing.

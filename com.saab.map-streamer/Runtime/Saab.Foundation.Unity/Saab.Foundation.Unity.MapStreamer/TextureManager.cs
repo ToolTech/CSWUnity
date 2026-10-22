@@ -42,6 +42,7 @@ using System.Collections.Generic;
 // Unity
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
+using Saab.Foundation.Unity.MapStreamer.Interop;
 
 // GizmoSDK
 
@@ -294,6 +295,12 @@ namespace Saab.Foundation.Unity.MapStreamer
             int mipCount,
             out bool canBeCached)
         {
+            canBeCached = false;
+            if (!TextureExportInterop.IsFormatSupportedForSampling(format, false))
+            {
+                Debug.LogWarning($"No safe Unity texture upload is supported for {format}.");
+                return null;
+            }
             var key = (width, height, format, mipCount);
             var textureSize =
                 GraphicsFormatUtility.ComputeMipChainSize(
@@ -318,17 +325,23 @@ namespace Saab.Foundation.Unity.MapStreamer
                 _texturesReused++;
                 return texture;
             }
-            var created = new Texture2D(
-                width,
-                height,
-                format,
-                mipCount,
-                TextureCreationFlags.None);
-            _texturesCreated++;
-            if (created.graphicsFormat != format ||
-                created.mipmapCount != mipCount ||
-                !created.isReadable)
+            var created = TextureExportInterop.CreateTexture(width, height, format, mipCount);
+            if (!created)
             {
+                Debug.LogError($"Unity failed to create a texture with storage format {format}.");
+                return null;
+            }
+            _texturesCreated++;
+            if (created.width != width ||
+                created.height != height ||
+                created.graphicsFormat != format ||
+                created.mipmapCount != mipCount ||
+                !created.isReadable ||
+                (ulong)created.GetRawTextureData<byte>().Length != textureSize)
+            {
+                Debug.LogError(
+                    $"Unity changed the requested texture storage layout for {format}; " +
+                    "the source bytes cannot be uploaded without conversion.");
                 Discard(created);
                 return null;
             }
