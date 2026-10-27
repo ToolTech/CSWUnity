@@ -4,14 +4,14 @@
     ".NETFramework,Version=v4.8": {
       "CSW.SceneManager": {
         "type": "Direct",
-        "requested": "[1.1.1.1, 1.1.1.1]",
-        "resolved": "1.1.1.1",
-        "contentHash": "SLTRDcWbyYtdAwV3icfzk6DtRpne/XRok2w+QI2j/Qa9S57qNh8YwFl5wZ6lKmQiZruRt8lc0ohcpm3y9Fw6Sg==",
+        "requested": "[1.1.1.1-phase1.20261022.204509, 1.1.1.1-phase1.20261022.204509]",
+        "resolved": "1.1.1.1-phase1.20261022.204509",
+        "contentHash": "E0ZxRcNbse65ZHO4W9N+X8i7arMhKk5KsnbyNFa9j6Hi1d5EGKJ+BK+Va4pM6QBZJMkhRk9XFAyxxsSL+9R9Mw==",
         "dependencies": {
           "Coordinate": "[2.12.347.1]",
           "Gizmo3D": "[2.12.347.1]",
           "GizmoBase": "[2.12.347.1]",
-          "cswSceneManager": "[1.1.1.1]"
+          "cswSceneManager": "[1.1.1.1-phase1.20261022.204509]"
         }
       },
       "GizmoDistribution": {
@@ -35,8 +35,8 @@
       },
       "cswSceneManager": {
         "type": "Transitive",
-        "resolved": "1.1.1.1",
-        "contentHash": "X6g6lKo1jVT9ncfBBZyLWD8BnXO0MurrzqU5UzO6OjhHo2QkgmfrrrkFa8hMW1Uu8YmvWC7PpSyHCeJk1QJc9A==",
+        "resolved": "1.1.1.1-phase1.20261022.204509",
+        "contentHash": "LEhLRQYoPPIZoAzXb/0Swx4KvKKlKUb7tWBc9tTg1etB/XZV3e4uS3G3W1FCnssRvkEgTYGxe9lxHLPLIuBJ1Q==",
         "dependencies": {
           "gzBase": "[2.12.347.1]",
           "gzCoordinate": "[2.12.347.1]",
@@ -126,14 +126,14 @@
     ".NETFramework,Version=v4.8/win-x64": {
       "CSW.SceneManager": {
         "type": "Direct",
-        "requested": "[1.1.1.1, 1.1.1.1]",
-        "resolved": "1.1.1.1",
-        "contentHash": "SLTRDcWbyYtdAwV3icfzk6DtRpne/XRok2w+QI2j/Qa9S57qNh8YwFl5wZ6lKmQiZruRt8lc0ohcpm3y9Fw6Sg==",
+        "requested": "[1.1.1.1-phase1.20261022.204509, 1.1.1.1-phase1.20261022.204509]",
+        "resolved": "1.1.1.1-phase1.20261022.204509",
+        "contentHash": "E0ZxRcNbse65ZHO4W9N+X8i7arMhKk5KsnbyNFa9j6Hi1d5EGKJ+BK+Va4pM6QBZJMkhRk9XFAyxxsSL+9R9Mw==",
         "dependencies": {
           "Coordinate": "[2.12.347.1]",
           "Gizmo3D": "[2.12.347.1]",
           "GizmoBase": "[2.12.347.1]",
-          "cswSceneManager": "[1.1.1.1]"
+          "cswSceneManager": "[1.1.1.1-phase1.20261022.204509]"
         }
       },
       "GizmoDistribution": {
@@ -157,8 +157,8 @@
       },
       "cswSceneManager": {
         "type": "Transitive",
-        "resolved": "1.1.1.1",
-        "contentHash": "X6g6lKo1jVT9ncfBBZyLWD8BnXO0MurrzqU5UzO6OjhHo2QkgmfrrrkFa8hMW1Uu8YmvWC7PpSyHCeJk1QJc9A==",
+        "resolved": "1.1.1.1-phase1.20261022.204509",
+        "contentHash": "LEhLRQYoPPIZoAzXb/0Swx4KvKKlKUb7tWBc9tTg1etB/XZV3e4uS3G3W1FCnssRvkEgTYGxe9lxHLPLIuBJ1Q==",
         "dependencies": {
           "gzBase": "[2.12.347.1]",
           "gzCoordinate": "[2.12.347.1]",

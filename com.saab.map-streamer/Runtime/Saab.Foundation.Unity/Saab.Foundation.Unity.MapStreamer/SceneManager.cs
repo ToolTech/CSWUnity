@@ -1,4 +1,4 @@
-﻿//******************************************************************************
+//******************************************************************************
 //
 // Copyright (C) SAAB AB
 //
@@ -33,6 +33,8 @@
 // AMO	180607	Created file        (2.9.1)
 // AMO  200304  Updated SceneManager with events for external users     (2.10.1)
 // AMO  221130  Updated SM with new locking and camera sync             (2.12.35)
+// AMO	261022	Exposed existing build diagnostics through the shared presentation diagnostics contract.	(2.12.327)
+// AMO	261026	Exposed independent Omni traversal and command-lane frame synchronization settings.	(2.12.327)
 //
 //******************************************************************************
 
@@ -141,6 +143,10 @@ namespace Saab.Foundation.Unity.MapStreamer
         public byte     DynamicLoaders;
         public IntersectMaskValue IntersectMask;
         public SceneManagerOptions Options;
+        [Tooltip("Traverse and select LODs in all directions instead of only the SceneManager camera frustum. Unity rendering still uses its own culling.")]
+        public bool OmniView;
+        [Tooltip("Command lane only: finish the matching native frame and present its camera pose/projection before rendering. May wait and exceed the per-tick build budget.")]
+        public bool SynchronizeFrames;
 
         public static readonly SceneManagerSettings Default = new SceneManagerSettings
         {
@@ -149,6 +155,8 @@ namespace Saab.Foundation.Unity.MapStreamer
             DynamicLoaders = 4,
             IntersectMask = IntersectMaskValue.ALL,
             Options = SceneManagerOptions.RenderInUpdate,
+            OmniView = false,
+            SynchronizeFrames = false,
         };
     }
 
@@ -192,7 +200,7 @@ namespace Saab.Foundation.Unity.MapStreamer
         }
     }
 
-    public class SceneManager : MonoBehaviour
+    public class SceneManager : MonoBehaviour, IStreamingDiagnosticsProvider
     {
         public SceneManagerSettings Settings = SceneManagerSettings.Default;
         public ISceneManagerCamera  SceneManagerCamera;
@@ -358,6 +366,12 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         public TextureManagerDiagnostics TextureDiagnostics =>
             _textureManager.Diagnostics;
+
+        MeshBuildDiagnostics IStreamingDiagnosticsProvider.MeshFrameDiagnostics => MeshFrameDiagnostics;
+        TextureBuildDiagnostics IStreamingDiagnosticsProvider.TextureFrameDiagnostics => TextureFrameDiagnostics;
+        MeshBuildDiagnostics IStreamingDiagnosticsProvider.MeshTotalDiagnostics => MeshTotalDiagnostics;
+        TextureBuildDiagnostics IStreamingDiagnosticsProvider.TextureTotalDiagnostics => TextureTotalDiagnostics;
+        long IStreamingDiagnosticsProvider.BuildDiagnosticsResetVersion => BuildDiagnosticsResetVersion;
 
         // Used by builders to share and manage Material resources
         private readonly MaterialManager _materialManager = new MaterialManager();
@@ -1119,7 +1133,7 @@ namespace Saab.Foundation.Unity.MapStreamer
                 // Default travrser
                 _native_traverse_action = new CullTraverseAction();
 
-                // _native_traverse_action.SetOmniTraverser(true);  // To skip camera cull and use LOD in omni directions
+                _native_traverse_action.SetOmniTraverser(Settings.OmniView);
 
 
             }
@@ -1751,6 +1765,7 @@ namespace Saab.Foundation.Unity.MapStreamer
 
             _native_camera.Position = SceneManagerCamera.GlobalPosition;
 
+            _native_traverse_action.SetOmniTraverser(Settings.OmniView);
             _native_camera.Render(_native_context, 1000, 1000, 1000, _native_traverse_action);
 
 #if DEBUG_CAMERA

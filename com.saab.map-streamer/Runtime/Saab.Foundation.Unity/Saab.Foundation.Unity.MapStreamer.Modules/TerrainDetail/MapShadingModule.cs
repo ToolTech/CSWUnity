@@ -1,4 +1,4 @@
-﻿/* 
+/*
  * Copyright (C) SAAB AB
  *
  * All rights, including the copyright, to the computer program(s) 
@@ -11,6 +11,12 @@
  * Information Class:          COMPANY RESTRICTED
  * Defence Secrecy:            UNCLASSIFIED
  * Export Control:             NOT EXPORT CONTROLLED
+ *
+ * Revision History...
+ *
+ * Who	Date	Description
+ *
+ * AMO	261022	Added borrowed presentation adapters and explicit module resource teardown.	(2.12.327)
  */
 
 using UnityEngine;
@@ -19,6 +25,7 @@ using System.Linq;
 using System.Collections.Generic;
 using System;
 using Saab.Foundation.Unity.MapStreamer.Utils;
+using Saab.Foundation.Unity.MapStreamer.Csw;
 
 namespace Saab.Foundation.Unity.MapStreamer.Modules
 {
@@ -73,6 +80,20 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
     public class MapShadingModule : MonoBehaviour
     {
         public SceneManager SceneManager;
+        public IScenePresentation Presentation { get; private set; }
+        private bool _initialized;
+        private bool _subscribed;
+        private bool _awoken;
+
+        /// <summary>Switches borrowed presentation sources after detaching previous subscriptions.</summary>
+        /// <remarks>Call on the Unity main thread before releasing the previous source.</remarks>
+        public void SetPresentation(IScenePresentation presentation)
+        {
+            Unsubscribe();
+            Presentation = presentation;
+            if (_awoken)
+                TryInitialize();
+        }
 
         public bool EnableDetailedTextures
         {
@@ -127,7 +148,18 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         private void Awake()
         {
-            if (SceneManager == null)
+            _awoken = true;
+            TryInitialize();
+        }
+
+        private void TryInitialize()
+        {
+            if (_initialized)
+            {
+                InitMapModules();
+                return;
+            }
+            if (SceneManager == null && Presentation == null)
                 return;
 
             _enableDetailedTextures = GfxCaps.CurrentCaps.HasFlag(Capability.UseTerrainDetailTextures);
@@ -145,22 +177,55 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         private void OnDestroy()
         {
+            Unsubscribe();
             if (_mappingBuffer != null)
                 _mappingBuffer.Release();
+            if (_textureArray)
+                Destroy(_textureArray);
+            if (_normalMapArray)
+                Destroy(_normalMapArray);
         }
 
         public void InitializeModule()
         {
-            if (SceneManager && _enableDetailedTextures)
+            if (_initialized)
             {
                 InitMapModules();
+                return;
+            }
+            if ((SceneManager || Presentation != null) && _enableDetailedTextures)
+            {
                 InitDetailTexturing();
+                _initialized = true;
+                InitMapModules();
             }
         }
 
         private void InitMapModules()
         {
-            SceneManager.OnNewTerrain += SceneManager_OnNewTerrain;
+            if (_subscribed)
+                return;
+            if (Presentation != null)
+            {
+                Presentation.OnNewTerrain += SceneManager_OnNewTerrain;
+                _subscribed = true;
+            }
+            else if (SceneManager)
+            {
+                SceneManager.OnNewTerrain += SceneManager_OnNewTerrain;
+                _subscribed = true;
+            }
+        }
+
+        private void Unsubscribe()
+        {
+            if (!_subscribed)
+                return;
+            if (Presentation != null)
+                Presentation.OnNewTerrain -= SceneManager_OnNewTerrain;
+            else if (SceneManager)
+                SceneManager.OnNewTerrain -= SceneManager_OnNewTerrain;
+            _subscribed = false;
         }
 
         private void InitDetailTexturing()
@@ -219,11 +284,18 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         private void SceneManager_OnNewTerrain(GameObject go, bool isAsset)
         {
-            if (!go.TryGetComponent<NodeHandle>(out var nodehandle))
-                return;
-
-            if (!nodehandle.feature || !nodehandle.texture)
-                return;
+            if (Presentation != null)
+            {
+                if (!Presentation.TryGetTerrain(go, out var terrain) ||
+                    !terrain.Feature || !terrain.Texture)
+                    return;
+            }
+            else
+            {
+                if (!go.TryGetComponent<NodeHandle>(out var nodehandle) ||
+                    !nodehandle.feature || !nodehandle.texture)
+                    return;
+            }
 
             if (!go.TryGetComponent<MeshRenderer>(out var meshRenderer))
                 return;

@@ -1,4 +1,4 @@
-﻿//******************************************************************************
+//******************************************************************************
 //
 // Copyright (C) SAAB AB
 //
@@ -32,6 +32,7 @@
 //
 // ZJP	200625	Created file                                        (2.10.6)
 // AMO  230113  Added Feature Maps from texture 1                   (2.12.43)
+// AMO	261022	Added command-driven material construction from copied scene State data.	(2.12.327)
 //
 //******************************************************************************
 
@@ -104,6 +105,29 @@ namespace Saab.Foundation.Unity.MapStreamer
 
 
         private static readonly ProfilerMarker _profilerBuild = new ProfilerMarker(ProfilerCategory.Render, "SM-Geometry-Build");
+
+        internal int SceneLayer => _layer;
+
+        internal Material CreateSceneMaterial(StateBuildOutput state, Color uniformColor)
+        {
+            var template = !_forceFallbackMaterial && state.Texture
+                ? _material
+                : _fallbackMaterial;
+            if (!template)
+                throw new System.InvalidOperationException(
+                    $"Builder '{name}' has no material for the command-driven scene.");
+
+            var material = Instantiate(template);
+            if (!_forceFallbackMaterial && state.Texture)
+            {
+                material.mainTexture = state.Texture;
+                if (state.Feature && material.HasProperty("_FeatureMap"))
+                    material.SetTexture("_FeatureMap", state.Feature);
+            }
+            if (material.HasProperty("_Color"))
+                material.color = uniformColor;
+            return material;
+        }
 
         public override bool CanBuild(Node node, TraversalState traversalState, IntersectMaskValue intersectMask)
         {

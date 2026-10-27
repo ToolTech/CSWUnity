@@ -135,6 +135,7 @@ GameObject:
   - component: {fileID: 44396064}
   - component: {fileID: 44396065}
   - component: {fileID: 44396066}
+  - component: {fileID: 44396067}
   m_Layer: 0
   m_Name: SceneManager
   m_TagString: Untagged
@@ -160,7 +161,7 @@ MonoBehaviour:
     DynamicLoaders: 4
     IntersectMask: -1
     Options: 5
-  MapUrl: 
+  MapUrl: '"E:\Maps\swe_stensholm_250408\map.gzd"'
   Builders:
   - {fileID: 44396063}
   - {fileID: 44396062}
@@ -275,6 +276,49 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 44c44330834c4db1acdb41e668730e7b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!114 &44396067
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 44396058}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 676ad7b16be74a6e8b698c123b2d6432, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  _useCommandLane: 0
+  ViewCamera: {fileID: 963194227}
+  TargetParent: {fileID: 0}
+  Builders:
+  - {fileID: 44396063}
+  - {fileID: 44396062}
+  LegacyComponents:
+  - {fileID: 44396059}
+  - {fileID: 44396060}
+  - {fileID: 44396065}
+  - {fileID: 44396066}
+  - {fileID: 963194229}
+  - {fileID: 963194230}
+  - {fileID: 963194231}
+  - {fileID: 963194232}
+  Foliage: {fileID: 1692271385}
+  TerrainShading: {fileID: 1692271382}
+  Diagnostics: {fileID: 44396064}
+  MapUrl: E:\Maps\swe_stensholm_250408\map.gzd
+  ReadConfiguration: 0
+  Settings:
+    MaxBuildTime: 0.004
+    MinBuildTime: 0.004
+    DynamicLoaders: 4
+    IntersectMask: -1
+    Options: 1
+  MaximumCommandsPerTick: 128
+  InitialAltitude: 500
+  FlightInput: 1
+  FlightSpeed: 100
+  TurnSpeed: 60
 --- !u!1 &705507993
 GameObject:
   m_ObjectHideFlags: 0

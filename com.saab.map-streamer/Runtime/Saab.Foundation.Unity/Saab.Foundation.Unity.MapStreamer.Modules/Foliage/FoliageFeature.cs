@@ -1,4 +1,4 @@
-﻿/* 
+/*
  * Copyright (C) SAAB AB
  *
  * All rights, including the copyright, to the computer program(s) 
@@ -11,6 +11,12 @@
  * Information Class:          COMPANY RESTRICTED
  * Defence Secrecy:            UNCLASSIFIED
  * Export Control:             NOT EXPORT CONTROLLED
+ *
+ * Revision History...
+ *
+ * Who	Date	Description
+ *
+ * AMO	261022	Added shared placement ownership and copied presentation inputs.	(2.12.327)
  */
 
 using UnityEngine;
@@ -23,9 +29,50 @@ using ProfilerCategory = global::Unity.Profiling.ProfilerCategory;
 using System.Runtime.InteropServices;
 using Saab.Unity.Extensions;
 using Saab.Foundation.Map;
+using Saab.Foundation.Unity.MapStreamer.Csw;
 
 namespace Saab.Foundation.Unity.MapStreamer.Modules
 {
+    internal sealed class FoliagePlacementLease : IDisposable
+    {
+        internal ComputeBuffer PixelToObject { get; }
+        internal RenderTexture Surface { get; }
+        private int _references = 1;
+
+        internal FoliagePlacementLease(ComputeBuffer pixelToObject, RenderTexture surface)
+        {
+            PixelToObject = pixelToObject;
+            Surface = surface;
+        }
+
+        internal FoliagePlacementLease Retain()
+        {
+            if (_references == 0)
+                throw new ObjectDisposedException(nameof(FoliagePlacementLease));
+            _references++;
+            return this;
+        }
+
+        public void Dispose()
+        {
+            if (_references == 0)
+                throw new InvalidOperationException("Foliage placement resources were released twice.");
+            if (--_references != 0)
+                return;
+            var cleanup = new SceneCleanup();
+            cleanup.Attempt(() => PixelToObject?.Release());
+            if (Surface)
+            {
+                cleanup.Attempt(Surface.Release);
+                if (Application.isPlaying)
+                    UnityEngine.Object.Destroy(Surface);
+                else
+                    UnityEngine.Object.DestroyImmediate(Surface);
+            }
+            cleanup.Complete("Foliage placement resources could not be released completely.");
+        }
+    }
+
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct FoliagePoint
     {
@@ -56,6 +103,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
         public Texture2D Texture;
         public Texture surfaceHeight;
         public ComputeBuffer PixelToObject;
+        internal Matrix4x4 LocalEunBasis;
+        internal FoliagePlacementLease PlacementResources;
 
         public FeatureData(GameObject gameObject, Matrix3D matrix, float density, uint maxSide, float scale = 1000)
         {
@@ -71,7 +120,15 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             };
 
             NodeOffset = new Vector2((float)(matrix.v13 + matrix.v11) % scale, (float)(matrix.v23 + matrix.v22) % scale);
-            PlacementMatrix.SetData(data);
+            try
+            {
+                PlacementMatrix.SetData(data);
+            }
+            catch
+            {
+                PlacementMatrix.Release();
+                throw;
+            }
 
             PixelToObject = null;
             surfaceHeight = null;
@@ -79,16 +136,24 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             TerrainPoints = null;
             TerrainPointCount = null;
             FeatureMap = null;
+            LocalEunBasis = Matrix4x4.identity;
+            PlacementResources = null;
         }
 
         public void Dispose()
         {
-            if (surfaceHeight is RenderTexture rt)
-                rt?.Release();
-            TerrainPoints?.Release();
-            TerrainPointCount?.Release();
-            PlacementMatrix?.Release();
-            PixelToObject?.Release();
+            var cleanup = new SceneCleanup();
+            var data = this;
+            if (data.PlacementResources == null && data.surfaceHeight is RenderTexture rt)
+                cleanup.Attempt(rt.Release);
+            cleanup.Attempt(() => data.TerrainPoints?.Release());
+            cleanup.Attempt(() => data.TerrainPointCount?.Release());
+            cleanup.Attempt(() => data.PlacementMatrix?.Release());
+            if (data.PlacementResources != null)
+                cleanup.Attempt(data.PlacementResources.Dispose);
+            else
+                cleanup.Attempt(() => data.PixelToObject?.Release());
+            cleanup.Complete("Foliage feature resources could not be released completely.");
         }
     }
 
@@ -113,10 +178,28 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
         private readonly ComputeBuffer _pointCloud;
 
         private readonly int _foliageStride;
+        private bool _disposed;
 
         public int FoliageCount
         {
             get { return _items.Count; }
+        }
+
+        internal bool HasActiveNodes
+        {
+            get
+            {
+                foreach (var item in _items)
+                    if (item.Object && item.Object.activeInHierarchy)
+                        return true;
+                return false;
+            }
+        }
+
+        internal ComputeBuffer ResetCulling()
+        {
+            _pointCloud.SetCounterValue(0);
+            return _pointCloud;
         }
 
         public FoliageFeature(int BufferSize, float density, int[] map, ComputeShader computeShader)
@@ -130,24 +213,55 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
             _density = density;
             _pointCloud = new ComputeBuffer(BufferSize <= 0 ? 1 : BufferSize, _foliageStride, ComputeBufferType.Append);
-            _mappingBuffer = new ComputeBuffer(map.Length, sizeof(int));
-            _mappingBuffer.SetData(map);
+            try
+            {
+                _mappingBuffer = new ComputeBuffer(map.Length, sizeof(int));
+                _mappingBuffer.SetData(map);
+            }
+            catch
+            {
+                _mappingBuffer?.Release();
+                _pointCloud.Release();
+                throw;
+            }
         }
 
+        /// <summary>Adds placement using transferred GPU resources and borrowed terrain inputs.</summary>
+        /// <remarks>
+        /// Call on the Unity main thread. The pixel buffer and RenderTexture fallback transfer
+        /// to placement leases; the node and its terrain textures remain borrowed.
+        /// </remarks>
         public bool AddFoliage(GameObject go, NodeHandle node, ComputeBuffer pixelToObject, Texture surfaceHeight = null)
         {
-            if (pixelToObject == null)
+            var terrain = new TerrainPresentationData(
+                new StateBuildOutput
+                {
+                    Texture = node.texture,
+                    Feature = node.feature,
+                    SurfaceHeight = node.surfaceHeight,
+                    Feature_homography = node.featureInfo
+                },
+                node.node.BoundaryCenter.ToVector3(),
+                LegacyLocalEunBasis(go),
+                Vector3.zero);
+            using (var resources = new FoliagePlacementLease(pixelToObject, surfaceHeight as RenderTexture))
+                return AddFoliage(go, terrain, resources, surfaceHeight);
+        }
+
+        internal bool AddFoliage(GameObject go, TerrainPresentationData terrain, FoliagePlacementLease resources, Texture fallbackHeight = null)
+        {
+            if (resources.PixelToObject == null)
                 return false;
 
-            Texture2D featureMap = node.feature;
+            Texture2D featureMap = terrain.Feature;
             if (featureMap == null)
                 return false;
 
-            Texture height = node.surfaceHeight ?? surfaceHeight;
+            Texture height = terrain.SurfaceHeight ? terrain.SurfaceHeight : fallbackHeight ?? resources.Surface;
             if (height == null)
                 return false;
 
-            _resolution = new Vector2((float)node.featureInfo.v11, (float)node.featureInfo.v22);
+            _resolution = new Vector2((float)terrain.FeatureInfo.v11, (float)terrain.FeatureInfo.v22);
             var size = FindBufferSize(featureMap);
 
             if (size >= ushort.MaxValue * 128)
@@ -155,24 +269,31 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
             var maxside = Mathf.Max(featureMap.width, featureMap.height);
 
-            Texture2D texture = node.texture;
-            var data = new FeatureData(go, node.featureInfo, _density, (uint)maxside, _scale)
+            Texture2D texture = terrain.Texture;
+            var data = new FeatureData(go, terrain.FeatureInfo, _density, (uint)maxside, _scale)
             {
                 FeatureMap = featureMap,
                 Texture = texture,
                 surfaceHeight = height,
-                PixelToObject = pixelToObject
+                PixelToObject = resources.PixelToObject,
+                LocalEunBasis = terrain.LocalEunBasis,
+                PlacementResources = resources.Retain()
             };
 
-            data.TerrainPoints = new ComputeBuffer(size < 1 ? 1 : size, _foliageStride, ComputeBufferType.Append);
-            data.TerrainPointCount = new ComputeBuffer(1, sizeof(uint), ComputeBufferType.Raw);
-
-            FeaturePlacement(data);
-
-            _items.Add(data);
-            _itemLookup.Add(go);
-
-            return true;
+            try
+            {
+                data.TerrainPoints = new ComputeBuffer(size < 1 ? 1 : size, _foliageStride, ComputeBufferType.Append);
+                data.TerrainPointCount = new ComputeBuffer(1, sizeof(uint), ComputeBufferType.Raw);
+                FeaturePlacement(data);
+                _items.Add(data);
+                _itemLookup.Add(go);
+                return true;
+            }
+            catch
+            {
+                data.Dispose();
+                throw;
+            }
         }
         public void RemoveFoliage(GameObject gameObj)
         {
@@ -186,39 +307,57 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                 if (_items[i].Object != gameObj)
                     continue;
 
-                ClearFeature(_items[i]);
-
+                var removed = _items[i];
                 if ((i + 1) < _items.Count)
                     _items[i] = _items[_items.Count - 1];
-
                 _items.RemoveAt(_items.Count - 1);
-
+                ClearFeature(removed);
                 return;
             }
         }
         public void Dispose()
         {
-            _pointCloud?.Release();
-            _mappingBuffer?.Release();
+            if (_disposed)
+                return;
+            var cleanup = new SceneCleanup();
+            cleanup.Attempt(ClearNodes);
+            cleanup.Attempt(() => _pointCloud?.Release());
+            cleanup.Attempt(() => _mappingBuffer?.Release());
+            _disposed = true;
+            cleanup.Complete("Foliage feature cleanup failed.");
+        }
 
+        internal void ClearNodes()
+        {
+            if (_disposed)
+                return;
+            var cleanup = new SceneCleanup();
             for (var i = 0; i < _items.Count; ++i)
             {
-                ClearFeature(_items[i]);
+                var data = _items[i];
+                cleanup.Attempt(() => ClearFeature(data));
             }
             _items.Clear();
+            _itemLookup.Clear();
+            cleanup.Attempt(() => _pointCloud.SetCounterValue(0));
+            cleanup.Complete("Foliage node cleanup failed.");
         }
 
         // needed to clear old valid tree data from gpu memory, if skipped when frustum culling old trees might get valid/visable
         private void ClearFeature(in FeatureData data)
         {
-            data.TerrainPoints.SetCounterValue(0);
-
-            _placement.SetBuffer(_kernelClear, PlacementParameterID.TerrainPoints, data.TerrainPoints);
-            _placement.SetInt(PlacementParameterID.BufferCount, data.TerrainPoints.count);
-            if (data.TerrainPoints.count > 0)
-                _placement.Dispatch(_kernelClear, Mathf.CeilToInt(data.TerrainPoints.count / 128f), 1, 1);
-
-            data.Dispose();
+            var owned = data;
+            var cleanup = new SceneCleanup();
+            cleanup.Attempt(() =>
+            {
+                owned.TerrainPoints.SetCounterValue(0);
+                _placement.SetBuffer(_kernelClear, PlacementParameterID.TerrainPoints, owned.TerrainPoints);
+                _placement.SetInt(PlacementParameterID.BufferCount, owned.TerrainPoints.count);
+                if (owned.TerrainPoints.count > 0)
+                    _placement.Dispatch(_kernelClear, Mathf.CeilToInt(owned.TerrainPoints.count / 128f), 1, 1);
+            });
+            cleanup.Attempt(owned.Dispose);
+            cleanup.Complete("Foliage node release failed.");
         }
 
         private int FindBufferSize(Texture2D featureMap)
@@ -248,7 +387,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             int threadsX = Mathf.CeilToInt(node.FeatureMap.width / 4f);
             int threadsY = Mathf.CeilToInt(node.FeatureMap.height / 4f);
 
-            _placement.SetMatrix(PlacementParameterID.ObjToWorld, LocalToWorldMatrix(node.Object));
+            _placement.SetMatrix(PlacementParameterID.ObjToWorld, node.Object.transform.localToWorldMatrix * node.LocalEunBasis);
 
             node.TerrainPoints.SetCounterValue(0);
             _placement.Dispatch(_kernelPlacement, threadsX < 1 ? 1 : threadsX, threadsY < 1 ? 1 : threadsY, 1);
@@ -299,7 +438,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             public static readonly int NearCullDistance = Shader.PropertyToID("NearCullDistance");
         }
 
-        private Matrix4x4 LocalToWorldMatrix(GameObject go)
+        internal static Matrix4x4 LegacyLocalEunBasis(GameObject go)
         {
             if (!go.TryGetComponent<NodeHandle>(out var handle))
                 return Matrix4x4.identity;
@@ -318,7 +457,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
             var eunBasis = MapUtil.FromBasis((east.ToVector3()), (up.ToVector3()), -(north.ToVector3()));
 
-            return go.transform.localToWorldMatrix * eunBasis;
+            return eunBasis;
         }
 
         private static readonly ProfilerMarker _hiZProfilerMarker =
@@ -345,7 +484,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                 hiZOcclusion ? _hiZProfilerMarker : _frustumProfilerMarker;
             profilerMarker.Begin();
 
-            _pointCloud.SetCounterValue(0);     // only once every frame
+            ResetCulling();
 
             Matrix4x4 gpuProjection = GL.GetGPUProjectionMatrix(
                 camera.projectionMatrix,

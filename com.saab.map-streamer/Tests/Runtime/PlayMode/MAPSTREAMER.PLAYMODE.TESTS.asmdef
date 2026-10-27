@@ -11,7 +11,9 @@
     "overrideReferences": true,
     "precompiledReferences": [
         "Gizmo3D.dll",
-        "GizmoBase.dll"
+        "GizmoBase.dll",
+        "Coordinate.dll",
+        "SceneManager.dll"
     ],
     "autoReferenced": false,
     "defineConstraints": [],

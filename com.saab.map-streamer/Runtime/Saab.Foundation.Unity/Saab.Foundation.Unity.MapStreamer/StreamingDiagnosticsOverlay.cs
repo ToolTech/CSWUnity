@@ -11,6 +11,12 @@
  * Information Class:          COMPANY RESTRICTED
  * Defence Secrecy:            UNCLASSIFIED
  * Export Control:             NOT EXPORT CONTROLLED
+ *
+ * Revision History...
+ *
+ * Who	Date	Description
+ *
+ * AMO	261022	Added borrowed diagnostics providers for legacy and command-driven scenes.	(2.12.327)
  */
 
 using System;
@@ -19,6 +25,19 @@ using UnityEngine;
 
 namespace Saab.Foundation.Unity.MapStreamer
 {
+    /// <summary>Borrowed diagnostics view consumed by the overlay on the Unity main thread.</summary>
+    /// <remarks>The host retains ownership and lifetime of the provider.</remarks>
+    public interface IStreamingDiagnosticsProvider
+    {
+        TextureManagerDiagnostics TextureDiagnostics { get; }
+        MeshBuildDiagnostics MeshFrameDiagnostics { get; }
+        TextureBuildDiagnostics TextureFrameDiagnostics { get; }
+        MeshBuildDiagnostics MeshTotalDiagnostics { get; }
+        TextureBuildDiagnostics TextureTotalDiagnostics { get; }
+        long BuildDiagnosticsResetVersion { get; }
+        void ResetStreamingDiagnostics();
+    }
+
     public sealed class StreamingDiagnosticsOverlay : MonoBehaviour
     {
         private struct StreamingSample
@@ -51,6 +70,13 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         [SerializeField]
         private SceneManager _sceneManager;
+        private IStreamingDiagnosticsProvider _provider;
+
+        /// <summary>Selects a borrowed provider; null detaches without disposing the previous provider.</summary>
+        public void SetProvider(IStreamingDiagnosticsProvider provider)
+        {
+            _provider = provider;
+        }
 
         private readonly float[] _frameDurations =
             new float[MaximumFrameSamples];
@@ -92,13 +118,15 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         private void Awake()
         {
-            if (_sceneManager == null)
+            if (_provider == null && _sceneManager == null)
                 _sceneManager = GetComponent<SceneManager>();
-            if (_sceneManager == null)
+            if (_provider == null && _sceneManager == null)
                 _sceneManager = FindFirstObjectByType<SceneManager>();
+            if (_provider == null)
+                _provider = _sceneManager;
 
             _observedResetVersion =
-                SceneManager.BuildDiagnosticsResetVersion;
+                _provider?.BuildDiagnosticsResetVersion ?? 0;
             if (QualitySettings.vSyncCount > 0)
                 _enabledVSyncCount = QualitySettings.vSyncCount;
             AddStreamingSample(Time.realtimeSinceStartupAsDouble);
@@ -135,7 +163,7 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         private void ObserveExternalReset()
         {
-            var resetVersion = SceneManager.BuildDiagnosticsResetVersion;
+            var resetVersion = _provider?.BuildDiagnosticsResetVersion ?? 0;
             if (resetVersion == _observedResetVersion)
                 return;
 
@@ -146,9 +174,9 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         private void ResetMeasurements()
         {
-            _sceneManager?.ResetStreamingDiagnostics();
+            _provider?.ResetStreamingDiagnostics();
             _observedResetVersion =
-                SceneManager.BuildDiagnosticsResetVersion;
+                _provider?.BuildDiagnosticsResetVersion ?? 0;
             ResetLocalMeasurements();
             AddStreamingSample(Time.realtimeSinceStartupAsDouble);
             RefreshContent();
@@ -180,13 +208,13 @@ namespace Saab.Foundation.Unity.MapStreamer
 
             var frameIndex = _frameNext;
             _frameDurations[frameIndex] = durationSeconds;
-            if (_sceneManager != null)
+            if (_provider != null)
             {
                 _meshFrameWorstMilliseconds[frameIndex] =
-                    SceneManager.MeshFrameDiagnostics
+                    _provider.MeshFrameDiagnostics
                         .WorstTime.TotalMilliseconds;
                 _textureFrameWorstMilliseconds[frameIndex] =
-                    SceneManager.TextureFrameDiagnostics
+                    _provider.TextureFrameDiagnostics
                         .WorstTime.TotalMilliseconds;
             }
             else
@@ -210,14 +238,14 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         private void AddStreamingSample(double now)
         {
-            if (_sceneManager == null)
+            if (_provider == null)
                 return;
 
             var sample = new StreamingSample
             {
                 Time = now,
-                Meshes = SceneManager.MeshTotalDiagnostics,
-                Textures = SceneManager.TextureTotalDiagnostics,
+                Meshes = _provider.MeshTotalDiagnostics,
+                Textures = _provider.TextureTotalDiagnostics,
             };
             if (_streamingCount > 0)
             {
@@ -595,14 +623,14 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         private void RefreshTextureManagerContent()
         {
-            if (_sceneManager == null)
+            if (_provider == null)
             {
                 _textureManagerContent.text =
                     "TEXTURE MANAGER\nSceneManager unavailable";
                 return;
             }
 
-            var diagnostics = _sceneManager.TextureDiagnostics;
+            var diagnostics = _provider.TextureDiagnostics;
             var requests = diagnostics.Created + diagnostics.Reused;
             var reusePercent = requests > 0
                 ? diagnostics.Reused * 100.0 / requests

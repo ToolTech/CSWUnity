@@ -17,7 +17,7 @@
 //
 // File         : AssemblyInfo.CameraTests.cs
 // Module       :
-// Description  : Grants the Editor camera test assembly internal access.
+// Description  : Grants camera and MapStreamer test assemblies internal access.
 // Author       : Daniel Sahlin
 //
 // Revision History...
@@ -25,9 +25,12 @@
 // Who      Date    Description
 //
 // DSA  260909  Created file
+// AMO	261022	Granted MapStreamer test assemblies internal access.	(2.12.327)
 //
 //******************************************************************************
 
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Saab.Application.Unity.MapEditor.Tests.EditMode")]
+[assembly: InternalsVisibleTo("MAPSTREAMER.TESTS")]
+[assembly: InternalsVisibleTo("MAPSTREAMER.PLAYMODE.TESTS")]

@@ -31,6 +31,7 @@
 // Who	Date	Description
 //
 // ZJP	200625	Created file                                        (2.10.6)
+// AMO	261022	Added revision-aware copied texture metadata for command-driven scenes.	(2.12.327)
 //
 //******************************************************************************
 
@@ -70,6 +71,10 @@ namespace Saab.Foundation.Unity.MapStreamer
         public DynamicType border_x;
         public DynamicType border_y;
 
+        internal bool HasHomography;
+        internal Matrix3D Homography;
+        internal bool CopyOnly;
+
         public void Dispose()
         {
             homography?.Dispose();
@@ -88,9 +93,18 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         public static bool Build(State state, out StateBuildOutput output, TextureManager textureCache = null)
         {
+            return Build(state, out output, textureCache, null);
+        }
+
+        internal static bool Build(
+            State state,
+            out StateBuildOutput output,
+            TextureManager textureCache,
+            Func<gzTexture, uint, bool, ulong> revision)
+        {
             output = default;
 
-            if (!ReadTextureFromState(state, out Texture2D texture, textureCache))
+            if (!ReadTextureFromState(state, out Texture2D texture, textureCache, 0, true, revision))
                 return false;
 
             output.Texture = texture;
@@ -101,13 +115,13 @@ namespace Saab.Foundation.Unity.MapStreamer
                     textureCache,
                     out TextureImageInfo info,
                     1,
-                    false))
+                    false,
+                    revision))
             {
-                if (info?.homography != null &&
-                    info.homography.Is("gzImageHomography"))
+                if (info != null && info.HasHomography)
                 {
                     output.Feature = feature;
-                    output.Feature_homography = ((ImageHomography)info.homography);
+                    output.Feature_homography = info.Homography;
                     if (textureCache == null)
                         info.Dispose();
                 }
@@ -124,13 +138,13 @@ namespace Saab.Foundation.Unity.MapStreamer
                     textureCache,
                     out info,
                     2,
-                    false))
+                    false,
+                    revision))
             {
-                if (info?.homography != null &&
-                    info.homography.Is("gzImageHomography"))
+                if (info != null && info.HasHomography)
                 {
                     output.SurfaceHeight = surface;
-                    output.SurfaceHeight_homography = ((ImageHomography)info.homography);
+                    output.SurfaceHeight_homography = info.Homography;
                     if (textureCache == null)
                         info.Dispose();
                 }
@@ -156,7 +170,14 @@ namespace Saab.Foundation.Unity.MapStreamer
             return true;
         }
 
-        private static bool ReadTextureFromState(State state, out Texture2D result, TextureManager textureCache, out TextureImageInfo info, uint unit=0,bool useMipMap=true)
+        private static bool ReadTextureFromState(
+            State state,
+            out Texture2D result,
+            TextureManager textureCache,
+            out TextureImageInfo info,
+            uint unit = 0,
+            bool useMipMap = true,
+            Func<gzTexture, uint, bool, ulong> revision = null)
         {
             result = null;
             info = null;
@@ -168,56 +189,9 @@ namespace Saab.Foundation.Unity.MapStreamer
             {
                 try
                 {
-                    if (textureCache != null)
-                    {
-                        var ptr = texture.GetNativeReference();
-
-                        if (textureCache.TryGet(ptr, out Texture cachedTexture, out TextureImageInfo cachedInfo))
-                        {
-                            result = (Texture2D)cachedTexture;
-                            info = cachedInfo;
-                            return true;
-                        }
-
-                        info = new TextureImageInfo();
-
-                        if (!CopyTexture(
-                                texture,
-                                out result,
-                                info,
-                                unit,
-                                useMipMap))
-                        {
-                            info.Dispose();
-                            info = null;
-                            return false;
-                        }
-
-                        if (textureCache.TryAdd(ptr, result, info))
-                            return true;
-
-                        Texture2DCache.Free(result);
-                        info.Dispose();
-                        result = null;
-                        info = null;
-                        return false;
-                    }
-
-                    info = new TextureImageInfo();
-
-                    if (!CopyTexture(
-                            texture,
-                            out result,
-                            info,
-                            unit,
-                            useMipMap))
-                    {
-                        info.Dispose();
-                        info = null;
-                        return false;
-                    }
-
-                    return true;
+                    return ReadTexture(
+                        texture, out result, textureCache, out info, unit, useMipMap,
+                        revision?.Invoke(texture, unit, useMipMap) ?? 0, true);
                 }
                 finally
                 {
@@ -227,18 +201,32 @@ namespace Saab.Foundation.Unity.MapStreamer
             }
         }
 
-        private static bool ReadTextureFromState(State state, out Texture2D result, TextureManager textureCache, uint unit = 0, bool useMipMap = true)
+        private static bool ReadTextureFromState(
+            State state,
+            out Texture2D result,
+            TextureManager textureCache,
+            uint unit = 0,
+            bool useMipMap = true,
+            Func<gzTexture, uint, bool, ulong> revision = null)
         {
             _profilerMarker.Begin();
-
-            var res = ReadTextureFromStateInternal(state, out result, textureCache, unit, useMipMap);
-
-            _profilerMarker.End();
-
-            return res;
+            try
+            {
+                return ReadTextureFromStateInternal(state, out result, textureCache, unit, useMipMap, revision);
+            }
+            finally
+            {
+                _profilerMarker.End();
+            }
         }
 
-        private static bool ReadTextureFromStateInternal(State state, out Texture2D result, TextureManager textureCache, uint unit = 0, bool useMipMap = true)
+        private static bool ReadTextureFromStateInternal(
+            State state,
+            out Texture2D result,
+            TextureManager textureCache,
+            uint unit = 0,
+            bool useMipMap = true,
+            Func<gzTexture, uint, bool, ulong> revision = null)
         {
             result = null;
 
@@ -249,7 +237,7 @@ namespace Saab.Foundation.Unity.MapStreamer
                 {
                     var ptr = state.GetNativeReference();
 
-                    if (textureCache.TryGet(ptr, out Texture cachedTexture, out _))
+                    if (textureCache.TryGet(ptr, 0, unit, useMipMap, out Texture cachedTexture, out _))
                     {
                         result = (Texture2D)cachedTexture;
                         return true;
@@ -259,7 +247,7 @@ namespace Saab.Foundation.Unity.MapStreamer
                     if (!result)
                         return false;
 
-                    if (textureCache.TryAdd(ptr, result, null))
+                    if (textureCache.TryAdd(ptr, 0, unit, useMipMap, result, null))
                         return true;
 
                     Texture2DCache.Free(result);
@@ -275,41 +263,9 @@ namespace Saab.Foundation.Unity.MapStreamer
             {
                 try
                 {
-                    if (textureCache != null)
-                    {
-                        var ptr = texture.GetNativeReference();
-
-                        if (textureCache.TryGet(ptr, out Texture cachedTexture, out _))
-                        {
-                            result = (Texture2D)cachedTexture;
-                            return true;
-                        }
-
-                        if (!CopyTexture(
-                                texture,
-                                out result,
-                                null,
-                                unit,
-                                useMipMap))
-                            return false;
-
-                        if (textureCache.TryAdd(ptr, result, null))
-                            return true;
-
-                        Texture2DCache.Free(result);
-                        result = null;
-                        return false;
-                    }
-
-                    if (!CopyTexture(
-                            texture,
-                            out result,
-                            null,
-                            unit,
-                            useMipMap))
-                        return false;
-
-                    return true;
+                    return ReadTexture(
+                        texture, out result, textureCache, out _, unit, useMipMap,
+                        revision?.Invoke(texture, unit, useMipMap) ?? 0);
                 }
                 finally
                 {
@@ -317,6 +273,43 @@ namespace Saab.Foundation.Unity.MapStreamer
                     texture.ReleaseAlreadyLocked();
                 }
             }
+        }
+
+        internal static bool ReadTexture(
+            gzTexture texture,
+            out Texture2D result,
+            TextureManager textureCache,
+            out TextureImageInfo info,
+            uint unit,
+            bool useMipMap,
+            ulong revision,
+            bool copyImageInfo = false)
+        {
+            result = null;
+            info = null;
+            var source = texture.GetNativeReference();
+            if (textureCache != null &&
+                textureCache.TryGet(source, revision, unit, useMipMap, out Texture cached, out info))
+            {
+                result = (Texture2D)cached;
+                return true;
+            }
+            if (copyImageInfo)
+                info = new TextureImageInfo { CopyOnly = revision != 0 };
+            if (!CopyTexture(texture, out result, info, unit, useMipMap))
+            {
+                info?.Dispose();
+                info = null;
+                return false;
+            }
+            if (textureCache == null ||
+                textureCache.TryAdd(source, revision, unit, useMipMap, result, info))
+                return true;
+            Texture2DCache.Free(result);
+            info?.Dispose();
+            result = null;
+            info = null;
+            return false;
         }
 
         private static Texture2D CopyWhiteTexture()
@@ -477,6 +470,14 @@ namespace Saab.Foundation.Unity.MapStreamer
                             "UserDataImInfo", "ImI-Pixel-X-border");
                         imageInfo.border_y = image.GetAttribute(
                             "UserDataImInfo", "ImI-Pixel-Y-border");
+                        if (imageInfo.homography != null &&
+                            imageInfo.homography.Is("gzImageHomography"))
+                        {
+                            imageInfo.Homography = (ImageHomography)imageInfo.homography;
+                            imageInfo.HasHomography = true;
+                        }
+                        if (imageInfo.CopyOnly)
+                            imageInfo.Dispose();
                     }
                 }
 

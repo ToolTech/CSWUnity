@@ -1,4 +1,4 @@
-﻿/* 
+/*
  * Copyright (C) SAAB AB
  *
  * All rights, including the copyright, to the computer program(s) 
@@ -11,12 +11,19 @@
  * Information Class:          COMPANY RESTRICTED
  * Defence Secrecy:            UNCLASSIFIED
  * Export Control:             NOT EXPORT CONTROLLED
+ *
+ * Revision History...
+ *
+ * Who	Date	Description
+ *
+ * AMO	261022	Added presentation adapters and transactional GPU resource lifetime handling.	(2.12.327)
  */
 
 using GizmoSDK.Coordinate;
 using GizmoSDK.GizmoBase;
 using Saab.Foundation.Map;
 using Saab.Utility.GfxCaps;
+using Saab.Foundation.Unity.MapStreamer.Csw;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -62,18 +69,26 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
         public float MaxHeight { get; set; }
 
         public Material FoliageMaterial { get; set; }
+        internal Texture2DArray FoliageTextures;
 
         public void Dispose()
         {
-            FoliageFeature?.Dispose();
-            InderectBuffer?.Dispose();
-            FoliageData?.Dispose();
+            var cleanup = new SceneCleanup();
+            cleanup.Attempt(() => FoliageFeature?.Dispose());
+            cleanup.Attempt(() => InderectBuffer?.Dispose());
+            cleanup.Attempt(() => FoliageData?.Dispose());
+            if (FoliageMaterial)
+                UnityEngine.Object.Destroy(FoliageMaterial);
+            if (FoliageTextures)
+                UnityEngine.Object.Destroy(FoliageTextures);
+            cleanup.Complete("Foliage set cleanup failed.");
         }
     }
 
     public class FoliageModule : MonoBehaviour
     {
         public SceneManager SceneManager;
+        public IScenePresentation Presentation { get; private set; }
         public ComputeShader ComputeShader;
         public Shader FoliageShader;
 
@@ -105,7 +120,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
         private int[] _mappingTable;
 
         // **************** Generate HeightMap ****************
-        private RenderTexture _surfaceheightMap;
         private bool _hasCullingResult;
         private bool _hasEnabledFeatures;
         private UnityEngine.Camera _cullingCamera;
@@ -113,10 +127,66 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         private Queue<FoliageJob> _futurePool = new Queue<FoliageJob>();
         private Dictionary<SettingsFeatureType, SettingsFeature> _settingsCache = new Dictionary<SettingsFeatureType, SettingsFeature>();
-        private GraphicsBuffer _vertexBuffer;
-        private GraphicsBuffer _indexBuffer;
-        private GraphicsBuffer _indexbufferGpuCopy;
-        private ComputeBuffer _pixelToWorld;
+        private bool _subscribed;
+
+        /// <summary>Switches borrowed presentation sources after detaching previous subscriptions.</summary>
+        /// <remarks>Call on the Unity main thread before releasing the previous source.</remarks>
+        public void SetPresentation(IScenePresentation presentation)
+        {
+            Unsubscribe();
+            var cleanup = new SceneCleanup();
+            if (!ReferenceEquals(Presentation, presentation))
+                foreach (var set in Features)
+                    cleanup.Attempt(() => set.FoliageFeature?.ClearNodes());
+            Presentation = presentation;
+            if (_hasEnabledFeatures)
+                Subscribe();
+            cleanup.Complete("The previous foliage presentation could not be cleared completely.");
+        }
+
+        private UnityEngine.Camera ActiveCamera =>
+            Presentation != null ? Presentation.Camera : SceneManager?.SceneManagerCamera?.Camera;
+
+        private void Subscribe()
+        {
+            if (_subscribed)
+                return;
+            if (Presentation != null)
+            {
+                Presentation.OnNewTerrain += SceneManager_OnNewTerrain;
+                Presentation.OnPostTraverse += SceneManager_OnPostTraverse;
+                Presentation.OnRemoveTerrain += SceneManager_OnRemoveTerrain;
+                _subscribed = true;
+            }
+            else if (SceneManager != null)
+            {
+                SceneManager.OnNewTerrain += SceneManager_OnNewTerrain;
+                SceneManager.OnPostTraverse += SceneManager_OnPostTraverse;
+                SceneManager.OnRemoveTerrain += SceneManager_OnRemoveTerrain;
+                _subscribed = true;
+            }
+        }
+
+        private void Unsubscribe()
+        {
+            if (!_subscribed)
+                return;
+            if (Presentation != null)
+            {
+                Presentation.OnNewTerrain -= SceneManager_OnNewTerrain;
+                Presentation.OnPostTraverse -= SceneManager_OnPostTraverse;
+                Presentation.OnRemoveTerrain -= SceneManager_OnRemoveTerrain;
+            }
+            else if (SceneManager != null)
+            {
+                SceneManager.OnNewTerrain -= SceneManager_OnNewTerrain;
+                SceneManager.OnPostTraverse -= SceneManager_OnPostTraverse;
+                SceneManager.OnRemoveTerrain -= SceneManager_OnRemoveTerrain;
+            }
+            _subscribed = false;
+            _hasCullingResult = false;
+            _lastCullingFrame = -1;
+        }
 
         private static class PlacementParameterID
         {
@@ -187,9 +257,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
             _mappingTable = TerrainMapping.MapFeatureData();
 
-            SceneManager.OnNewTerrain += SceneManager_OnNewTerrain;
-            SceneManager.OnPostTraverse += SceneManager_OnPostTraverse;
-            SceneManager.OnRemoveTerrain += SceneManager_OnRemoveTerrain;
+            Subscribe();
 
             for (int i = 0; i < Features.Count; i++)
             {
@@ -251,6 +319,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 #endif           
             var foliageTypes = featureSet.FoliageSet.GetFoliageList;
             var mainTexs = Create2DArray(foliageTypes, format);
+            featureSet.FoliageTextures = mainTexs;
 
             featureSet.FoliageMaterial.SetInt(PlacementParameterID.FoliageCount, foliageTypes.Count);
             featureSet.FoliageMaterial.SetTexture(PlacementParameterID.MainTexArray, mainTexs);
@@ -370,11 +439,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             AddJob(go);
         }
 
-        private readonly Coordinate _coordConverter = new Coordinate();
-
         private void AddJob(GameObject go)
         {
-            if (Disabled || !go.activeInHierarchy)
+            if (Disabled || (Presentation == null && !go.activeInHierarchy))
                 return;
 
             if (!go.TryGetComponent<MeshFilter>(out var meshFilter))
@@ -384,13 +451,44 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             if (!mesh)
                 return;
 
-            if (!go.TryGetComponent<NodeHandle>(out var nodeHandle))
+            TerrainPresentationData terrain;
+            if (Presentation != null)
+            {
+                if (!Presentation.TryGetTerrain(go, out terrain))
+                    return;
+            }
+            else
+            {
+                if (!go.TryGetComponent<NodeHandle>(out var nodeHandle))
+                    return;
+                if (!nodeHandle.texture || !nodeHandle.feature)
+                    return;
+                var center = nodeHandle.node.BoundaryCenter;
+                if (!MapControl.SystemMap.GlobalToWorld(center, out CartPos cartPos))
+                    throw new InvalidOperationException("Could not locate the legacy terrain feature image.");
+                using (var coordinate = new Coordinate())
+                {
+                    coordinate.SetCartPos(cartPos);
+                    if (!coordinate.GetUTMPos(out var utmPos))
+                        throw new InvalidOperationException("Could not convert the legacy terrain feature image to UTM.");
+                    var corner = nodeHandle.featureInfo * new Vec3D(0, 0, 1);
+                    terrain = new TerrainPresentationData(
+                        new StateBuildOutput
+                        {
+                            Texture = nodeHandle.texture,
+                            Feature = nodeHandle.feature,
+                            SurfaceHeight = nodeHandle.surfaceHeight,
+                            Feature_homography = nodeHandle.featureInfo
+                        },
+                        new Vector3(center.x, center.y, center.z),
+                        FoliageFeature.LegacyLocalEunBasis(go),
+                        new Vector3((float)(corner.x - utmPos.Easting), 0, (float)(corner.y - utmPos.Northing)));
+                }
+            }
+            if (!terrain.Texture || !terrain.Feature)
                 return;
 
-            if (!nodeHandle.texture || !nodeHandle.feature)
-                return;
-
-            var featureInfo = nodeHandle.featureInfo;
+            var featureInfo = terrain.FeatureInfo;
 
             var pixelSize = new Vector2((float)featureInfo.v11, (float)featureInfo.v22);
             float scale = 1000;
@@ -399,7 +497,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                 (float)(featureInfo.v13 + featureInfo.v11) % scale,
                 (float)(featureInfo.v23 + featureInfo.v22) % scale);
 
-            var tex = nodeHandle.texture;
+            var tex = terrain.Texture;
             var texSize = new Vector2(tex.width, tex.height);
 
             var fullNodeSize = pixelSize * texSize;
@@ -413,89 +511,68 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             ComputeShader.SetVector(PlacementParameterID.NodeOffset, nodeOffset);
             ComputeShader.SetVector(PlacementParameterID.Resolution, pixelSize);
 
-            var meshCenter = nodeHandle.node.BoundaryCenter;
-
-            MapControl.SystemMap.GlobalToWorld(meshCenter, out GizmoSDK.Coordinate.CartPos cartPos);
-
-            _coordConverter.SetCartPos(cartPos);
-            _coordConverter.GetUTMPos(out var utmPos);
-
-            var topLeftCorner = nodeHandle.featureInfo * new Vec3D(0, 0, 1);
-
-            var nodeSize = (texSize * pixelSize);
-            var centerOffset = new Vec3D(topLeftCorner.x - utmPos.Easting, 0, topLeftCorner.y - utmPos.Northing);
-            _pixelToWorld = GeneratePixelToWorld(texSize, pixelSize, mesh, centerOffset);
-
+            var pixelToWorld = GeneratePixelToWorld(
+                texSize, pixelSize, mesh,
+                new Vec3D(terrain.FeatureCenterOffset.x, terrain.FeatureCenterOffset.y, terrain.FeatureCenterOffset.z));
             RenderTexture surface = null;
-            if (nodeHandle.surfaceHeight == null)
-                surface = GenerateSurfaceHeight(tex);
-
-            bool requireCleanup = true;
-
-            foreach (var set in Features)
+            try
             {
-                if (!set.Enabled)
-                    continue;
-
-                var setting = GetSettings(set.SettingsType);
-                ComputeShader.SetFloat(PlacementParameterID.Density, set.Density * setting.Density);
-
-                if (nodeSide < set.NodeMaxWidth)
-                {
-                    set.FoliageFeature.AddFoliage(go, nodeHandle, _pixelToWorld, surface);
-                }
-
-                requireCleanup = false;
+                if (!terrain.SurfaceHeight)
+                    surface = GenerateSurfaceHeight(tex);
             }
-
-            if (requireCleanup)
+            catch
             {
-                _pixelToWorld?.Release();
-                surface?.Release();
+                pixelToWorld.Release();
+                throw;
+            }
+            using (var resources = new FoliagePlacementLease(pixelToWorld, surface))
+            {
+                foreach (var set in Features)
+                {
+                    if (!set.Enabled)
+                        continue;
+                    var setting = GetSettings(set.SettingsType);
+                    ComputeShader.SetFloat(PlacementParameterID.Density, set.Density * setting.Density);
+                    if (nodeSide < set.NodeMaxWidth)
+                        set.FoliageFeature.AddFoliage(go, terrain, resources);
+                }
             }
         }
 
         private void OnDestroy()
         {
-            if (SceneManager != null)
-            {
-                SceneManager.OnNewTerrain -= SceneManager_OnNewTerrain;
-                SceneManager.OnPostTraverse -= SceneManager_OnPostTraverse;
-                SceneManager.OnRemoveTerrain -= SceneManager_OnRemoveTerrain;
-            }
+            Unsubscribe();
 
             foreach (var set in Features)
             {
                 set?.Dispose();
             }
 
-            _surfaceheightMap?.Release();
-            _pixelToWorld?.Release();
-
-            _indexBuffer?.Release();
-            _vertexBuffer?.Release();
-            _indexbufferGpuCopy?.Release();
         }
 
         private RenderTexture GenerateSurfaceHeight(UnityEngine.Texture texture)
         {
-            // ************* Generate surface Height Map  ************* //
-
-            _surfaceheightMap = new RenderTexture(texture.width, texture.height, 24, RenderTextureFormat.RFloat);
-            _surfaceheightMap.enableRandomWrite = true;
-            _surfaceheightMap.name = "foliagemodule - surfaceheightMap";
-            _surfaceheightMap.Create();
-
-            var kernel = ComputeShader.FindKernel("CSSurfaceHeightMap");
-            ComputeShader.SetTexture(kernel, PlacementParameterID.Texture, texture);
-            ComputeShader.SetTexture(kernel, PlacementParameterID.SurfaceHeightMap, _surfaceheightMap);
-
-            var threadx = Mathf.CeilToInt(texture.width / 8f) < 1 ? 1 : Mathf.CeilToInt(texture.width / 8f);
-            var thready = Mathf.CeilToInt(texture.height / 8f) < 1 ? 1 : Mathf.CeilToInt(texture.height / 8f);
-
-            ComputeShader.Dispatch(kernel, threadx, thready, 1);
-
-            return _surfaceheightMap;
+            var surface = new RenderTexture(texture.width, texture.height, 24, RenderTextureFormat.RFloat);
+            try
+            {
+                surface.enableRandomWrite = true;
+                surface.name = "foliagemodule - surfaceheightMap";
+                if (!surface.Create())
+                    throw new InvalidOperationException("Could not allocate the foliage surface-height texture.");
+                var kernel = ComputeShader.FindKernel("CSSurfaceHeightMap");
+                ComputeShader.SetTexture(kernel, PlacementParameterID.Texture, texture);
+                ComputeShader.SetTexture(kernel, PlacementParameterID.SurfaceHeightMap, surface);
+                var threadx = Mathf.Max(1, Mathf.CeilToInt(texture.width / 8f));
+                var thready = Mathf.Max(1, Mathf.CeilToInt(texture.height / 8f));
+                ComputeShader.Dispatch(kernel, threadx, thready, 1);
+                return surface;
+            }
+            catch
+            {
+                surface.Release();
+                SceneObjects.Destroy(surface);
+                throw;
+            }
         }
 
         private static GraphicsBuffer CreateIndexBufferCopy(Mesh mesh)
@@ -527,8 +604,16 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                     packed.Length,
                     sizeof(uint));
 
-                dst.SetData(packed);
-                return dst;
+                try
+                {
+                    dst.SetData(packed);
+                    return dst;
+                }
+                catch
+                {
+                    dst.Release();
+                    throw;
+                }
             }
             else
             {
@@ -542,81 +627,71 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                     indices32.Length,
                     sizeof(uint));
 
-                dst.SetData(indices32);
-                return dst;
+                try
+                {
+                    dst.SetData(indices32);
+                    return dst;
+                }
+                catch
+                {
+                    dst.Release();
+                    throw;
+                }
             }
         }
 
         private ComputeBuffer GeneratePixelToWorld(Vector2 texSize, Vector2 pixelSize, Mesh mesh, Vec3D offset)
         {
             ComputeShader.SetVector(PlacementParameterID.Resolution, pixelSize);
-
-            // Ensure proper buffer usage flags
             mesh.vertexBufferTarget |= GraphicsBuffer.Target.Raw;
             mesh.indexBufferTarget |= GraphicsBuffer.Target.CopySource;
-
-            // Acquire buffers
-            _vertexBuffer = mesh.GetVertexBuffer(0);
-            _indexBuffer = mesh.GetIndexBuffer();
-
-            // Create a GPU copy of the index buffer
-            _indexbufferGpuCopy?.Dispose();
-            _indexbufferGpuCopy = CreateIndexBufferCopy(mesh);
-
-            // Get stride/offsets in BYTES
-            int stride = mesh.GetVertexBufferStride(0);
-            int texOffset = mesh.GetVertexAttributeOffset(UnityEngine.Rendering.VertexAttribute.TexCoord0);
-            int posOffset = mesh.GetVertexAttributeOffset(UnityEngine.Rendering.VertexAttribute.Position);
-            int normalOffset = mesh.GetVertexAttributeOffset(UnityEngine.Rendering.VertexAttribute.Normal);
-
-            // Pass values as bytes, no division by 4
-            ComputeShader.SetInt(PlacementParameterID.PositionOffset, posOffset);
-            ComputeShader.SetInt(PlacementParameterID.TexcoordOffset, texOffset);
-            ComputeShader.SetInt(PlacementParameterID.NormalOffset, normalOffset);
-            ComputeShader.SetInt(PlacementParameterID.VertexBufferStride, stride);
-
-            // Index count
-            int indicesCount = (int)mesh.GetIndexCount(0);
-            ComputeShader.SetInt(PlacementParameterID.UvCount, _vertexBuffer.count);
-
-            // ************* mesh bounds ************* //
-            var nodeTexTopLeft = mesh.bounds.center -
-                new Vector3((float)-offset.x,
-                            (float)offset.y,
-                            (float)offset.z);
-            ComputeShader.SetVector(PlacementParameterID.MeshBoundsMax, nodeTexTopLeft);
-
-            // ************* Generate Height Map ************* //
-            int kernelHeight = ComputeShader.FindKernel("CSPixelToObject");
-
-            if (_pixelToWorld != null)
-                _pixelToWorld.Release();
-
-            _pixelToWorld = new ComputeBuffer(Mathf.CeilToInt(texSize.x * texSize.y), sizeof(float) * 4, ComputeBufferType.Default);
-
-            int kernelClear = ComputeShader.FindKernel("CSClearPixelToObject");
-            ComputeShader.SetBuffer(kernelClear, PlacementParameterID.PixelToObjectCoord, _pixelToWorld);
-            ComputeShader.Dispatch(kernelClear, Mathf.CeilToInt(_pixelToWorld.count / 128f), 1, 1);
-
-            int triangleCount = Mathf.CeilToInt(indicesCount / 3f);
-            ComputeShader.SetInt(PlacementParameterID.IndexCount, triangleCount);
-
-            // Bind buffers and textures
-            ComputeShader.SetBuffer(kernelHeight, PlacementParameterID.VertexBuffer, _vertexBuffer);
-            ComputeShader.SetBuffer(kernelHeight, PlacementParameterID.IndexBuffer, _indexbufferGpuCopy);
-            ComputeShader.SetBuffer(kernelHeight, PlacementParameterID.PixelToObjectCoord, _pixelToWorld);
-
-            // Dispatch
-            int threads = Mathf.CeilToInt(triangleCount / 4f);
-            if (threads < 1) threads = 1;
-            ComputeShader.Dispatch(kernelHeight, threads, 1, 1);
-
-            // Dispose
-            _indexBuffer?.Release();
-            _vertexBuffer?.Release();
-            _indexbufferGpuCopy?.Release();
-
-            return _pixelToWorld;
+            GraphicsBuffer vertexBuffer = null;
+            GraphicsBuffer indexBuffer = null;
+            GraphicsBuffer indexCopy = null;
+            ComputeBuffer pixelToWorld = null;
+            try
+            {
+                vertexBuffer = mesh.GetVertexBuffer(0);
+                indexBuffer = mesh.GetIndexBuffer();
+                indexCopy = CreateIndexBufferCopy(mesh);
+                int stride = mesh.GetVertexBufferStride(0);
+                int texOffset = mesh.GetVertexAttributeOffset(UnityEngine.Rendering.VertexAttribute.TexCoord0);
+                int posOffset = mesh.GetVertexAttributeOffset(UnityEngine.Rendering.VertexAttribute.Position);
+                int normalOffset = mesh.GetVertexAttributeOffset(UnityEngine.Rendering.VertexAttribute.Normal);
+                if (posOffset < 0 || normalOffset < 0 || texOffset < 0)
+                    throw new InvalidOperationException("Foliage placement requires mesh positions, normals and UV0.");
+                ComputeShader.SetInt(PlacementParameterID.PositionOffset, posOffset);
+                ComputeShader.SetInt(PlacementParameterID.TexcoordOffset, texOffset);
+                ComputeShader.SetInt(PlacementParameterID.NormalOffset, normalOffset);
+                ComputeShader.SetInt(PlacementParameterID.VertexBufferStride, stride);
+                int indicesCount = (int)mesh.GetIndexCount(0);
+                ComputeShader.SetInt(PlacementParameterID.UvCount, vertexBuffer.count);
+                var nodeTexTopLeft = mesh.bounds.center -
+                    new Vector3((float)-offset.x, (float)offset.y, (float)offset.z);
+                ComputeShader.SetVector(PlacementParameterID.MeshBoundsMax, nodeTexTopLeft);
+                int kernelHeight = ComputeShader.FindKernel("CSPixelToObject");
+                pixelToWorld = new ComputeBuffer(
+                    Mathf.CeilToInt(texSize.x * texSize.y), sizeof(float) * 4, ComputeBufferType.Default);
+                int kernelClear = ComputeShader.FindKernel("CSClearPixelToObject");
+                ComputeShader.SetBuffer(kernelClear, PlacementParameterID.PixelToObjectCoord, pixelToWorld);
+                ComputeShader.Dispatch(kernelClear, Mathf.CeilToInt(pixelToWorld.count / 128f), 1, 1);
+                int triangleCount = Mathf.CeilToInt(indicesCount / 3f);
+                ComputeShader.SetInt(PlacementParameterID.IndexCount, triangleCount);
+                ComputeShader.SetBuffer(kernelHeight, PlacementParameterID.VertexBuffer, vertexBuffer);
+                ComputeShader.SetBuffer(kernelHeight, PlacementParameterID.IndexBuffer, indexCopy);
+                ComputeShader.SetBuffer(kernelHeight, PlacementParameterID.PixelToObjectCoord, pixelToWorld);
+                ComputeShader.Dispatch(kernelHeight, Mathf.Max(1, Mathf.CeilToInt(triangleCount / 4f)), 1, 1);
+                var result = pixelToWorld;
+                pixelToWorld = null;
+                return result;
+            }
+            finally
+            {
+                pixelToWorld?.Release();
+                indexCopy?.Release();
+                indexBuffer?.Release();
+                vertexBuffer?.Release();
+            }
         }
 
         float CalculateDesiredDistance(UnityEngine.Camera camera, float objectHeight, float coverage)
@@ -639,7 +714,12 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
             _profilerMarker.Begin();
 
-            var camera = SceneManager.SceneManagerCamera?.Camera;
+            var camera = ActiveCamera;
+            if (camera == null)
+            {
+                _profilerMarker.End();
+                return;
+            }
             if (camera != null && _cullingCamera != camera)
             {
                 _cullingCamera = camera;
@@ -655,7 +735,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         private void Cull(UnityEngine.Camera camera)
         {
-            var activeCamera = SceneManager.SceneManagerCamera?.Camera;
+            var activeCamera = ActiveCamera;
             if (camera != activeCamera || Disabled || _lastCullingFrame == UnityEngine.Time.frameCount)
                 return;
 
@@ -691,6 +771,13 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             foreach (var set in Features)
             {
                 var settings = GetSettings(set.SettingsType);
+                if (set.FoliageFeature != null &&
+                    (!settings.Enabled || !set.Enabled || !set.FoliageFeature.HasActiveNodes))
+                {
+                    set.CulledBuffer = set.FoliageFeature.ResetCulling();
+                    ComputeBuffer.CopyCount(set.CulledBuffer, set.InderectBuffer, 0);
+                    continue;
+                }
                 if (!settings.Enabled || !set.Enabled)
                     continue;
 
@@ -732,6 +819,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                     continue;
 
                 if (set.FoliageMaterial == null)
+                    continue;
+                if (set.FoliageFeature == null || !set.FoliageFeature.HasActiveNodes)
                     continue;
 
                 if (DebugPrintCount)

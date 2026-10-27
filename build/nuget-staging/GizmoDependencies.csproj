@@ -10,7 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="CSW.SceneManager" Version="[1.1.1.1]" />
+    <PackageReference Include="CSW.SceneManager" Version="[1.1.1.1-phase1.20261022.204509]" />
     <PackageReference Include="GizmoDistribution" Version="[2.12.347.1]" />
   </ItemGroup>
 </Project>

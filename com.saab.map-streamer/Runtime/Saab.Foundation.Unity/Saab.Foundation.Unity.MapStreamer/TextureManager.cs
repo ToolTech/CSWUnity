@@ -31,6 +31,7 @@
 // Who	Date	Description
 //
 // ZJP	240902	Created file                                        (2.12.179)
+// AMO	261022	Added revision-aware scene texture cache keys while preserving legacy entry points.	(2.12.327)
 //
 //******************************************************************************
 
@@ -95,8 +96,10 @@ namespace Saab.Foundation.Unity.MapStreamer
             public int RefCount;
         }
 
-        private readonly Dictionary<IntPtr, TextureCacheItem> _textureCache = new Dictionary<IntPtr, TextureCacheItem>();
-        private readonly Dictionary<Texture2D, IntPtr> _lookup = new Dictionary<Texture2D, IntPtr>();
+        private readonly Dictionary<(IntPtr Source, ulong Revision, uint Unit, bool MipMaps), TextureCacheItem> _textureCache =
+            new Dictionary<(IntPtr, ulong, uint, bool), TextureCacheItem>();
+        private readonly Dictionary<Texture2D, (IntPtr Source, ulong Revision, uint Unit, bool MipMaps)> _lookup =
+            new Dictionary<Texture2D, (IntPtr, ulong, uint, bool)>();
         private long _activeReferences;
 
         public TextureManagerDiagnostics Diagnostics =>
@@ -106,6 +109,12 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         public bool TryAdd(IntPtr key, Texture2D value, TextureImageInfo info)
         {
+            return TryAdd(key, 0, 0, true, value, info);
+        }
+
+        internal bool TryAdd(IntPtr source, ulong revision, uint unit, bool mipMaps, Texture2D value, TextureImageInfo info)
+        {
+            var key = (source, revision, unit, mipMaps);
             if (_textureCache.TryAdd(key, new TextureCacheItem() { Texture = value, Info = info, RefCount = 1 }))
             {
                 // add a reverse lookup to support the free operation
@@ -120,6 +129,12 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         public bool TryGet(IntPtr key, out Texture value, out TextureImageInfo info)
         {
+            return TryGet(key, 0, 0, true, out value, out info);
+        }
+
+        internal bool TryGet(IntPtr source, ulong revision, uint unit, bool mipMaps, out Texture value, out TextureImageInfo info)
+        {
+            var key = (source, revision, unit, mipMaps);
             if (_textureCache.TryGetValue(key, out TextureCacheItem item))
             {
                 // item existed in the cache, increase the ref count and return the resource
@@ -138,9 +153,15 @@ namespace Saab.Foundation.Unity.MapStreamer
             return false;
         }
 
+        internal bool Retain(Texture2D texture)
+        {
+            return _lookup.TryGetValue(texture, out var key) &&
+                TryGet(key.Source, key.Revision, key.Unit, key.MipMaps, out _, out _);
+        }
+
         public bool Free(Texture2D texture)
         {
-            if (_lookup.TryGetValue(texture, out IntPtr key))
+            if (_lookup.TryGetValue(texture, out var key))
             {
                 TextureCacheItem item = _textureCache[key];
                 item.RefCount--;

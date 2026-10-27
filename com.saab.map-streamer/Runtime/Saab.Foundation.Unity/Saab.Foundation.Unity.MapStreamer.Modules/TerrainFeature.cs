@@ -1,4 +1,4 @@
-﻿/* 
+/*
  * Copyright (C) SAAB AB
  *
  * All rights, including the copyright, to the computer program(s) 
@@ -11,6 +11,12 @@
  * Information Class:          COMPANY RESTRICTED
  * Defence Secrecy:            UNCLASSIFIED
  * Export Control:             NOT EXPORT CONTROLLED
+ *
+ * Revision History...
+ *
+ * Who	Date	Description
+ *
+ * AMO	261022	Accepted command-driven scene occurrences during terrain child setup.	(2.12.327)
  */
 
 using System;
@@ -18,6 +24,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using UnityEngine;
+using Saab.Foundation.Unity.MapStreamer.Csw;
 
 namespace Saab.Foundation.Unity.MapStreamer.Modules
 {
@@ -321,7 +328,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 #if !MoveCam
             var node = parent.GetComponent<NodeHandle>();
 
-            if (node == null)
+            if (node == null && parent.GetComponent<SceneInstanceHandle>() == null)
             {
                 return child;
             }

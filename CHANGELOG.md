@@ -8,6 +8,14 @@ described with adjustments and template in [TSWiki](https://tswiki.corp.saab.se/
 ## 5.0
 
 ### Added
+- Independent runtime Omni/frustum traversal and command-lane frame-synchronization settings. Optional synchronization completes the matching native frame before presentation, pins its camera pose/projection, and faults explicitly on timeout while retaining non-waiting graph-lock probes and bounded capture slices.
+- Low-cost command-lane profiler markers for Tick, capture, publication, resource rebinding and frame commit.
+- Graphical command-loop discussion document covering thread/lock boundaries, multi-frame buffer consumption, refresh triggering, current builder/factory differences, and Unity/DXGI presentation waits outside SDK access.
+- Opt-in command-driven map streaming through `CswMapStreamerHost`, with an ordered owned-buffer inbox, main-thread command consumption, and explicit native session teardown.
+- Double-precision global camera snapshots, native camera-relative occurrence transforms, and a Unity hierarchy keyed by native node identity and the full unsigned 64-bit PathID.
+- Presentation adapters for foliage, terrain-detail shading, and streaming diagnostics while retaining the legacy streaming path.
+- Command-consumer, occurrence-identity, camera-snapshot, native texture-revision/lease, real GPU/shader, and injected real-map lifecycle regression fixtures.
+- Repeated real-map clear/reload and stop/start regression with retained native output, forced finalization, and assertions for drained buffers and released Unity resources.
 - Clickable `setup.bat` and Git Bash `setup.sh` entry points for the locked .NET dependency-staging workflow.
 - Parallel locked NuGet-to-Unity staging for `CSW.SceneManager` and GizmoSDK dependencies, with Windows x64 native validation, deterministic Unity plugin metadata, platform capability reporting, and owned cleanup.
 - Lightweight per-frame and accumulated diagnostics for streamed mesh and texture counts, payload sizes, and build times.
@@ -18,6 +26,9 @@ described with adjustments and template in [TSWiki](https://tswiki.corp.saab.se/
 - Deterministic benchmark camera progression with configurable, uniformly spaced route samples and duration and sample-throughput reporting.
 
 ### Changed
+- Command-lane resource publication uses mesh/state source-user indices instead of scanning every scene occurrence, including dependent states sharing refreshed textures and balanced cleanup on pooling.
+- Prepared the opt-in ExampleScene host for the selected local Stensholm map, with Inspector-owned map settings, and documented command-lane activation and isolated same-version debug dependency staging without changing the accepted package baseline.
+- The Phase 1 command-driven lane uses matching local `CSW.SceneManager` and `cswSceneManager` packages `1.1.1.1-phase1.20261022.204509`, retaining the exact GizmoSDK `2.12.347.1` dependency baseline and requiring the matching managed, native, and bridge build.
 - Established **CSW Map Streamer** (`csw-map-streamer`) as the name of the new generation while retaining existing `com.saab.map-streamer` identifiers during incremental migration.
 - Upgraded to Unity 6000.3.5f2
 - Updated the staged dependency baseline to CSW.SceneManager 1.1.1.1 and GizmoSDK 2.12.347.1.
@@ -28,6 +39,15 @@ described with adjustments and template in [TSWiki](https://tswiki.corp.saab.se/
 - Scene hierarchies are recycled in post-order to avoid repeatedly moving transform subtrees while streamed nodes are released.
 
 ### Fixed
+- The private performance-validation dependency closure includes the GizmoSDK shutdown correction: deallocator joins no longer retain global graph EDIT access, preventing a captured real-map reload/shutdown deadlock while preserving guarded cleanup. The historical phase-1 setup baseline is unchanged.
+- The non-waiting command lane now requires the matching CSW native thread-safe command/buffer reference cohort, preventing cross-thread lost references and native fast-fail without reintroducing global graph-lock waits. Document the isolated complete-cohort staging path separately from the historical phase-1 lock.
+- Command-lane translation now presents the latest double global pose as a small camera offset from the committed native reference. ROI transforms and the camera rebase together without a visible catch-up step, while terrain and shader origins remain coherent.
+- Command-lane camera rotation now follows the latest input every Unity frame instead of freezing until native EndFrame. Committing an older streaming frame preserves newer live rotation and the matching scene/shader reference.
+- Command-lane Tick no longer waits for SDK graph access when submitting controls or polling output. Camera controls and refresh are queued with one trigger, and ordered frame changes share a non-waiting buffer-lock slice without retaining locks between Unity frames.
+- Native command callbacks remain registered across full platform shutdown/reinitialization and collection of earlier managed lifetimes.
+- Invalid occurrence transforms are rejected before allocating or consuming pooled Unity handles.
+- Foliage placement shares GPU resources through balanced leases and releases temporary allocations when setup fails.
+- Switching optional modules to command-driven presentation detaches the previous event source before clearing its legacy reference.
 - Streamed color textures now respect the project's active Gamma or Linear color space, avoiding rejected uploads in Gamma projects while keeping feature and height textures non-sRGB.
 - RGB24 map textures no longer become magenta on Direct3D 11 when native three-channel sampling is unsupported.
 - Failed Unity texture construction no longer counts as a successful texture-cache creation.
