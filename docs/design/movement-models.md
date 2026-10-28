@@ -243,14 +243,23 @@ The movement service exposes:
 
 ## Migration
 
-- `CameraControlBase` becomes a rig/SceneManager camera adapter.
-- Direct input in `CameraControl` and `CameraInputHandler` moves to input
-  adapters.
-- Free-flight behavior moves to `FreeFlightModel`.
-- map pan, orbit, and zoom behavior in `GeodeticCameraControl` moves to the
-  geodetic navigation model.
-- Direct synchronous map queries move to the asynchronous query service.
-- `CameraShaderUpdater` moves to the shared coordinate/render service.
+The legacy camera classes were removed in 5.0, before these services existed.
+Their last implementation is available at commit
+[`53751d5`](https://saab.ghe.com/saab/CSWUnity/tree/53751d5cd83cd95efa532a141d5339322dda1a86/com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer).
+
+- `CameraBridge` replaced `CameraControlBase` as the SceneManager camera
+  adapter.
+- Free flight is provided by the host's `FlightInput` through `CameraBridge`
+  and moves to `FreeFlightModel`.
+- Direct input in the removed `CameraControl` and `CameraInputHandler` moves to
+  input adapters.
+- Map pan, orbit, and zoom behavior of the removed `GeodeticCameraControl` is
+  reimplemented in the geodetic navigation model.
+- Direct synchronous map queries are replaced by the asynchronous query
+  service.
+- The camera-relative shader globals formerly written by `CameraShaderUpdater`
+  are written by `CameraBridge` and move to the shared coordinate/render
+  service.
 
 ## Related documentation
 

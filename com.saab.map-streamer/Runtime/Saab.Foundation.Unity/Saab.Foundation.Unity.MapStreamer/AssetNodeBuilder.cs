@@ -15,10 +15,10 @@
 // Export Control:		NOT EXPORT CONTROLLED
 //
 //
-// File			: NodeGeometryHelper.cs
+// File			: AssetNodeBuilder.cs
 // Module		:
 // Description	: Helper class for vertice updates
-// Author		: Anders Modén
+// Author		: Anders ModÃ©n
 // Product		: Gizmo3D 2.12.326
 //
 // NOTE:	Gizmo3D is a high performance 3D Scene Graph and effect visualisation 
@@ -31,36 +31,14 @@
 // Who	Date	Description
 //
 // ZJP	240821	Created file                                        (2.12.171)
+// AMO	261028	Removed legacy state resource building; kept the command-driven static mesh feature.	(2.12.327)
 //
 //******************************************************************************
-
-using UnityEngine;
 
 namespace Saab.Foundation.Unity.MapStreamer
 {
     public class AssetNodeBuilder : GeometryBuilderBase
     {
         public override PoolObjectFeature Feature => PoolObjectFeature.StaticMesh;
-
-        protected override bool CreateStateNodeResources(NodeHandle stateNode)
-        {
-            // check if the state has already been loaded
-            if (stateNode.stateLoadInfo.HasFlag(StateLoadInfo.Texture))
-                return true;
-
-            var state = stateNode.node.State;
-
-            if (!StateHelper.Build(state, out Texture2D buildOutput, _textureManager))
-            {
-                state.ReleaseAlreadyLocked();
-                return false;
-            }
-
-            stateNode.stateLoadInfo |= StateLoadInfo.Texture;
-            stateNode.texture = buildOutput;
-
-            state.ReleaseAlreadyLocked();
-            return true;
-        }
     }
 }

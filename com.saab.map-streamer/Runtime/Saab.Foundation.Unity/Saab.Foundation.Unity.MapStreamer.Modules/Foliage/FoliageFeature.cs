@@ -17,6 +17,7 @@
  * Who	Date	Description
  *
  * AMO	261022	Added shared placement ownership and copied presentation inputs.	(2.12.327)
+ * AMO	261028	Removed the legacy NodeHandle placement overload and its map-based basis.	(2.12.327)
  */
 
 using UnityEngine;
@@ -28,7 +29,6 @@ using ProfilerMarker = global::Unity.Profiling.ProfilerMarker;
 using ProfilerCategory = global::Unity.Profiling.ProfilerCategory;
 using System.Runtime.InteropServices;
 using Saab.Unity.Extensions;
-using Saab.Foundation.Map;
 using Saab.Foundation.Unity.MapStreamer.Csw;
 
 namespace Saab.Foundation.Unity.MapStreamer.Modules
@@ -226,28 +226,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             }
         }
 
-        /// <summary>Adds placement using transferred GPU resources and borrowed terrain inputs.</summary>
-        /// <remarks>
-        /// Call on the Unity main thread. The pixel buffer and RenderTexture fallback transfer
-        /// to placement leases; the node and its terrain textures remain borrowed.
-        /// </remarks>
-        public bool AddFoliage(GameObject go, NodeHandle node, ComputeBuffer pixelToObject, Texture surfaceHeight = null)
-        {
-            var terrain = new TerrainPresentationData(
-                new StateBuildOutput
-                {
-                    Texture = node.texture,
-                    Feature = node.feature,
-                    SurfaceHeight = node.surfaceHeight,
-                    Feature_homography = node.featureInfo
-                },
-                node.node.BoundaryCenter.ToVector3(),
-                LegacyLocalEunBasis(go),
-                Vector3.zero);
-            using (var resources = new FoliagePlacementLease(pixelToObject, surfaceHeight as RenderTexture))
-                return AddFoliage(go, terrain, resources, surfaceHeight);
-        }
-
         internal bool AddFoliage(GameObject go, TerrainPresentationData terrain, FoliagePlacementLease resources, Texture fallbackHeight = null)
         {
             if (resources.PixelToObject == null)
@@ -436,28 +414,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             public static readonly int FoliageCount = Shader.PropertyToID("FoliageCount");
             public static readonly int ScreenCoverage = Shader.PropertyToID("ScreenCoverage");
             public static readonly int NearCullDistance = Shader.PropertyToID("NearCullDistance");
-        }
-
-        internal static Matrix4x4 LegacyLocalEunBasis(GameObject go)
-        {
-            if (!go.TryGetComponent<NodeHandle>(out var handle))
-                return Matrix4x4.identity;
-
-            var center = handle.node.BoundaryCenter;
-            MapControl.SystemMap.GlobalToWorld(center, out GizmoSDK.Coordinate.LatPos latPos);
-
-            var matrix = Matrix4x4.Translate(-center.ToVector3());
-            var pos = new MapPos();
-            pos.SetLatPos(latPos.Latitude, latPos.Longitude, latPos.Altitude);
-            var enu = pos.EnuToLocal();
-
-            var east = enu * new Vec3(1, 0, 0);
-            var north = enu * new Vec3(0, 1, 0);
-            var up = enu * new Vec3(0, 0, 1);
-
-            var eunBasis = MapUtil.FromBasis((east.ToVector3()), (up.ToVector3()), -(north.ToVector3()));
-
-            return eunBasis;
         }
 
         private static readonly ProfilerMarker _hiZProfilerMarker =

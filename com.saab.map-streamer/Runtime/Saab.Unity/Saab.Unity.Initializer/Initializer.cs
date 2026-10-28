@@ -31,6 +31,7 @@
 // Who	Date	Description
 //
 // AMO	180607	Created file        (2.9.1)
+// AMO	261028	Removed legacy SceneManager camera and map URL wiring.	(2.12.327)
 //
 //******************************************************************************
 
@@ -44,7 +45,6 @@
 
 using GizmoSDK.GizmoBase;
 using UnityEngine;
-using Saab.Foundation.Unity.MapStreamer;
 
 
 namespace Saab.Unity.Initializer
@@ -159,17 +159,6 @@ namespace Saab.Unity.Initializer
             //test();
 
 #endregion
-
-            // Set up scene manager camera
-
-            SceneManager scenemanager = FindFirstObjectByType<SceneManager>();
-            CameraControlBase cameracontrol = FindFirstObjectByType<CameraControlBase>();
-
-            scenemanager.MapUrl = KeyDatabase.GetDefaultUserKey("SceneManager/MapUrl", scenemanager.MapUrl);
-
-            //scenemanager.MapUrl()
-
-            scenemanager.SceneManagerCamera = cameracontrol;
 
         }
 

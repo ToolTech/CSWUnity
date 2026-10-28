@@ -32,6 +32,7 @@
 //
 // ZJP	200625	Created file                                        (2.10.6)
 // ZJP	261009	Use GeometryExport to write directly to Unity mesh data (2.12.345)
+// AMO	261028	Recorded mesh builds in the shared build diagnostics after removing the legacy SceneManager.	(2.12.327)
 //
 //******************************************************************************
 
@@ -141,7 +142,7 @@ namespace Saab.Foundation.Unity.MapStreamer
                     out var dataBytes);
                 if (result)
                 {
-                    SceneManager.RecordMeshBuild(
+                    BuildDiagnostics.RecordMesh(
                         dataBytes,
                         System.Diagnostics.Stopwatch.GetTimestamp() -
                         startTimestamp);

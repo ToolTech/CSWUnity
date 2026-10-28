@@ -16,7 +16,7 @@
 //
 //
 // File			: AssemblyInfo.cs
-// Module		: Saab.Foundation.Map.Manager
+// Module		: Saab.Foundation.Unity.MapStreamer
 // Description	: Information about assembly as library
 // Author		: Anders Modén		
 // Product		: Gizmo3D 2.12.326
@@ -31,21 +31,26 @@
 // Who	Date	Description						
 //									
 // AMO	180301	Created file 	
+// AMO	261028	Moved to the MapStreamer assembly root and granted test assemblies internal access.	(2.12.327)
 //******************************************************************************
 
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
+[assembly: InternalsVisibleTo("Saab.Application.Unity.MapEditor.Tests.EditMode")]
+[assembly: InternalsVisibleTo("MAPSTREAMER.TESTS")]
+[assembly: InternalsVisibleTo("MAPSTREAMER.PLAYMODE.TESTS")]
+
 #if !UNITY
 // General Information about an assembly is controlled through the following
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("Saab.Foundation.Map.Manager")]
+[assembly: AssemblyTitle("Saab.Foundation.Unity.MapStreamer")]
 [assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
-[assembly: AssemblyProduct("Saab.Foundation.Map.Manager")]
+[assembly: AssemblyProduct("Saab.Foundation.Unity.MapStreamer")]
 [assembly: AssemblyCopyright("Copyright SAAB AB")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]

@@ -4,7 +4,7 @@ This directory contains the functional design of CSWUnity features.
 
 ## Designs
 
-- [Current architecture](current-architecture.md)
+- [Removed legacy architecture](current-architecture.md)
 - [Next-generation architecture](next-generation-architecture.md)
 - [Scene control and threaded realization](scene-control-and-threading.md)
 - [Synthetic world](synthetic-world.md)

@@ -18,6 +18,8 @@
 // AMO	261023	Covered foreign SDK lock contention, frame input batches and unlocked slice publication.	(2.12.327)
 // AMO	261023	Covered live pose, two-ROI reference continuity and map reset during foreign SDK ownership.	(2.12.327)
 // AMO	261026	Covered Omni input, notification handoff, fence-bounded draining and synchronized camera projection.	(2.12.327)
+// AMO	261028	Covered CSWUnreal-compatible Omni defaults.	(2.12.327)
+// AMO	261028	Removed the legacy NodeHandle check.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -131,7 +133,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			Assert.That(childHandle.IsLocallyActive, Is.True);
 			Assert.That(childHandle.gameObject.activeSelf, Is.False);
 			Assert.That(childHandle.gameObject.activeInHierarchy, Is.False);
-			Assert.That(parentHandle.gameObject.GetComponent<NodeHandle>(), Is.Null);
 		}
 
 		[Test]
@@ -423,13 +424,13 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 		}
 
 		[Test]
-		public void CameraOptionsPreserveAsynchronousFrustumDefaults()
+		public void CameraOptionsDefaultToCswUnrealOmniWithAsynchronousFrames()
 		{
-			Assert.That(SceneManagerSettings.Default.OmniView, Is.False);
+			Assert.That(SceneManagerSettings.Default.OmniView, Is.True);
 			Assert.That(SceneManagerSettings.Default.SynchronizeFrames, Is.False);
 			using (var manager = new MapManager(_scene, Array.Empty<GeometryBuilderBase>()))
 			{
-				Assert.That(manager.OmniView, Is.False);
+				Assert.That(manager.OmniView, Is.True);
 				Assert.That(manager.SynchronizeFrames, Is.False);
 				Assert.That(manager.FrameWaitTimeout, Is.GreaterThan(TimeSpan.Zero));
 			}

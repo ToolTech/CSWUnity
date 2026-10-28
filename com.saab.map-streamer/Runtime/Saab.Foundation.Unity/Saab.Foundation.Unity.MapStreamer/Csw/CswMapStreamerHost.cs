@@ -7,7 +7,7 @@
 // Export Control:		NOT EXPORT CONTROLLED
 //
 // File			: CswMapStreamerHost.cs
-// Description	: Explicit opt-in host for CSW command-driven map streaming
+// Description	: Host for CSW command-driven map streaming
 // Product		: Gizmo3D 2.12.326
 //
 // Revision History...
@@ -17,6 +17,7 @@
 // AMO	261022	Added opt-in command-driven host ownership and explicit platform teardown.	(2.12.327)
 // AMO	261023	Presented the latest camera pose before post-presentation callbacks.	(2.12.327)
 // AMO	261026	Applied native traversal settings and optional LateUpdate frame synchronization before rendering.	(2.12.327)
+// AMO	261028	Removed the legacy lane; the host starts in Start and prefers its MapUrl over config.xml.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -28,24 +29,25 @@ using UnityEngine.Rendering;
 
 namespace Saab.Foundation.Unity.MapStreamer.Csw
 {
-	/// <summary>Owns the opt-in command-driven session and its Unity presentation lifetime.</summary>
+	/// <summary>Owns the command-driven map streaming session and its Unity presentation lifetime.</summary>
 	/// <remarks>
+	/// Starts in Start unless a caller has already started it, stops when disabled and restarts when re-enabled.
+	/// The map URL is the explicit StartStreaming argument, otherwise MapUrl, otherwise SceneManager/MapUrl in config.xml.
 	/// Start and stop on the Unity main thread. Assigned Unity components are borrowed.
 	/// Manager, Scene and Coordinates are host-owned views; callers must not dispose them.
 	/// </remarks>
 	[DefaultExecutionOrder(-2000)]
 	public sealed class CswMapStreamerHost : MonoBehaviour
 	{
-		[SerializeField]
-		private bool _useCommandLane;
 		public Camera ViewCamera;
 		public UnityEngine.Transform TargetParent;
 		public GeometryBuilderBase[] Builders = Array.Empty<GeometryBuilderBase>();
-		public Behaviour[] LegacyComponents = Array.Empty<Behaviour>();
 		public FoliageModule Foliage;
 		public MapShadingModule TerrainShading;
 		public StreamingDiagnosticsOverlay Diagnostics;
+		[Tooltip("Map URL to stream. When empty, SceneManager/MapUrl in config.xml is used.")]
 		public string MapUrl = "";
+		[Tooltip("Apply config.xml overrides such as SceneManager/DynamicLoaders. An empty MapUrl always uses config.xml.")]
 		public bool ReadConfiguration = true;
 		public SceneManagerSettings Settings = SceneManagerSettings.Default;
 		[Min(1)]
@@ -60,7 +62,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 
 		private bool _cswInitialized;
 		private bool _coordinateInitialized;
-		private bool _awakeComplete;
+		private bool _startCalled;
 		private bool _stopping;
 		private bool _streaming;
 
@@ -68,18 +70,17 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		public UnityScene Scene { get; private set; }
 		public SceneCoordinateContext Coordinates { get; private set; }
 		public CameraBridge Camera { get; private set; }
-		public bool UseCommandLane => _useCommandLane;
 
-		private void Awake()
+		private void Start()
 		{
-			if (_useCommandLane)
+			_startCalled = true;
+			if (Manager == null)
 				TryStart();
-			_awakeComplete = true;
 		}
 
 		private void OnEnable()
 		{
-			if (_awakeComplete && _useCommandLane && Manager == null)
+			if (_startCalled && Manager == null)
 				TryStart();
 		}
 
@@ -97,6 +98,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		}
 
 		/// <summary>Starts owned native platforms and scene resources using borrowed Unity components.</summary>
+		/// <param name="mapUrl">Explicit map URL. When blank, MapUrl and then SceneManager/MapUrl in config.xml are used.</param>
 		public void StartStreaming(string mapUrl = null)
 		{
 			if (Manager != null)
@@ -105,11 +107,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 				throw new InvalidOperationException("Assign the host's Unity camera explicitly.");
 			if (Builders == null || Builders.Length == 0)
 				throw new InvalidOperationException("Assign at least one geometry builder.");
-
-			_useCommandLane = true;
-			foreach (var component in LegacyComponents)
-				if (component && component != this)
-					component.enabled = false;
 
 			try
 			{
@@ -122,9 +119,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 
 				if (ReadConfiguration)
 					KeyDatabase.SetLocalRegistry("config.xml");
-				var url = !string.IsNullOrWhiteSpace(mapUrl) ? mapUrl : MapUrl;
-				if (string.IsNullOrWhiteSpace(url) && ReadConfiguration)
-					url = KeyDatabase.GetDefaultUserKey("SceneManager/MapUrl", "");
+				var url = ResolveMapUrl(mapUrl, MapUrl, ReadConfiguredMapUrl);
 				var loaders = ReadConfiguration
 					? KeyDatabase.GetDefaultUserKey("SceneManager/DynamicLoaders", (uint)Settings.DynamicLoaders)
 					: Settings.DynamicLoaders;
@@ -140,15 +135,11 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 				if (Foliage)
 				{
 					Foliage.SetPresentation(Scene);
-					Foliage.SceneManager = null;
 					if (Foliage.HiZDepthPyramid)
 						Foliage.HiZDepthPyramid.TargetCamera = ViewCamera;
 				}
 				if (TerrainShading)
-				{
 					TerrainShading.SetPresentation(Scene);
-					TerrainShading.SceneManager = null;
-				}
 				if (Diagnostics)
 					Diagnostics.SetProvider(Scene);
 				Manager = new MapManager(Scene, Builders, loaders)
@@ -175,6 +166,28 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		{
 			if (Coordinates.IsConfigured)
 				Camera.InitializeFromMap(InitialAltitude);
+		}
+
+		/// <summary>Returns the explicit URL, otherwise the component URL, otherwise the configured URL.</summary>
+		/// <remarks>The configuration reader is only invoked when both URLs are blank.</remarks>
+		internal static string ResolveMapUrl(string explicitUrl, string componentUrl, Func<string> readConfiguredUrl)
+		{
+			if (!string.IsNullOrWhiteSpace(explicitUrl))
+				return explicitUrl;
+			if (!string.IsNullOrWhiteSpace(componentUrl))
+				return componentUrl;
+			var url = readConfiguredUrl();
+			if (string.IsNullOrWhiteSpace(url))
+				throw new InvalidOperationException(
+					"No map URL: set MapUrl on the host or SceneManager/MapUrl in config.xml.");
+			return url;
+		}
+
+		private string ReadConfiguredMapUrl()
+		{
+			if (!ReadConfiguration)
+				KeyDatabase.SetLocalRegistry("config.xml");
+			return KeyDatabase.GetDefaultUserKey("SceneManager/MapUrl", "");
 		}
 
 		/// <summary>Replaces the current map session and resets the stored global camera pose.</summary>
@@ -310,8 +323,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 
 		private void OnDisable()
 		{
-			if (_useCommandLane)
-				StopStreaming();
+			StopStreaming();
 		}
 
 		private void OnDestroy()

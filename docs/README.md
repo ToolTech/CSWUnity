@@ -28,13 +28,16 @@ runtime dependency of CSWUnity.
 
 ## Architecture status
 
-- The code currently in this repository contains the existing Saab Unity
-  `SceneManager`, builder, pooling, and optional shader-module architecture.
-- The target architecture replaces the direct Unity-owned streaming core with
-  the C# CSW SceneManager while retaining proven Unity realization patterns
-  where they remain suitable.
-- Requirements describe the target architecture. Current implementation
-  details are documented separately as migration input.
+- Streaming runs through the command-driven `CswMapStreamerHost`. The C# CSW
+  SceneManager owns map loading, traversal and LOD selection, and CSWUnity
+  realizes its ordered commands with the retained builder, pooling and optional
+  shader-module patterns.
+- The former Unity-owned `SceneManager` lane, its camera controllers and node
+  utilities were removed in 5.0. They are recorded in
+  [Removed legacy architecture](design/current-architecture.md) as migration
+  input.
+- Requirements describe the target architecture. Phase 1 does not yet replace
+  the removed geodetic navigation and synchronous map queries.
 
 ## Documentation principles
 

@@ -17,6 +17,7 @@
 // AMO	261022	Command-lane map, camera and lifecycle acceptance	(2.12.327)
 // AMO	261023	Repeated real-map queued-output and platform lifetimes	(2.12.327)
 // AMO	261026	Verified synchronized Omni/frustum rendering, runtime switches, projection cleanup and timeout faults.	(2.12.327)
+// AMO	261028	Removed legacy-lane checks and covered Start with the component MapUrl.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -77,6 +78,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			Capture("empty");
 			_hostObject = new GameObject("Acceptance host");
 			_host = _hostObject.AddComponent<CswMapStreamerHost>();
+			_host.enabled = false;
 			_host.ViewCamera = _camera;
 			_host.ReadConfiguration = false;
 			_host.FlightInput = false;
@@ -139,20 +141,13 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 				Assert.Inconclusive("Set CSWUNITY_TEST_MAP to a published GZD fixture URL to run real-map acceptance.");
 			var example = Environment.GetEnvironmentVariable("CSWUNITY_TEST_SCENE");
 			if (string.IsNullOrWhiteSpace(example))
-				_host.StartStreaming(url);
+				StartHost(url);
 			else
 				yield return StartInjectedExampleComposition(example, url);
 			GC.Collect();
 			GC.WaitForPendingFinalizers();
 			if (_exampleScene.IsValid())
 			{
-				Assert.That(_host.LegacyComponents.Length, Is.EqualTo(8));
-				foreach (var component in _host.LegacyComponents)
-				{
-					Assert.That(component, Is.Not.Null);
-					Assert.That(component.enabled, Is.False);
-					Object.Destroy(component);
-				}
 				Assert.That(_host.Foliage.Presentation, Is.SameAs(_host.Scene));
 				Assert.That(_host.TerrainShading.Presentation, Is.SameAs(_host.Scene));
 				if (_host.Foliage.HiZDepthPyramid)
@@ -283,8 +278,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 				{
 					_host = scene.GetRootGameObjects()
 						.SelectMany(root => root.GetComponentsInChildren<CswMapStreamerHost>(true)).Single();
-					Assert.That(_host.UseCommandLane, Is.False, "The shipped example must retain its legacy default.");
-					Assert.That(_host.Manager, Is.Null);
+					Assert.That(_host.Manager, Is.Null, "Scene-load callbacks must be able to configure the host before Start.");
 					_host.ReadConfiguration = false;
 					_host.FlightInput = false;
 					_camera = _host.ViewCamera;
@@ -308,7 +302,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 				if (loadError != null)
 					throw loadError;
 				Assert.That(_exampleScene.IsValid() && _exampleScene.isLoaded, Is.True);
-				TestContext.WriteLine($"Example scene composition={path}; legacy components are disabled at runtime only.");
+				TestContext.WriteLine($"Example scene composition={path}; the host was started explicitly before Start.");
 			}
 			finally { UnityEngine.SceneManagement.SceneManager.sceneLoaded -= configure; }
 #else
@@ -325,7 +319,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 				Assert.Inconclusive("Set CSWUNITY_TEST_MAP to a published GZD fixture URL to run real-map acceptance.");
 			var example = Environment.GetEnvironmentVariable("CSWUNITY_TEST_SCENE");
 			if (string.IsNullOrWhiteSpace(example))
-				_host.StartStreaming(url);
+				StartHost(url);
 			else
 				yield return StartInjectedExampleComposition(example, url);
 			const int cycles = 8;
@@ -380,7 +374,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 				Assert.Inconclusive("Set CSWUNITY_TEST_MAP to run synchronized camera acceptance.");
 			var example = Environment.GetEnvironmentVariable("CSWUNITY_TEST_SCENE");
 			if (string.IsNullOrWhiteSpace(example))
-				_host.StartStreaming(url);
+				StartHost(url);
 			else
 				yield return StartInjectedExampleComposition(example, url);
 			yield return WaitFor(() => _host.Manager.CompletedFrames >= 3 &&
@@ -449,7 +443,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			var url = Environment.GetEnvironmentVariable("CSWUNITY_TEST_MAP");
 			if (string.IsNullOrWhiteSpace(url))
 				Assert.Inconclusive("Set CSWUNITY_TEST_MAP to run synchronization timeout acceptance.");
-			_host.StartStreaming(url);
+			StartHost(url);
 			yield return WaitFor(() => _host.Manager.CompletedFrames >= 3 &&
 				ActiveRenderers().Any(), "timeout baseline");
 			_host.Manager.SynchronizeFrames = true;
@@ -481,10 +475,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 		[UnityTest]
 		public IEnumerator MissingMapFailsExplicitlyAndAStoppedHostCanBeStoppedAgain()
 		{
-			Assert.That(_host.UseCommandLane, Is.False);
+			const string missing = "file:///CSWUnity-nonexistent-fixture/map.gzd";
 			Assert.That(_host.Manager, Is.Null);
-			var legacy = _cameraObject.AddComponent<CameraControl>();
-			_host.LegacyComponents = new Behaviour[] { legacy };
 			var foliage = _hostObject.AddComponent<FoliageModule>();
 			foliage.enabled = false;
 			var shading = _hostObject.AddComponent<MapShadingModule>();
@@ -497,11 +489,15 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			foliage.HiZDepthPyramid = hiZ;
 			_host.Foliage = foliage;
 			_host.TerrainShading = shading;
+			_host.MapUrl = missing;
 			var sentinel = new Vector4(41, 43, 47, 0);
 			Shader.SetGlobalVector("_WorldOffset", sentinel);
 			LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("CSW Map Streamer:"));
-			_host.StartStreaming("file:///CSWUnity-nonexistent-fixture/map.gzd");
-			Assert.That(legacy.enabled, Is.False, "Assigned legacy writers must stop before the native session starts.");
+			_host.enabled = true;
+			Assert.That(_host.Manager, Is.Null, "OnEnable must leave the first start to Start.");
+			yield return null;
+			Assert.That(_host.Manager, Is.Not.Null, "Start must start the host from its MapUrl.");
+			Assert.That(_host.Manager.MapUrl, Is.EqualTo(missing));
 			Assert.That(foliage.Presentation, Is.SameAs(_host.Scene));
 			Assert.That(shading.Presentation, Is.SameAs(_host.Scene));
 			Assert.That(foliage.Presentation.Camera, Is.SameAs(_camera));
@@ -516,12 +512,18 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			Assert.That(_host.Manager.PendingBuffers, Is.Zero);
 			Assert.That(_host.Scene.InstanceCount, Is.Zero);
 			Assert.That(Shader.GetGlobalVector("_WorldOffset"), Is.EqualTo(sentinel),
-				"The disabled legacy camera must not overwrite command-lane shader globals on later frames.");
+				"A faulted session without map coordinates must not publish shader globals.");
 			_host.StopStreaming();
 			_host.StopStreaming();
+			Assert.That(_host.Manager, Is.Null);
 			Assert.That(foliage.Presentation, Is.Null);
 			Assert.That(shading.Presentation, Is.Null);
-			Assert.That(legacy.enabled, Is.False, "Stopping must not silently reenable legacy scene ownership.");
+		}
+
+		private void StartHost(string url)
+		{
+			_host.enabled = true;
+			_host.StartStreaming(url);
 		}
 
 		private IEnumerable<SceneInstanceHandle> ActiveRenderers()

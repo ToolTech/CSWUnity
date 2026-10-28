@@ -358,4 +358,4 @@ implementation and performance profile.
 
 - [Scene control requirements](../requirements/scene-control.md)
 - [Next-generation architecture](next-generation-architecture.md)
-- [Current architecture](current-architecture.md)
+- [Removed legacy architecture](current-architecture.md)

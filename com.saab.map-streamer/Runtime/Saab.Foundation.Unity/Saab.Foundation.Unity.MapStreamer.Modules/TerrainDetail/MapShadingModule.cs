@@ -17,6 +17,7 @@
  * Who	Date	Description
  *
  * AMO	261022	Added borrowed presentation adapters and explicit module resource teardown.	(2.12.327)
+ * AMO	261028	Removed the legacy SceneManager source; shading follows the command-driven presentation only.	(2.12.327)
  */
 
 using UnityEngine;
@@ -79,7 +80,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
     public class MapShadingModule : MonoBehaviour
     {
-        public SceneManager SceneManager;
         public IScenePresentation Presentation { get; private set; }
         private bool _initialized;
         private bool _subscribed;
@@ -159,7 +159,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                 InitMapModules();
                 return;
             }
-            if (SceneManager == null && Presentation == null)
+            if (Presentation == null)
                 return;
 
             _enableDetailedTextures = GfxCaps.CurrentCaps.HasFlag(Capability.UseTerrainDetailTextures);
@@ -193,7 +193,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                 InitMapModules();
                 return;
             }
-            if ((SceneManager || Presentation != null) && _enableDetailedTextures)
+            if (Presentation != null && _enableDetailedTextures)
             {
                 InitDetailTexturing();
                 _initialized = true;
@@ -203,18 +203,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         private void InitMapModules()
         {
-            if (_subscribed)
+            if (_subscribed || Presentation == null)
                 return;
-            if (Presentation != null)
-            {
-                Presentation.OnNewTerrain += SceneManager_OnNewTerrain;
-                _subscribed = true;
-            }
-            else if (SceneManager)
-            {
-                SceneManager.OnNewTerrain += SceneManager_OnNewTerrain;
-                _subscribed = true;
-            }
+            Presentation.OnNewTerrain += SceneManager_OnNewTerrain;
+            _subscribed = true;
         }
 
         private void Unsubscribe()
@@ -223,8 +215,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                 return;
             if (Presentation != null)
                 Presentation.OnNewTerrain -= SceneManager_OnNewTerrain;
-            else if (SceneManager)
-                SceneManager.OnNewTerrain -= SceneManager_OnNewTerrain;
             _subscribed = false;
         }
 
@@ -284,18 +274,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         private void SceneManager_OnNewTerrain(GameObject go, bool isAsset)
         {
-            if (Presentation != null)
-            {
-                if (!Presentation.TryGetTerrain(go, out var terrain) ||
-                    !terrain.Feature || !terrain.Texture)
-                    return;
-            }
-            else
-            {
-                if (!go.TryGetComponent<NodeHandle>(out var nodehandle) ||
-                    !nodehandle.feature || !nodehandle.texture)
-                    return;
-            }
+            if (Presentation == null ||
+                !Presentation.TryGetTerrain(go, out var terrain) ||
+                !terrain.Feature || !terrain.Texture)
+                return;
 
             if (!go.TryGetComponent<MeshRenderer>(out var meshRenderer))
                 return;

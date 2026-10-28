@@ -31,12 +31,11 @@
 // Who	Date	Description
 //
 // ZJP	240821	Created file                                        (2.12.171)
+// AMO	261028	Removed legacy state resource building; kept command-driven terrain selection.	(2.12.327)
 //
 //******************************************************************************
 
 using GizmoSDK.Gizmo3D;
-using System.Collections.Generic;
-using UnityEngine;
 
 namespace Saab.Foundation.Unity.MapStreamer
 {
@@ -48,57 +47,6 @@ namespace Saab.Foundation.Unity.MapStreamer
         {
             return (traversalState == TraversalState.None) &&
                 base.CanBuild(node, traversalState, intersectMask);
-        }
-
-        protected override bool CreateStateNodeResources(NodeHandle stateNode)
-        {
-            // check if the state has already been loaded
-            if (stateNode.stateLoadInfo.HasFlag(StateLoadInfo.Texture))
-                return true;
-
-            var state = stateNode.node.State;
-
-            if (!StateHelper.Build(state, out StateBuildOutput buildOutput, _textureManager))
-            {
-                state.ReleaseAlreadyLocked();
-                return false;
-            }
-
-            stateNode.stateLoadInfo |= StateLoadInfo.Texture;
-            stateNode.texture = buildOutput.Texture;
-            stateNode.feature = buildOutput.Feature;
-            stateNode.surfaceHeight = buildOutput.SurfaceHeight;
-            stateNode.featureInfo = buildOutput.Feature_homography;
-
-            state.ReleaseAlreadyLocked();
-            return true;
-        }
-
-        private readonly Dictionary<int, Material> _materials = new Dictionary<int, Material>();
-
-        protected override Material CreateMaterialFromState(NodeHandle stateNode)
-        {
-            // use fallback if no texture is available
-            if (!stateNode.texture)
-                return Instantiate(_fallbackMaterial);
-
-            var id = stateNode.texture.GetInstanceID();
-            if (!_materials.TryGetValue(id, out var material))
-            {
-                material = Instantiate(_material);
-                _materials.Add(id, material);
-            }
-
-            // main texture
-            material.mainTexture = stateNode.texture;
-
-            // feature
-            if (stateNode.feature)
-            {
-                material.SetTexture("_FeatureMap", stateNode.feature);
-            }
-
-            return material;
         }
     }
 }

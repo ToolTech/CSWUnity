@@ -1,6 +1,6 @@
 # Integrate CSWUnity into a host project
 
-**Status:** Implemented phase-1 opt-in composition; Windows x64
+**Status:** Implemented phase-1 composition; Windows x64
 
 ## Goal
 
@@ -9,9 +9,10 @@ existing geometry builders and optional rendering modules. The native
 `CSW.SceneManager` owns map traversal, loading, camera-relative transforms and
 scope activation; Unity realizes its ordered output.
 
-The existing `SceneManager` lane remains available. The new host's serialized
-command-lane option defaults to false, including in `ExampleScene`. Adding the
-component does not silently migrate an existing scene.
+`CswMapStreamerHost` is the package's only streaming lane. The former
+Unity-owned `SceneManager` component, its camera controllers and node utilities
+have been removed. Scenes that still reference them show missing scripts and
+must be recomposed with this host.
 
 ## Prerequisites
 
@@ -22,7 +23,7 @@ component does not silently migrate an existing scene.
 - A published GZD map from a compatible CSWMapGenerator version.
 - One Unity camera explicitly selected by the host application.
 
-The non-waiting command lane additionally requires native `cswCommandBuffer`
+The non-waiting host additionally requires native `cswCommandBuffer`
 and `cswSceneCommand` to derive from `gzThreadSafeReference`. The historical
 phase-1 pair predates this ownership fix. Use a complete matching rebuilt CSW
 core/bridge/header cohort as described in
@@ -59,61 +60,48 @@ GameObject and assign the following references explicitly:
 | `ViewCamera` | The one camera used for presentation, projection and camera-relative foliage culling. |
 | `Builders` | At least one configured existing geometry builder, including its material, shader and texture assets. |
 | `TargetParent` | Optional presentation parent. Its world transform must remain identity; otherwise the host's own transform must satisfy this requirement. |
-| `LegacyComponents` | Every legacy streaming, camera, input or shader-writer component that would compete with the new lane. |
 | `Foliage`, `TerrainShading`, `Diagnostics` | Optional existing components that receive the host's presentation/provider. |
-| `MapUrl`, `Settings` | Map and streaming settings when `ReadConfiguration` is false. |
+| `MapUrl` | The map to stream. When empty, `SceneManager/MapUrl` in `config.xml` is used. |
+| `ReadConfiguration` | Applies the other `config.xml` overrides, currently `SceneManager/DynamicLoaders`. |
+| `Settings` | Native traversal, frame synchronization, build budget, dynamic loaders and intersection mask. |
 
-Set `ReadConfiguration = false` for host-owned settings. With it enabled, the
-host reads `config.xml`, falls back to `SceneManager/MapUrl` for an empty map URL,
-and obtains the dynamic-loader setting from that configuration. Credentials
-remain host-owned and must not be committed with scene configuration.
+The host resolves the map URL each time it starts: a non-blank argument to
+`StartStreaming(url)`, otherwise `MapUrl`, otherwise `SceneManager/MapUrl` from
+`config.xml`. A URL entered in the component therefore takes precedence over the
+configuration; clear it to use `config.xml`. The configured URL is read even when
+`ReadConfiguration` is false. If neither source supplies a URL, startup fails
+with an error naming both. Credentials remain host-owned and must not be
+committed with scene configuration.
 
 `MaximumCommandsPerTick` and `Settings.MaxBuildTime` control main-thread
 publication work. Keep the existing builders' intersection masks and module
 assets appropriate for the map. Optional foliage and terrain shading are not
-required to start the core command lane.
+required to start streaming.
 
-### Disable competing legacy components
+### Keep one camera owner
 
-`StartStreaming()` disables the assigned `LegacyComponents` before native
-startup. Include the old `SceneManager`, camera adapters/controllers and shader
-writers, such as `CameraControl`, `GeodeticCameraControl`, `CameraInputHandler`,
-`CameraShaderUpdater` and `SceneManagerCamera`, when present. The opt-in
-`ExampleScene` demonstrates this explicit composition.
+While streaming, the host presents `ViewCamera`'s position and rotation every
+frame, and also its projection when frames are synchronized. Its `CameraBridge`
+is the only package writer of the `_WorldOffset` and `_LocalToEUN` shader
+globals. The host does not discover or disable other components: do not add a
+second controller that moves `ViewCamera` or another writer of those globals.
 
-There is no component discovery: another scene or a runtime-created writer
-omitted from the array can still compete for `_WorldOffset`, `_LocalToEUN` or
-camera updates. Supplying the complete list is the host application's
-responsibility.
-
-### Run the command lane in ExampleScene
+### Run ExampleScene
 
 The example project and package still use the `com.saab.map-streamer` directory
-and package identifier. Open `Assets\Scenes\ExampleScene.unity`, select the
-object containing `CswMapStreamerHost`, and enable **Use Command Lane** before
-entering Play mode. It is deliberately off in the saved default scene.
+and package identifier. Open `Assets\Scenes\ExampleScene.unity` and enter Play
+mode; the scene's `CswMapStreamerHost` starts streaming in `Start`.
 
-Set this host's **Map Url** to an accessible GZD file or URL, without surrounding
-quote characters. For an Inspector-owned map, disable **Read Configuration**.
-The host's map field is separate from the legacy `SceneManager.MapUrl` field;
-editing the legacy field does not configure the command lane. The current local
-debug scene prepares the host for the selected Stensholm map, but the path must
-be adjusted on other machines.
-
-With the command lane off, Play mode still starts the legacy components. A
-`Connection was refused` or `Failed to load map` message for the old HTTP demo
-URL means that map was not loaded; it is not evidence that the new command lane
-ran or that meshes failed to render.
-
-Stopping the command lane does not automatically re-enable these components or
-restore their former bindings. Compose a switch back to the legacy lane
-explicitly, after the command session has stopped.
+The saved scene sets **Map Url** to the local Stensholm map and disables
+**Read Configuration**. On other machines, set **Map Url** to an accessible GZD
+file or URL without surrounding quote characters, or clear it to use
+`SceneManager/MapUrl` from `config.xml`.
 
 ### Bind modules and Hi-Z to one camera
 
 The host installs its `UnityScene` presentation into the assigned foliage and
-terrain-shading modules and switches them away from legacy `SceneManager`
-events. Diagnostics receive the same provider.
+terrain-shading modules; they receive streamed terrain only through this
+presentation. Diagnostics receive the same provider.
 
 If foliage uses a depth pyramid, assign `Foliage.HiZDepthPyramid`. The host binds
 its `TargetCamera` to `ViewCamera`; do not run that foliage culling against a
@@ -133,18 +121,23 @@ map origin again, or move the presentation root to compensate for camera travel.
 
 ## Start and control the camera
 
-Choose one startup path:
+The host starts streaming in `Start`. Unity calls `Start` after every `Awake`
+in the loaded scene, including the `Initializer` that selects `config.xml`, and
+after `UnityEngine.SceneManagement.SceneManager.sceneLoaded` callbacks, so these
+can still assign references or `MapUrl`. A startup failure is logged and
+disables the component. Disabling the component stops streaming; enabling it
+again starts a new session with the current settings.
 
-- Enable the serialized command-lane option for automatic `Awake`/`OnEnable`
-  startup after the references are configured.
-- Leave automatic startup off and call `host.StartStreaming(mapUrl)` on the
-  Unity main thread after assigning the references. This is an explicit opt-in.
+To start with a URL known only at runtime, call `host.StartStreaming(mapUrl)` on
+the Unity main thread before the host's `Start`, for example from a
+`sceneLoaded` callback; `Start` then keeps that session. Calling
+`StartStreaming` while a session is running throws. To defer startup, save the
+component disabled and enable it when the application is ready.
 
 Observe `host.Manager.State`, `Error` and `CompletedFrames`, and the manager's
 `Failed`/`FrameCommitted` events. `Running` means a completed native frame has
 been consumed, not that every possible map tile is already loaded. Startup
-failures and command errors are surfaced; there is no silent fallback to the
-legacy lane.
+failures and command errors are surfaced; there is no silent fallback.
 
 `CameraBridge` stores a global double-precision native position and submits
 that pose to SceneManager. The scene's native ROI transforms, terrain metadata,
@@ -191,17 +184,23 @@ recursively call `RefreshSubtree` for camera motion.
 ### Choose native coverage and frame synchronization independently
 
 Both options are available in the host's `Settings` and can change at runtime.
-Their Unity defaults remain **false**, preserving asynchronous frustum traversal.
+`OmniView` defaults to **true**, like CSWUnreal; `SynchronizeFrames` defaults to
+**false**, preserving asynchronous presentation.
 
 | Setting | Effect |
 | --- | --- |
-| `OmniView` | Selects native SceneManager traversal in all directions instead of camera-frustum traversal. LOD selection, loading and activation remain native responsibilities. It does not disable Unity renderer culling. The legacy Unity lane also applies this setting. |
-| `SynchronizeFrames` | Command lane only. Completes the matching native camera frame before ordinary Unity rendering, then presents that frame's committed position, rotation and perspective projection rather than a newer desired pose. |
+| `OmniView` | Selects native SceneManager traversal in all directions instead of camera-frustum traversal. LOD selection, loading and activation remain native responsibilities. It does not disable Unity renderer culling. |
+| `SynchronizeFrames` | Completes the matching native camera frame before ordinary Unity rendering, then presents that frame's committed position, rotation and perspective projection rather than a newer desired pose. |
 
 `OmniView` uses the same `SceneCommandSetOmniTraverse` control as CSWUnreal.
-Unreal's default is true; Unity deliberately retains its previous false default.
-Omni traversal can increase work and does not guarantee that all map data is
-resident.
+With frustum traversal, native loads and activates only the map inside the
+SceneManager camera frustum. The Scene view and other cameras then show holes
+behind and beside the camera, and the main view shows holes while the camera
+turns, because the asynchronously presented pose leads the native frame. In
+Stensholm measurements, Omni removed every hole pixel, including during
+360°/s turns. Omni can increase work (about 50% more meshes at
+start-up) and does not guarantee that all map data is resident. Clear
+`OmniView` only when that cost matters more than coverage outside the view.
 
 With synchronization enabled, input still updates the bridge's desired pose
 without reading the SDK graph. All command pumping and camera sampling move to
@@ -244,7 +243,7 @@ explicitly. See the [graphical loop and lock discussion](../design/command-loop-
 
 ### Keep frame pacing host-owned
 
-The command lane does not change `Application.targetFrameRate`,
+The host does not change `Application.targetFrameRate`,
 `QualitySettings.vSyncCount` or the Windows swap-chain model. Choose these in
 the host application for its target display, independently of the streaming
 budget.
@@ -299,7 +298,7 @@ their copied local matrix and do not rebuild geometry.
 
 ## Command polling and triggers
 
-The default asynchronous command-lane Tick does not wait for the SDK's global scene lock.
+The default asynchronous Tick does not wait for the SDK's global scene lock.
 It opens the current owned output buffer with `TryLockEdit(0)`. If the lock is
 busy, it keeps the buffer and its unconsumed commands for a later Tick instead
 of spinning or waiting for a frame. The callback's borrowed edit access does
@@ -338,8 +337,8 @@ old producer. The current host opens one map at a time; the generic multi-map
 configuration workflow remains deferred.
 
 Call `host.StopStreaming()` before disposing host-owned scene dependencies.
-Repeated stop is supported. The host also stops during disable/destruction for
-the command lane.
+Repeated stop is supported. The host also stops when it is disabled or
+destroyed.
 
 Teardown stops submissions, calls native `Shutdown()` outside the edit lock and
 callbacks, releases owned queued commands/buffers and the receiver under edit

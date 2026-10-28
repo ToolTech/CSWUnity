@@ -129,12 +129,9 @@ GameObject:
   m_Component:
   - component: {fileID: 44396061}
   - component: {fileID: 44396060}
-  - component: {fileID: 44396059}
   - component: {fileID: 44396063}
   - component: {fileID: 44396062}
   - component: {fileID: 44396064}
-  - component: {fileID: 44396065}
-  - component: {fileID: 44396066}
   - component: {fileID: 44396067}
   m_Layer: 0
   m_Name: SceneManager
@@ -143,28 +140,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &44396059
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 44396058}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4247e51c3496f4042a0b4726f65a39a6, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  Settings:
-    MaxBuildTime: 0.016
-    MinBuildTime: 0.004
-    DynamicLoaders: 4
-    IntersectMask: -1
-    Options: 5
-  MapUrl: '"E:\Maps\swe_stensholm_250408\map.gzd"'
-  Builders:
-  - {fileID: 44396063}
-  - {fileID: 44396062}
 --- !u!114 &44396060
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -204,7 +179,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 25734977c93f1f341b6ba330af04bd14, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _mode: 0
   _fallbackMaterial: {fileID: 2100000, guid: aaa1d8c29d6c5924296633de6b87f492, type: 2}
   _material: {fileID: 2100000, guid: 7b3b84139d8f3354e927c3e2d99d2e53, type: 2}
   _mask: 2056
@@ -222,7 +196,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5c84d1050450b9341a37c586429c0448, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _mode: 0
   _fallbackMaterial: {fileID: 2100000, guid: aaa1d8c29d6c5924296633de6b87f492, type: 2}
   _material: {fileID: 2100000, guid: e252302673b0b904d9f60572efbe4cb4, type: 2}
   _mask: 6
@@ -240,42 +213,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f71310ed7d3c4a1f999e5f00ae933612, type: 3}
   m_Name: 
   m_EditorClassIdentifier: MAPSTREAMER::Saab.Foundation.Unity.MapStreamer.StreamingDiagnosticsOverlay
-  _sceneManager: {fileID: 44396059}
---- !u!114 &44396065
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 44396058}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 0c0db3da88904e1ea13132c620f30af6, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  _tests:
-  - {fileID: 44396066}
-  _testIterations: 1
-  _reloadMapBetweenTests: 0
-  _progressionMode: 0
-  _lapDurationSeconds: 15
-  _stepsPerLap: 2048
-  _measuredLaps: 5
-  _saveDiagnosticsToFile: 1
-  _altitudeMeters: 100
-  _mapMargin: 0.15
---- !u!114 &44396066
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 44396058}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 44c44330834c4db1acdb41e668730e7b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!114 &44396067
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -288,21 +225,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 676ad7b16be74a6e8b698c123b2d6432, type: 3}
   m_Name:
   m_EditorClassIdentifier:
-  _useCommandLane: 0
   ViewCamera: {fileID: 963194227}
   TargetParent: {fileID: 0}
   Builders:
   - {fileID: 44396063}
   - {fileID: 44396062}
-  LegacyComponents:
-  - {fileID: 44396059}
-  - {fileID: 44396060}
-  - {fileID: 44396065}
-  - {fileID: 44396066}
-  - {fileID: 963194229}
-  - {fileID: 963194230}
-  - {fileID: 963194231}
-  - {fileID: 963194232}
   Foliage: {fileID: 1692271385}
   TerrainShading: {fileID: 1692271382}
   Diagnostics: {fileID: 44396064}
@@ -310,10 +237,10 @@ MonoBehaviour:
   ReadConfiguration: 0
   Settings:
     MaxBuildTime: 0.004
-    MinBuildTime: 0.004
     DynamicLoaders: 4
     IntersectMask: -1
-    Options: 1
+    OmniView: 1
+    SynchronizeFrames: 0
   MaximumCommandsPerTick: 128
   InitialAltitude: 500
   FlightInput: 1
@@ -427,10 +354,6 @@ GameObject:
   - component: {fileID: 963194228}
   - component: {fileID: 963194227}
   - component: {fileID: 963194226}
-  - component: {fileID: 963194229}
-  - component: {fileID: 963194231}
-  - component: {fileID: 963194230}
-  - component: {fileID: 963194232}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -512,58 +435,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &963194229
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 963194225}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 563f2044a6acbbe44bdb61a8ec8857be, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  X: 0
-  Y: 0
-  Z: 0
---- !u!114 &963194230
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 963194225}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: ddba89c5eb31cba46a8ffd217e692e55, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
---- !u!114 &963194231
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 963194225}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f3003e6312915424fba43b556b607eac, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
---- !u!114 &963194232
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 963194225}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d469e7bad05d8544f874bcc4b7ca9f1e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  BaseLodFactorFieldOfView: 60
 --- !u!1 &1692271381
 GameObject:
   m_ObjectHideFlags: 0
@@ -595,7 +466,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0848deeba0da44043a72f971b1879eb9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  SceneManager: {fileID: 44396059}
   _enableDetailedTextures: 1
   _hueShiftInclusion: 0.4
   _targetHue: {r: 0.2546725, g: 0.5566038, b: 0.2546725, a: 1}
@@ -627,7 +497,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2c6e0776126240d4995d868b86fa45a1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  SceneManager: {fileID: 44396059}
   ComputeShader: {fileID: 7200000, guid: 658d4304a9fd9fe49bd7d3b0ede75fb1, type: 3}
   FoliageShader: {fileID: 4800000, guid: 068e6fbc052d17648b666532b330a5a7, type: 3}
   PerlinNoise: {fileID: 0}

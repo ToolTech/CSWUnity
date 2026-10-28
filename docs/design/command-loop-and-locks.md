@@ -226,9 +226,27 @@ De två valen är oberoende:
 | `OmniView` | Native traversal använder kamerans frustum. | Native traversal och LOD-val åt alla håll, som CSWUnreals Omni-val. Unity gör fortfarande sin egen renderculling. |
 | `SynchronizeFrames` | Budgeterad pump i Update; senaste önskade pose kan ligga före native-framen. | Pump och snapshot i LateUpdate; matchad frame fullbordas och dess pose/projektion presenteras. |
 
-Båda är **false som standard i Unity**. CSWUnreals Omni-standard är true.
-Omni-valet gäller även den äldre Unity-traversern; synkläget är command-lane-specifikt.
-Omni kan öka traversal-/byggarbetet och ersätter inte synkronisering.
+Båda ligger i värdens `Settings` och kan ändras i runtime. `OmniView` är
+**true som standard**, som i CSWUnreal; `SynchronizeFrames` är false.
+
+Med frustumtraversal laddar och aktiverar native bara kartan inom
+SceneManager-kamerans frustum. Mätt på Stensholm före borttagningen av
+legacy-lanet (150 m höjd, 60 °/s sväng, observatör ovanifrån med 1000 m radie
+runt kameran):
+
+| Lane | Läge | Huvudvy, max hålpixlar | Observatör, max hålpixlar |
+| --- | --- | --- | --- |
+| Legacy | Frustum | 0 | ~51 000 |
+| Command | Frustum | ~53 000 vid sväng, ~30 % av marken | ~52 000 |
+| Legacy och command | Omni | 0 | 0 |
+
+Det borttagna legacy-lanet traverserade synkront i samma frame och fyllde
+därför huvudvyn, men kartan bakom och bredvid kameran saknades ändå i
+Scene-vyn och i andra kameror. Command lane är asynkron: den presenterade
+kameran ligger före native-framen, så en sväng visar områden som ännu inte
+aktiverats. Omni gav 0 hål även vid 360 °/s.
+Omni kostar mer traversal-/byggarbete (~5 100 → ~7 800 meshar vid start) och
+ersätter inte synkronisering.
 
 ```mermaid
 flowchart TD
@@ -289,7 +307,7 @@ klara.** Synkläget kan ge extra latens eller bildtidssteg; det är ingen
 
 ```mermaid
 flowchart LR
-    subgraph OLD["Äldre Unity-vägen"]
+    subgraph OLD["Borttagna Unity-vägen (historik)"]
         direction TB
         O0["NodeBuilder / CanBuild"]
         O1["Builder.Build<br/>NodeHandle + aktiv State"]
@@ -313,10 +331,11 @@ flowchart LR
 
 - **Återanvänds:** builderval via `CanBuild`, intersectionmask, featuretyp,
   lager, material- och fallbackmallar samt de gemensamma exporthjälparna.
-- **Anropas inte av command-lane:** gamla `Build(...)`,
-  `CreateStateNodeResources`, `CreateMaterialFromState`, `InitPoolObject` och
-  `BuiltObjectReturnedToPool`. Egna overrides av dessa följer därför inte
-  automatiskt med. Builderns gamla `Priority` styr inte den nya pumpens budget.
+- **Borttagna med legacy-lanet:** gamla `Build(...)`,
+  `CreateStateNodeResources`, `CreateMaterialFromState`, `InitPoolObject`,
+  `BuiltObjectReturnedToPool` och `Priority`. Egna overrides av dessa har ingen
+  motsvarighet i command-vägen. Pumpens budget styrs av värdens
+  `MaximumCommandsPerTick` och `Settings.MaxBuildTime`.
 
 CSWUnreal har en registrerad factorykedja per native nodtyp med bland annat
 `preBuildReference`, `updateReference`, `newObject` och enginekomponentens
@@ -354,8 +373,8 @@ Att diskutera med bilderna framför oss:
 1. Var går den minsta säkra gränsen mellan native Capture och Unity-bygge?
    `TryLockEdit(0)` tar bort huvudtrådens låsväntan men kortar inte automatiskt
    själva mesh-/texturarbetet under låset.
-2. Vilket builder-/factorykontrakt ska båda Unity-vägarna erbjuda, inklusive
-   egna builders och deras livscykel?
+2. Vilket builder-/factorykontrakt ska Unity-vägen erbjuda, inklusive egna
+   builders och deras livscykel?
 3. Hur mycket arbete ska en slice innehålla innan andra SDK-trådar släpps fram?
    Kommandobudget, tidsbudget och kostnaden för ett enskilt bygge är olika saker.
 4. Ska alla outputkategorier använda editaccess? Unity-pumpen gör det i dag.
@@ -566,7 +585,7 @@ måste användas för att få denna SDK-korrigering.
 | [SceneCommandPump](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/Csw/SceneCommandPump.cs) | `Pump`, `CanDeferPublication`, `CaptureNode`, `Publish`. |
 | [SceneResources](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/Csw/SceneResources.cs) | `Capture`, `Publish`, `Acquire` och leasefrigöring. |
 | [UnityScene](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/Csw/UnityScene.cs) | `Create`, `Update`, `BindResources`, `CommitFrame`. |
-| [GeometryBuilder](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/GeometryBuilder.cs) | Skillnaden mellan gamla `Build` och `CreateSceneMaterial`. |
+| [GeometryBuilder](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/GeometryBuilder.cs) | `CanBuild`, materialmallar och `CreateSceneMaterial`. |
 
 Native referens: CSWUnreals `cswScene.cpp` (`fetchBuffers`,
 `processPendingBuffers`, buffertprocessorerna och `processFrames`) samt CSW:s

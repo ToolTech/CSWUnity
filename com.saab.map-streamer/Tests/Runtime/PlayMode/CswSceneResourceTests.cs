@@ -16,6 +16,7 @@
 //
 // AMO	261022	Source sharing, replacement and resource lifetime tests	(2.12.327)
 // AMO	261023	Bounded publication visits independently of unrelated and recycled scene occurrences.	(2.12.327)
+// AMO	261028	Used the scene release delegate after legacy SceneManager removal.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -179,7 +180,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			var oldUv = oldMesh.uv;
 			var oldIndices = oldMesh.GetIndices(0);
 			var removed = 0;
-			SceneManager.EventHandler_OnGameObjectFree onRemove = go =>
+			SceneGameObjectReleaseHandler onRemove = go =>
 			{
 				Assert.That(go.GetComponent<MeshFilter>().sharedMesh, Is.SameAs(oldMesh));
 				removed++;
@@ -242,7 +243,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			var oldMesh = first.GetComponent<MeshFilter>().sharedMesh;
 			var shared = first.GetComponent<MeshRenderer>().sharedMaterial;
 			var removed = 0;
-			SceneManager.EventHandler_OnGameObjectFree onRemove = go =>
+			SceneGameObjectReleaseHandler onRemove = go =>
 			{
 				Assert.That(go.GetComponent<MeshFilter>().sharedMesh, Is.SameAs(oldMesh));
 				Assert.That(go.GetComponent<MeshRenderer>().sharedMaterial, Is.SameAs(shared));
@@ -318,7 +319,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 					}
 					finally { NodeLock.UnLock(); }
 					var removed = 0;
-					SceneManager.EventHandler_OnGameObjectFree onRemove = go =>
+					SceneGameObjectReleaseHandler onRemove = go =>
 					{
 						Assert.That(go.GetComponent<MeshRenderer>().sharedMaterial.mainTexture, Is.SameAs(previous));
 						removed++;

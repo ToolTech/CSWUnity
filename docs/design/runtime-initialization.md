@@ -5,8 +5,8 @@
 ## Context
 
 Initialization bridges the Unity host lifecycle to the engine-neutral C# CSW
-SceneManager and GizmoSDK. The target removes the current dependency on a
-single scene object that discovers other components through
+SceneManager and GizmoSDK. Unlike the removed legacy initialization, the target
+has no single scene object that discovers other components through
 `FindObjectOfType`.
 
 ## Runtime components
@@ -69,7 +69,10 @@ Configuration is split by ownership:
 | Logging and telemetry | Diagnostics profile |
 
 Host-supplied runtime values override serialized defaults through a documented
-precedence chain.
+precedence chain. Phase 1 resolves the map URL from the `StartStreaming`
+argument, then the host's serialized `MapUrl`, then `SceneManager/MapUrl` in
+`config.xml`; see
+[Configure runtime initialization](../howto/configure-runtime-initialization.md#select-the-map-url).
 
 ## Shutdown sequence
 

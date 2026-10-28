@@ -17,11 +17,10 @@
  * Who	Date	Description
  *
  * AMO	261022	Added presentation adapters and transactional GPU resource lifetime handling.	(2.12.327)
+ * AMO	261028	Removed the legacy SceneManager source; foliage follows the command-driven presentation only.	(2.12.327)
  */
 
-using GizmoSDK.Coordinate;
 using GizmoSDK.GizmoBase;
-using Saab.Foundation.Map;
 using Saab.Utility.GfxCaps;
 using Saab.Foundation.Unity.MapStreamer.Csw;
 using System;
@@ -87,7 +86,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
     public class FoliageModule : MonoBehaviour
     {
-        public SceneManager SceneManager;
         public IScenePresentation Presentation { get; private set; }
         public ComputeShader ComputeShader;
         public Shader FoliageShader;
@@ -144,27 +142,16 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             cleanup.Complete("The previous foliage presentation could not be cleared completely.");
         }
 
-        private UnityEngine.Camera ActiveCamera =>
-            Presentation != null ? Presentation.Camera : SceneManager?.SceneManagerCamera?.Camera;
+        private UnityEngine.Camera ActiveCamera => Presentation?.Camera;
 
         private void Subscribe()
         {
-            if (_subscribed)
+            if (_subscribed || Presentation == null)
                 return;
-            if (Presentation != null)
-            {
-                Presentation.OnNewTerrain += SceneManager_OnNewTerrain;
-                Presentation.OnPostTraverse += SceneManager_OnPostTraverse;
-                Presentation.OnRemoveTerrain += SceneManager_OnRemoveTerrain;
-                _subscribed = true;
-            }
-            else if (SceneManager != null)
-            {
-                SceneManager.OnNewTerrain += SceneManager_OnNewTerrain;
-                SceneManager.OnPostTraverse += SceneManager_OnPostTraverse;
-                SceneManager.OnRemoveTerrain += SceneManager_OnRemoveTerrain;
-                _subscribed = true;
-            }
+            Presentation.OnNewTerrain += SceneManager_OnNewTerrain;
+            Presentation.OnPostTraverse += SceneManager_OnPostTraverse;
+            Presentation.OnRemoveTerrain += SceneManager_OnRemoveTerrain;
+            _subscribed = true;
         }
 
         private void Unsubscribe()
@@ -176,12 +163,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                 Presentation.OnNewTerrain -= SceneManager_OnNewTerrain;
                 Presentation.OnPostTraverse -= SceneManager_OnPostTraverse;
                 Presentation.OnRemoveTerrain -= SceneManager_OnRemoveTerrain;
-            }
-            else if (SceneManager != null)
-            {
-                SceneManager.OnNewTerrain -= SceneManager_OnNewTerrain;
-                SceneManager.OnPostTraverse -= SceneManager_OnPostTraverse;
-                SceneManager.OnRemoveTerrain -= SceneManager_OnRemoveTerrain;
             }
             _subscribed = false;
             _hasCullingResult = false;
@@ -441,7 +422,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         private void AddJob(GameObject go)
         {
-            if (Disabled || (Presentation == null && !go.activeInHierarchy))
+            if (Disabled || Presentation == null)
                 return;
 
             if (!go.TryGetComponent<MeshFilter>(out var meshFilter))
@@ -451,40 +432,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             if (!mesh)
                 return;
 
-            TerrainPresentationData terrain;
-            if (Presentation != null)
-            {
-                if (!Presentation.TryGetTerrain(go, out terrain))
-                    return;
-            }
-            else
-            {
-                if (!go.TryGetComponent<NodeHandle>(out var nodeHandle))
-                    return;
-                if (!nodeHandle.texture || !nodeHandle.feature)
-                    return;
-                var center = nodeHandle.node.BoundaryCenter;
-                if (!MapControl.SystemMap.GlobalToWorld(center, out CartPos cartPos))
-                    throw new InvalidOperationException("Could not locate the legacy terrain feature image.");
-                using (var coordinate = new Coordinate())
-                {
-                    coordinate.SetCartPos(cartPos);
-                    if (!coordinate.GetUTMPos(out var utmPos))
-                        throw new InvalidOperationException("Could not convert the legacy terrain feature image to UTM.");
-                    var corner = nodeHandle.featureInfo * new Vec3D(0, 0, 1);
-                    terrain = new TerrainPresentationData(
-                        new StateBuildOutput
-                        {
-                            Texture = nodeHandle.texture,
-                            Feature = nodeHandle.feature,
-                            SurfaceHeight = nodeHandle.surfaceHeight,
-                            Feature_homography = nodeHandle.featureInfo
-                        },
-                        new Vector3(center.x, center.y, center.z),
-                        FoliageFeature.LegacyLocalEunBasis(go),
-                        new Vector3((float)(corner.x - utmPos.Easting), 0, (float)(corner.y - utmPos.Northing)));
-                }
-            }
+            if (!Presentation.TryGetTerrain(go, out var terrain))
+                return;
             if (!terrain.Texture || !terrain.Feature)
                 return;
 

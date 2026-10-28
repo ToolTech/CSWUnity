@@ -17,6 +17,7 @@
  * Who	Date	Description
  *
  * AMO	261022	Added borrowed diagnostics providers for legacy and command-driven scenes.	(2.12.327)
+ * AMO	261028	Removed legacy SceneManager discovery; the host assigns the provider.	(2.12.327)
  */
 
 using System;
@@ -68,8 +69,6 @@ namespace Saab.Foundation.Unity.MapStreamer
         private static readonly Color SeparatorColor =
             new Color(1.0f, 1.0f, 1.0f, 0.18f);
 
-        [SerializeField]
-        private SceneManager _sceneManager;
         private IStreamingDiagnosticsProvider _provider;
 
         /// <summary>Selects a borrowed provider; null detaches without disposing the previous provider.</summary>
@@ -118,13 +117,6 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         private void Awake()
         {
-            if (_provider == null && _sceneManager == null)
-                _sceneManager = GetComponent<SceneManager>();
-            if (_provider == null && _sceneManager == null)
-                _sceneManager = FindFirstObjectByType<SceneManager>();
-            if (_provider == null)
-                _provider = _sceneManager;
-
             _observedResetVersion =
                 _provider?.BuildDiagnosticsResetVersion ?? 0;
             if (QualitySettings.vSyncCount > 0)
@@ -626,7 +618,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             if (_provider == null)
             {
                 _textureManagerContent.text =
-                    "TEXTURE MANAGER\nSceneManager unavailable";
+                    "TEXTURE MANAGER\nNo diagnostics provider";
                 return;
             }
 

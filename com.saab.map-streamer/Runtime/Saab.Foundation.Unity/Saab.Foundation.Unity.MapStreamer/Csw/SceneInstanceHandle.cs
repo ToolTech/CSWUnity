@@ -15,6 +15,7 @@
 // Who	Date	Description
 //
 // AMO	261022	Added occurrence identity and copied presentation data with borrowed resource views.	(2.12.327)
+// AMO	261028	Added scene presentation event delegates replacing the removed legacy SceneManager delegates.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -122,6 +123,20 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		internal bool IsPresented;
 	}
 
+	/// <summary>Notifies that a presented Unity object was created or activated for a scene occurrence.</summary>
+	/// <remarks>Raised on the Unity main thread. The object remains presentation-owned.</remarks>
+	public delegate void SceneGameObjectHandler(GameObject gameObject, bool isAsset);
+
+	/// <summary>Notifies that a presented Unity object is being released or returned to its pool.</summary>
+	/// <remarks>Raised on the Unity main thread. Drop references to the object before returning.</remarks>
+	public delegate void SceneGameObjectReleaseHandler(GameObject gameObject);
+
+	/// <summary>Notifies before or after scene presentation updates, with the native scene lock state.</summary>
+	public delegate void SceneTraverseHandler(bool locked);
+
+	/// <summary>Notifies that the presentation camera is updated for the given render time.</summary>
+	public delegate void SceneUpdateCameraHandler(double renderTime);
+
 	/// <summary>Borrowed main-thread view of scene notifications and terrain presentation snapshots.</summary>
 	/// <remarks>Unity objects and textures exposed by this view remain presentation-owned.</remarks>
 	public interface IScenePresentation
@@ -130,19 +145,19 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		/// <summary>Copies metadata for a current terrain occurrence without transferring texture ownership.</summary>
 		bool TryGetTerrain(GameObject gameObject, out TerrainPresentationData terrain);
 
-		event SceneManager.EventHandler_OnGameObject OnNewTerrain;
-		event SceneManager.EventHandler_OnGameObject OnNewGeometry;
-		event SceneManager.EventHandler_OnGameObject OnNewCrossboard;
-		event SceneManager.EventHandler_OnGameObject OnNewLod;
-		event SceneManager.EventHandler_OnGameObject OnNewLoader;
-		event SceneManager.EventHandler_OnGameObjectFree OnEnterPool;
-		event SceneManager.EventHandler_OnGameObjectFree OnRemoveGeometry;
-		event SceneManager.EventHandler_OnGameObjectFree OnRemoveTerrain;
-		event SceneManager.EventHandler_Traverse OnPreTraverse;
-		event SceneManager.EventHandler_Traverse OnPostTraverse;
+		event SceneGameObjectHandler OnNewTerrain;
+		event SceneGameObjectHandler OnNewGeometry;
+		event SceneGameObjectHandler OnNewCrossboard;
+		event SceneGameObjectHandler OnNewLod;
+		event SceneGameObjectHandler OnNewLoader;
+		event SceneGameObjectReleaseHandler OnEnterPool;
+		event SceneGameObjectReleaseHandler OnRemoveGeometry;
+		event SceneGameObjectReleaseHandler OnRemoveTerrain;
+		event SceneTraverseHandler OnPreTraverse;
+		event SceneTraverseHandler OnPostTraverse;
 		event Action OnMapChanged;
 		event Action<string> OnMapLoadError;
-		event SceneManager.EventHandler_OnUpdateCamera OnUpdateCamera;
+		event SceneUpdateCameraHandler OnUpdateCamera;
 	}
 
 	internal enum SceneNodeKind

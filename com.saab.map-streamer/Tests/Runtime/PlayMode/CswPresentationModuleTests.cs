@@ -15,6 +15,7 @@
 // Who	Date	Description
 //
 // AMO	261022	Command-lane module lifecycle and GPU tests		(2.12.327)
+// AMO	261028	Used scene presentation delegates after legacy SceneManager removal.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -128,7 +129,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 				new StateBuildOutput { Texture = asset.Albedo, Feature = asset.Albedo },
 				Vector3.zero, Matrix4x4.identity, Vector3.zero);
 			second.AddTerrain(terrain, data);
-			Assert.That(terrain.GetComponent<NodeHandle>(), Is.Null);
 			Assert.That(Field<Texture2DArray>(module, "_textureArray"), Is.SameAs(textures));
 			Assert.That(Field<Texture2DArray>(module, "_normalMapArray"), Is.SameAs(normals));
 			Object.DestroyImmediate(moduleObject);
@@ -208,7 +208,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 				terrain.transform.TransformPoint(new Vector3(2, 0, 2)), Vector3.up);
 			scope.SetActive(false);
 			source.AddTerrain(terrain, data);
-			Assert.That(terrain.GetComponent<NodeHandle>(), Is.Null);
 			Assert.That(feature.FoliageFeature.FoliageCount, Is.EqualTo(1));
 			Assert.That(feature.FoliageFeature.HasActiveNodes, Is.False);
 			var item = Field<List<FeatureData>>(feature.FoliageFeature, "_items")[0];
@@ -516,19 +515,19 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 
 			internal void PostPresent() { OnPostTraverse?.Invoke(false); }
 
-			public event SceneManager.EventHandler_OnGameObject OnNewTerrain;
-			public event SceneManager.EventHandler_OnGameObjectFree OnRemoveTerrain;
-			public event SceneManager.EventHandler_Traverse OnPostTraverse;
-			public event SceneManager.EventHandler_OnGameObject OnNewGeometry { add { } remove { } }
-			public event SceneManager.EventHandler_OnGameObject OnNewCrossboard { add { } remove { } }
-			public event SceneManager.EventHandler_OnGameObject OnNewLod { add { } remove { } }
-			public event SceneManager.EventHandler_OnGameObject OnNewLoader { add { } remove { } }
-			public event SceneManager.EventHandler_OnGameObjectFree OnEnterPool { add { } remove { } }
-			public event SceneManager.EventHandler_OnGameObjectFree OnRemoveGeometry { add { } remove { } }
-			public event SceneManager.EventHandler_Traverse OnPreTraverse { add { } remove { } }
+			public event SceneGameObjectHandler OnNewTerrain;
+			public event SceneGameObjectReleaseHandler OnRemoveTerrain;
+			public event SceneTraverseHandler OnPostTraverse;
+			public event SceneGameObjectHandler OnNewGeometry { add { } remove { } }
+			public event SceneGameObjectHandler OnNewCrossboard { add { } remove { } }
+			public event SceneGameObjectHandler OnNewLod { add { } remove { } }
+			public event SceneGameObjectHandler OnNewLoader { add { } remove { } }
+			public event SceneGameObjectReleaseHandler OnEnterPool { add { } remove { } }
+			public event SceneGameObjectReleaseHandler OnRemoveGeometry { add { } remove { } }
+			public event SceneTraverseHandler OnPreTraverse { add { } remove { } }
 			public event Action OnMapChanged { add { } remove { } }
 			public event Action<string> OnMapLoadError { add { } remove { } }
-			public event SceneManager.EventHandler_OnUpdateCamera OnUpdateCamera { add { } remove { } }
+			public event SceneUpdateCameraHandler OnUpdateCamera { add { } remove { } }
 		}
 	}
 }

@@ -18,6 +18,7 @@
 // AMO	261023	Submitted coherent camera and refresh batches without main-thread graph-lock waits.	(2.12.327)
 // AMO	261023	Instrumented command-lane Tick independently of Unity frame-pacing waits.	(2.12.327)
 // AMO	261026	Added Omni control and bounded frame completion without SDK access during notification waits.	(2.12.327)
+// AMO	261028	Defaulted Omni traversal to on for CSWUnreal coverage parity.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -68,8 +69,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		internal bool NativeWorkerRunning => _session?.IsRunning ?? false;
 		public int MaximumCommandsPerTick { get; set; } = 128;
 		public TimeSpan BuildBudget { get; set; } = TimeSpan.FromMilliseconds(4);
-		/// <summary>Traverses in all directions; Unity's renderer retains its own culling.</summary>
-		public bool OmniView { get; set; }
+		/// <summary>Traverses in all directions by default, like CSWUnreal; Unity's renderer retains its own culling.</summary>
+		public bool OmniView { get; set; } = true;
 		/// <summary>Finishes the submitted camera frame in this Tick instead of deferring its output.</summary>
 		public bool SynchronizeFrames { get; set; }
 		/// <summary>Bounds frame synchronization; expiration faults the session, never accepts a partial frame.</summary>

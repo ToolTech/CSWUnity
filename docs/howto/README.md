@@ -3,21 +3,16 @@
 This directory contains task-oriented guides for developers and users of
 CSWUnity.
 
-## Target workflow
+## Guides
 
 - [Integrate CSWUnity into a host project](integrate-into-host-project.md)
-
-The target workflow describes the intended consumer experience. It is not yet
-implemented by the current package.
-
-## Current implementation guides
-
 - [Stage NuGet dependencies for Unity](stage-nuget-dependencies.md)
 - [Configure runtime initialization](configure-runtime-initialization.md)
 - [Load a MapGen GZD map](load-mapgen-map.md)
 
-These guides apply to the existing Unity-owned `SceneManager` implementation
-and will be revised when the C# CSW SceneManager integration is available.
+The guides describe the command-driven `CswMapStreamerHost`, which is the
+package's only streaming lane. The former Unity-owned `SceneManager` lane was
+removed in 5.0.
 
 ## Authoring guides
 

@@ -1,13 +1,13 @@
 # Next-generation architecture
 
-**Status:** Phase 1 command-driven consumer implemented as an opt-in lane;
-the broader target architecture below remains incremental.
+**Status:** Phase 1 command-driven consumer implemented as the only streaming
+lane; the broader target architecture below remains incremental.
 
 ## Phase 1 implementation
 
-The existing package now contains the parallel runtime in
-`Saab.Foundation.Unity.MapStreamer.Csw`. The legacy `SceneManager` remains
-available and the example scene still defaults to that lane.
+The package implements the runtime in `Saab.Foundation.Unity.MapStreamer.Csw`.
+The legacy Unity-owned `SceneManager` lane was removed in 5.0; see
+[Removed legacy architecture](current-architecture.md).
 
 | Concrete component | Phase 1 responsibility |
 | --- | --- |
@@ -64,13 +64,14 @@ occurrence key and actual Mesh identity, including surviving LOD-Off branches;
 native asynchronous LOD refinement can replace the entire visible coarse set.
 
 Optionally set `CSWUNITY_TEST_SCENE` to a Unity asset path in the validation
-project, for example `Assets/Scenes/ExampleScene.unity`. That uses the shipped
-scene's actual serialized composition and removes its disabled legacy
-components only in the running test; neither the source scene nor its opt-in
-default is changed. `CSWUNITY_TEST_ARTIFACTS` selects an external screenshot
-directory. Fixture URLs, machine paths and runtime output are not source
-configuration defaults. Use the Windows x64 dependency profile and D3D11
-PlayMode validation, not a no-graphics runner for the GPU/resource fixtures.
+project, for example `Assets/Scenes/ExampleScene.unity`. The test loads that
+scene additively, so it uses the shipped scene's actual serialized composition,
+and configures and starts its host from a `sceneLoaded` callback before the
+host's `Start`. The source scene is not changed. `CSWUNITY_TEST_ARTIFACTS`
+selects an external screenshot directory. Fixture URLs, machine paths and
+runtime output are not source configuration defaults. Use the Windows x64
+dependency profile and D3D11 PlayMode validation, not a no-graphics runner for
+the GPU/resource fixtures.
 
 ## Context
 
@@ -93,8 +94,8 @@ error bindings are supplied by the matching local SceneManager package pair
 pinned in the locked staging graph. SDK/Distribution pins remain unchanged.
 The [dependency staging guide](../howto/stage-nuget-dependencies.md) documents
 the unpublished pair and cold-restore/bootstrap requirements. Query and other
-future capabilities must be validated separately before replacing the current
-Unity `SceneManager` for applications that depend on them.
+future capabilities must be validated separately; Phase 1 has no replacement
+for the synchronous map queries of the removed Unity `SceneManager`.
 
 The new generation is named **CSW Map Streamer**, with
 `csw-map-streamer` used as its technical working name. Existing
@@ -351,17 +352,16 @@ scope Off, resets append/indirect counts when no branch is active, and suppresse
 draw submission for inactive sets. Existing shaders/compute/include code and
 Hi-Z timing remain unchanged.
 
-`CameraBridge` is the command lane's `_WorldOffset`/`_LocalToEUN` writer.
-The host disables its assigned `LegacyComponents` before startup, including
-legacy traversal, camera and shader drivers. Other scenes must supply that
-list explicitly; there is no global discovery or automatic reenable on stop.
+`CameraBridge` is the package's only `_WorldOffset`/`_LocalToEUN` writer. The
+host neither discovers nor disables other components; a host project must not
+add a competing camera controller or shader-global writer.
 The following table describes the broader target placement:
 
 | Current feature | Target placement |
 | --- | --- |
 | `MapShadingModule` | Optional terrain-shading feature and profile |
 | `FoliageModule` | Optional GPU foliage feature with explicit compute/shader dependencies |
-| `CameraShaderUpdater` | Coordinate/render service shared by interested features |
+| `CameraBridge` shader globals, formerly `CameraShaderUpdater` | Coordinate/render service shared by interested features |
 | `GfxCaps` flags | Capability report plus explicit feature-profile selection |
 | Terrain/Foliage ScriptableObjects | Versioned feature assets |
 
@@ -488,8 +488,9 @@ unrepeatable statement that the system is "fast".
 11. Port terrain detail and foliage and add environment realizations as
    optional modules.
 12. Establish performance profiles and optimize measured bottlenecks.
-13. Deprecate the current Unity-owned streaming `SceneManager` after feature and
-   performance parity.
+13. Remove the Unity-owned streaming `SceneManager`. This was done in 5.0,
+   before full feature parity; steps 7 and 8 rebuild its geodetic navigation
+   and map queries.
 
 ## Open decisions
 
@@ -511,6 +512,6 @@ unrepeatable statement that the system is "fast".
 - [External object integration](object-integration.md)
 - [Movement models](movement-models.md)
 - [Rendering](rendering.md)
-- [Current architecture](current-architecture.md)
+- [Removed legacy architecture](current-architecture.md)
 - [Streaming Map pipeline](streaming-map-pipeline.md)
 - [Runtime initialization](runtime-initialization.md)

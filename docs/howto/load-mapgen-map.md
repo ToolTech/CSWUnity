@@ -3,8 +3,8 @@
 **Applies to:** Map generation and the current CSWUnity runtime
 
 The MapGen generation and publication steps remain valid for the target
-architecture. The Unity configuration steps describe the current
-Unity-owned `SceneManager`.
+architecture. The Unity configuration steps use the command-driven
+`CswMapStreamerHost`.
 
 ## Goal
 
@@ -37,19 +37,21 @@ The detailed MapGen workflow is maintained in the
 ## Configure CSWUnity
 
 1. Copy the published map URL.
-2. Set the URL in the `SceneManager.MapUrl` field in the Unity Inspector, or
-   set the GizmoSDK user key `SceneManager/MapUrl`.
-3. Verify that `SceneManager.Builders` contains builders for the node types
+2. Set the URL in the host's **Map Url** field in the Unity Inspector, or leave
+   the field empty and set the GizmoSDK user key `SceneManager/MapUrl` in
+   `config.xml`. A non-empty **Map Url** takes precedence.
+3. Verify that the host's `Builders` contain builders for the node types
    required by the map.
 4. Enter Play mode.
 
-`Initializer` resolves the map URL during `Awake()`. `SceneManager` then passes
-the URL to `GizmoSDK.Gizmo3D.DbManager.LoadDB()`. GizmoSDK loads and streams the
-GZD scene graph while CSWUnity creates the corresponding Unity objects.
+The host resolves the URL in `Start` and opens it in a native CSW SceneManager
+session. GizmoSDK loads and streams the GZD scene graph below CSW SceneManager,
+which sends ordered commands that CSWUnity realizes as Unity objects.
 
 ## Verify the result
 
-- The map load completes without a `SceneManager` warning.
+- The map loads without a `CSW Map Streamer:` error, and `host.Manager.State`
+  reaches `Running`.
 - The expected terrain, geometry, textures, and asset instances appear.
 - Camera movement updates streamed content and levels of detail.
 - Geospatial position and orientation match the generated map.
@@ -59,13 +61,13 @@ GZD scene graph while CSWUnity creates the corresponding Unity objects.
 | Symptom | Check |
 | --- | --- |
 | The URL cannot be opened | Verify publication, permissions, connectivity, and the required GizmoSDK URL adapter |
-| `DbManager.LoadDB()` rejects the map | Verify the CSWMapGenerator and GizmoSDK version combination |
+| The native session reports a map load error | Verify the CSWMapGenerator and GizmoSDK version combination |
 | Some content is absent | Verify MapGen mappings and the configured CSWUnity node builders |
 | Position or orientation is incorrect | Verify the MapGen coordinate-system settings and CSWUnity map origin |
-| A different map loads | Check whether the `SceneManager/MapUrl` user key overrides the Inspector value |
+| A different map loads | A non-empty **Map Url** on the host takes precedence over `SceneManager/MapUrl` in `config.xml` |
 
 ## Related documentation
 
 - [Streaming Map input requirements](../requirements/streaming-map-input.md)
 - [Streaming Map pipeline design](../design/streaming-map-pipeline.md)
-- [Current architecture](../design/current-architecture.md)
+- [Integrate CSWUnity into a host project](integrate-into-host-project.md)

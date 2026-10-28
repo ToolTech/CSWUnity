@@ -17,6 +17,7 @@
  * Who	Date	Description
  *
  * AMO	261022	Accepted command-driven scene occurrences during terrain child setup.	(2.12.327)
+ * AMO	261028	Located terrain node parents through command-driven scene occurrences only.	(2.12.327)
  */
 
 using System;
@@ -326,9 +327,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
             // TODO: fix to work in ShaderSandbox
 #if !MoveCam
-            var node = parent.GetComponent<NodeHandle>();
-
-            if (node == null && parent.GetComponent<SceneInstanceHandle>() == null)
+            if (parent.GetComponent<SceneInstanceHandle>() == null)
             {
                 return child;
             }

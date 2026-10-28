@@ -501,17 +501,13 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
         [Test]
         public void BuildDiagnosticsAccumulateAndResetCoherently()
         {
-            SceneManager.ResetTotalBuildDiagnostics();
-            var resetVersion = GetSceneManagerStaticField<long>(
-                "_buildDiagnosticsResetVersion");
-            InvokeRecorder("RecordMeshBuild", 512, Stopwatch.Frequency);
-            InvokeRecorder(
-                "RecordTextureBuild",
-                1024,
-                Stopwatch.Frequency / 2);
+            BuildDiagnostics.ResetTotals();
+            var resetVersion = BuildDiagnostics.ResetVersion;
+            BuildDiagnostics.RecordMesh(512, Stopwatch.Frequency);
+            BuildDiagnostics.RecordTexture(1024, Stopwatch.Frequency / 2);
 
-            var mesh = SceneManager.MeshTotalDiagnostics;
-            var texture = SceneManager.TextureTotalDiagnostics;
+            var mesh = BuildDiagnostics.MeshTotal;
+            var texture = BuildDiagnostics.TextureTotal;
             Assert.That(mesh.TotalMeshes, Is.EqualTo(1));
             Assert.That(mesh.TotalBytes, Is.EqualTo(512));
             Assert.That(mesh.TotalTime, Is.EqualTo(TimeSpan.FromSeconds(1)));
@@ -524,17 +520,16 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
             Assert.That(
                 texture.WorstTime.TotalSeconds,
                 Is.EqualTo(0.5).Within(1.0 / Stopwatch.Frequency));
-            SceneManager.ResetTotalBuildDiagnostics();
-            Assert.That(SceneManager.MeshTotalDiagnostics.TotalMeshes, Is.Zero);
+            BuildDiagnostics.ResetTotals();
+            Assert.That(BuildDiagnostics.MeshTotal.TotalMeshes, Is.Zero);
             Assert.That(
-                SceneManager.MeshTotalDiagnostics.WorstTime,
+                BuildDiagnostics.MeshTotal.WorstTime,
                 Is.EqualTo(TimeSpan.Zero));
             Assert.That(
-                SceneManager.TextureTotalDiagnostics.TotalTextures,
+                BuildDiagnostics.TextureTotal.TotalTextures,
                 Is.Zero);
             Assert.That(
-                GetSceneManagerStaticField<long>(
-                    "_buildDiagnosticsResetVersion"),
+                BuildDiagnostics.ResetVersion,
                 Is.EqualTo(resetVersion + 1));
         }
 
@@ -566,18 +561,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
             }
         }
 
-        private static void InvokeRecorder(
-            string methodName,
-            long bytes,
-            long ticks)
-        {
-            var method = typeof(SceneManager).GetMethod(
-                methodName,
-                BindingFlags.NonPublic | BindingFlags.Static);
-            Assert.That(method, Is.Not.Null);
-            method.Invoke(null, new object[] { bytes, ticks });
-        }
-
         private static Texture2D CreateR8Texture()
         {
             return Texture2DCache.GetOrCreateTexture(
@@ -596,13 +579,5 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
             for (var index = 0; index < data.Length; index++)
                 Assert.That(data[index], Is.EqualTo(expected));
         }
-
-        private static T GetSceneManagerStaticField<T>(string name)
-        {
-            return (T)typeof(SceneManager).GetField(
-                name,
-                BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
-        }
-
     }
 }

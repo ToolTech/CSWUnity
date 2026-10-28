@@ -207,7 +207,7 @@ artifacts\                            Generated local output; not committed
 - [Documentation index](docs/README.md)
 - [Stage NuGet dependencies for Unity](docs/howto/stage-nuget-dependencies.md)
 - [Integrate CSWUnity into a host project](docs/howto/integrate-into-host-project.md)
-- [Current architecture](docs/design/current-architecture.md)
+- [Removed legacy architecture](docs/design/current-architecture.md)
 - [Next-generation architecture](docs/design/next-generation-architecture.md)
 - [CDW installation](tutorial/howto/CDW_Installation.md)
 - [CDW Map Streamer demo](tutorial/howto/CDW_map_streamer_DEMO.md)

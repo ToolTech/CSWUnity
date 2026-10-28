@@ -16,6 +16,7 @@
 //
 // AMO	261022	Added command-driven hierarchy ownership, pooling and camera-relative frame publication.	(2.12.327)
 // AMO	261023	Indexed shared resource users through rebind and pooling; profiled publication and frame commits.	(2.12.327)
+// AMO	261028	Moved event delegates and build diagnostics off the removed legacy SceneManager.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -76,25 +77,25 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		public bool HasCommittedFrame { get; private set; }
 		public CameraRelativeFrame CommittedFrame { get; private set; }
 		public TextureManagerDiagnostics TextureDiagnostics => Resources.TextureDiagnostics;
-		public MeshBuildDiagnostics MeshFrameDiagnostics => SceneManager.MeshFrameDiagnostics;
-		public TextureBuildDiagnostics TextureFrameDiagnostics => SceneManager.TextureFrameDiagnostics;
-		public MeshBuildDiagnostics MeshTotalDiagnostics => SceneManager.MeshTotalDiagnostics;
-		public TextureBuildDiagnostics TextureTotalDiagnostics => SceneManager.TextureTotalDiagnostics;
-		public long BuildDiagnosticsResetVersion => SceneManager.BuildDiagnosticsResetVersion;
+		public MeshBuildDiagnostics MeshFrameDiagnostics => BuildDiagnostics.MeshFrame;
+		public TextureBuildDiagnostics TextureFrameDiagnostics => BuildDiagnostics.TextureFrame;
+		public MeshBuildDiagnostics MeshTotalDiagnostics => BuildDiagnostics.MeshTotal;
+		public TextureBuildDiagnostics TextureTotalDiagnostics => BuildDiagnostics.TextureTotal;
+		public long BuildDiagnosticsResetVersion => BuildDiagnostics.ResetVersion;
 
-		public event SceneManager.EventHandler_OnGameObject OnNewTerrain;
-		public event SceneManager.EventHandler_OnGameObject OnNewGeometry;
-		public event SceneManager.EventHandler_OnGameObject OnNewCrossboard;
-		public event SceneManager.EventHandler_OnGameObject OnNewLod;
-		public event SceneManager.EventHandler_OnGameObject OnNewLoader;
-		public event SceneManager.EventHandler_OnGameObjectFree OnEnterPool;
-		public event SceneManager.EventHandler_OnGameObjectFree OnRemoveGeometry;
-		public event SceneManager.EventHandler_OnGameObjectFree OnRemoveTerrain;
-		public event SceneManager.EventHandler_Traverse OnPreTraverse;
-		public event SceneManager.EventHandler_Traverse OnPostTraverse;
+		public event SceneGameObjectHandler OnNewTerrain;
+		public event SceneGameObjectHandler OnNewGeometry;
+		public event SceneGameObjectHandler OnNewCrossboard;
+		public event SceneGameObjectHandler OnNewLod;
+		public event SceneGameObjectHandler OnNewLoader;
+		public event SceneGameObjectReleaseHandler OnEnterPool;
+		public event SceneGameObjectReleaseHandler OnRemoveGeometry;
+		public event SceneGameObjectReleaseHandler OnRemoveTerrain;
+		public event SceneTraverseHandler OnPreTraverse;
+		public event SceneTraverseHandler OnPostTraverse;
 		public event Action OnMapChanged;
 		public event Action<string> OnMapLoadError;
-		public event SceneManager.EventHandler_OnUpdateCamera OnUpdateCamera;
+		public event SceneUpdateCameraHandler OnUpdateCamera;
 		public event Action<CameraRelativeFrame> FrameCommitting;
 
 		/// <summary>Creates an owned scene attachment beneath a borrowed parent.</summary>
@@ -376,12 +377,12 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 				InvokeCleanupEvent(OnRemoveGeometry, handle.gameObject);
 		}
 
-		private static void InvokeCleanupEvent(SceneManager.EventHandler_OnGameObjectFree handlers, GameObject value)
+		private static void InvokeCleanupEvent(SceneGameObjectReleaseHandler handlers, GameObject value)
 		{
 			if (handlers == null)
 				return;
 			var cleanup = new SceneCleanup();
-			foreach (SceneManager.EventHandler_OnGameObjectFree handler in handlers.GetInvocationList())
+			foreach (SceneGameObjectReleaseHandler handler in handlers.GetInvocationList())
 				cleanup.Attempt(() => handler(value));
 			cleanup.Complete("A scene cleanup observer failed.");
 		}
@@ -551,7 +552,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		/// <summary>Resets build and texture-cache diagnostics for the presentation.</summary>
 		public void ResetStreamingDiagnostics()
 		{
-			SceneManager.ResetTotalBuildDiagnostics();
+			BuildDiagnostics.ResetTotals();
 			Resources.ResetDiagnostics();
 		}
 
