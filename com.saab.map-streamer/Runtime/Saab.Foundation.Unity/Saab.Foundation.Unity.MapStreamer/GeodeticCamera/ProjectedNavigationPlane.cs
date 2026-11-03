@@ -89,24 +89,29 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
 
         internal static PanGesture BeginPan(
             Vec3D cameraPosition,
-            Vec3D grabbedSurfacePosition)
+            Vec3D grabbedSurfacePosition,
+            bool dampen = false)
         {
             return new PanGesture(
                 cameraPosition,
-                grabbedSurfacePosition);
+                grabbedSurfacePosition,
+                dampen);
         }
 
         internal sealed class PanGesture
         {
             private Vec3D _grabbedSurfacePosition;
             private Vec3D _cameraPosition;
+            private readonly bool _dampen;
 
             internal PanGesture(
                 Vec3D cameraPosition,
-                Vec3D grabbedSurfacePosition)
+                Vec3D grabbedSurfacePosition,
+                bool dampen)
             {
                 _cameraPosition = cameraPosition;
                 _grabbedSurfacePosition = grabbedSurfacePosition;
+                _dampen = dampen;
             }
 
             internal bool TryCalculateNextPosition(
@@ -123,10 +128,9 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
                         out float incidence)
                     || !GroundDragMath.TryCalculatePanScale(
                         incidence,
-                        out float scale))
-                {
+                        out float scale,
+                        _dampen))
                     return false;
-                }
 
                 cameraPosition = CalculateNextPosition(
                     currentSurfacePosition,

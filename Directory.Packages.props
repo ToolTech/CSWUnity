@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="Coordinate" Version="2.12.346.1" />
+    <PackageVersion Include="Gizmo3D" Version="2.12.346.1" />
+    <PackageVersion Include="GizmoBase" Version="2.12.346.1" />
+    <PackageVersion Include="GizmoDistribution" Version="2.12.346.1" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.11.0" />
+    <PackageVersion Include="MSTest.TestAdapter" Version="3.4.1" />
+    <PackageVersion Include="MSTest.TestFramework" Version="3.4.1" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.2" />
+  </ItemGroup>
+</Project>

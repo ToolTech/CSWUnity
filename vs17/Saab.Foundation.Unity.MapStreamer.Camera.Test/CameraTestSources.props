@@ -1,0 +1,21 @@
+<Project>
+  <PropertyGroup>
+    <CameraRuntimeDirectory>$(MSBuildThisFileDirectory)..\..\com.saab.map-streamer\Runtime\Saab.Foundation.Unity\Saab.Foundation.Unity.MapStreamer\GeodeticCamera</CameraRuntimeDirectory>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(CameraRuntimeDirectory)\ICameraPose.cs" Link="Production\ICameraPose.cs" />
+    <Compile Include="$(CameraRuntimeDirectory)\CameraPose.cs" Link="Production\CameraPose.cs" />
+    <Compile Include="$(CameraRuntimeDirectory)\GizmoCameraMath.cs" Link="Production\GizmoCameraMath.cs" />
+    <Compile Include="$(CameraRuntimeDirectory)\NavigationSurfaceQuery.cs" Link="Production\NavigationSurfaceQuery.cs" />
+    <Compile Include="$(CameraRuntimeDirectory)\ProjectedNavigationPlane.cs" Link="Production\ProjectedNavigationPlane.cs" />
+    <Compile Include="$(CameraRuntimeDirectory)\GroundDragMath.cs" Link="Production\GroundDragMath.cs" />
+    <Compile Include="$(CameraRuntimeDirectory)\OrbitPitchLimits.cs" Link="Production\OrbitPitchLimits.cs" />
+    <Compile Include="$(CameraRuntimeDirectory)\OrbitMotion.cs" Link="Production\OrbitMotion.cs" />
+    <Compile Include="$(CameraRuntimeDirectory)\OrbitFraming.cs" Link="Production\OrbitFraming.cs" />
+    <Compile Include="$(CameraRuntimeDirectory)\OrbitPivot.cs" Link="Production\OrbitPivot.cs" />
+    <Compile Include="$(CameraRuntimeDirectory)\OrbitGesture.cs" Link="Production\OrbitGesture.cs" />
+    <Compile Include="$(CameraRuntimeDirectory)\Wgs84Ellipsoid.cs" Link="Production\Wgs84Ellipsoid.cs" />
+  </ItemGroup>
+
+</Project>

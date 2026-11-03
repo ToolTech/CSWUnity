@@ -8,6 +8,8 @@ described with adjustments and template in [TSWiki](https://tswiki.corp.saab.se/
 ## 5.0
 
 ### Added
+- Repository-local NuGet feed configuration in `Project.config`.
+- Standalone .NET camera regression coverage and package-owned Unity EditMode tests.
 - Lightweight per-frame and accumulated diagnostics for streamed mesh and texture counts, payload sizes, and build times.
 - Constant-time texture diagnostics for active references, cache usage, peak usage, allocations, reuse, destruction, and discarded uploads.
 - Optional F1 streaming diagnostics overlay with rolling frame, mesh, texture, and texture-cache statistics; F2 resets accumulated measurements and F3 toggles VSync.
@@ -18,6 +20,9 @@ described with adjustments and template in [TSWiki](https://tswiki.corp.saab.se/
 ### Changed
 - Upgraded to Unity 6000.3.5f2
 - Updated to GizmoSDK 2.12.346.1
+- Centralized NuGet package versions for Install_Gizmo and standalone camera tests in `Directory.Packages.props`, retaining the existing dependency versions.
+- `GeodeticCameraControl` provides unrestricted camera pose control and shared orbit, zoom and pan gestures. `ConstrainedGeodeticCamera` adds configurable orbit/upright limits, independently optional zoom-distance bounds (one metre inward and no outward cap by default), and near-horizon pan dampening over shared movement.
+- Application-owned input bindings, sensitivity and initial framing/reset policy, with demo bindings for pan, orbit and wheel zoom that drive either `GeodeticCameraControl` or `ConstrainedGeodeticCamera` and fail fast when no camera component is present.
 - Replaced legacy geometry and texture streaming with the GizmoSDK GeometryExport and TextureExport APIs, writing directly into Unity mesh and texture storage for improved streaming performance.
 - Texture recycling now preserves the exported graphics format and mip layout.
 - Streamed textures now use Unity's `TextureFormat` compatibility path where an exact source-layout mapping exists, allowing Unity-managed expansion, conversion and decompression. Formats without that mapping retain direct `GraphicsFormat` uploads; CPU layout, mip chains and recycling remain validated.
@@ -25,6 +30,8 @@ described with adjustments and template in [TSWiki](https://tswiki.corp.saab.se/
 
 ### Fixed
 - Streamed color textures now respect the project's active Gamma or Linear color space, avoiding rejected uploads in Gamma projects while keeping feature and height textures non-sRGB.
+- `GeodeticCameraControl`: Removed an artificial limit that could stop the camera from zooming out. #420901
+- `GeodeticCameraControl`: Fixed unwanted roll during orbit and pitch stalling near vertical. Panning on spherical maps now updates position and rotation together. #420902
 - RGB24 map textures no longer become magenta on Direct3D 11 when native three-channel sampling is unsupported.
 - Failed Unity texture construction no longer counts as a successful texture-cache creation.
 - `FoliageModule` now skips initialization, Hi-Z generation, culling, and drawing when CAPS disables all tree and grass feature sets.

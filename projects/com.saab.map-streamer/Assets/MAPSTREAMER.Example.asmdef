@@ -1,0 +1,16 @@
+{
+    "name": "MAPSTREAMER.Example",
+    "rootNamespace": "Saab.Foundation.Unity.MapStreamer.Example",
+    "references": [
+        "GUID:3087ea34bbce2f44aa16d74d964a08ca"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
