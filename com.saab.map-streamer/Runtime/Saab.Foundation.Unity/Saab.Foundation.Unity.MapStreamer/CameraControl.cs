@@ -60,8 +60,9 @@ namespace Saab.Foundation.Unity.MapStreamer
         public float tilt;
     }
 
-    public class CameraControl : MonoBehaviour, ISceneManagerCamera
+    public class CameraControl : CameraControlBase, ISceneManagerCamera
     {
+        private bool _initialized = false;
 
         public float Speed = 20f;
         public float ShiftMultiplier = 2f;
@@ -69,24 +70,10 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         public float RotSpeed = 20f;
 
-        public double X = 0;
-        public double Y = 0;
-        public double Z = 0;
-
-        public float LodFactor => 1f;
-
         private double _lastRenderTime = 0;
         private double _currentRenderTime = 0;
         private bool _inputLocked;
         private AutoMovement _autoMovement = default;
-
-        public Camera Camera
-        {
-            get
-            {
-                return GetComponent<Camera>();
-            }
-        }
 
         public float GetDeltaTime()
         {
@@ -96,27 +83,9 @@ namespace Saab.Foundation.Unity.MapStreamer
                 return (float)(_currentRenderTime - _lastRenderTime);
         }
 
-        public Vec3D GlobalPosition
-        {
-            get { return new Vec3D(X, Y, Z); }
-
-            set
-            {
-                X = value.x;
-                Y = value.y;
-                Z = value.z;
-            }
-        }
-
         private float _countDownJump = 4;
         private float _jumpTime = 4;
-        private Matrix4x4 _eun;
         private MapPos _mapPos;
-        private bool _initialized = false;
-
-        private Vector3 _unityEast;
-        private Vector3 _unityNorth;
-        private Vector3 _unityUp;
 
         public float JumpInterval
         {
@@ -134,16 +103,6 @@ namespace Saab.Foundation.Unity.MapStreamer
         public void SetSeed(int seed)
         {
             Random.InitState(seed);
-        }
-
-        public Vector3 Up
-        {
-            get { return MapControl.SystemMap.GetLocalOrientation(GlobalPosition).GetCol(2).ToVector3(); }
-        }
-
-        public Vector3 North
-        {
-            get { return MapControl.SystemMap.GetLocalOrientation(GlobalPosition).GetCol(1).ToVector3(); }
         }
 
         private void MoveForward(float moveSpeed)
@@ -224,6 +183,7 @@ namespace Saab.Foundation.Unity.MapStreamer
         // Update is called once per frame
         void Update()
         {
+            //TODO: Handle shader updates outside of camera controller (Camera controller should only focus on location and orientation of camera, not cater to the needs of shaders)
             UpdateShaderPos();
 
             if (Input.GetButtonDown("Fire1") && Input.GetKey(KeyCode.LeftShift) && !_inputLocked)
@@ -288,16 +248,6 @@ namespace Saab.Foundation.Unity.MapStreamer
             }
         }
 
-        public void PreTraverse(bool locked)
-        {
-            // Called before traverser runs
-        }
-
-        public void PostTraverse(bool locked)
-        {
-            // Called after all nodes have updated their transforms
-        }
-
         public void RandomJump(float distance, float maxDistance = 3000)
         {
             _countDownJump -= UnityEngine.Time.deltaTime;
@@ -341,9 +291,9 @@ namespace Saab.Foundation.Unity.MapStreamer
                     _unityNorth = north.ToVector3FlipZ();
                     _unityUp = up.ToVector3FlipZ();
 
-                    _eun = MapUtil.FromBasis((east.ToVector3()), (up.ToVector3()), (north.ToVector3()));
+                    _localToEun = MapUtil.FromBasis((east.ToVector3()), (up.ToVector3()), (north.ToVector3()));
 
-                    Shader.SetGlobalMatrix("_LocalToEUN", _eun);
+                    Shader.SetGlobalMatrix("_LocalToEUN", _localToEun);
                     if (!_initialized)
                     {
                         // look north
@@ -360,12 +310,13 @@ namespace Saab.Foundation.Unity.MapStreamer
             }
         }
 
-        public double UpdateCamera(double renderTime)
+        public override double UpdateCamera(double renderTime)
         {
             _lastRenderTime = _currentRenderTime;
             _currentRenderTime = renderTime;
 
             Move(_autoMovement);
+
 
             if (_inputLocked)
                 return renderTime;
@@ -437,6 +388,7 @@ namespace Saab.Foundation.Unity.MapStreamer
                 rot = rot * Quaternion.Euler(0f, 180f, 0f);
             }
 
+
 #if TEST_ROTATION
                 rot = Pan(-rotspeed) * rot;
 #endif
@@ -447,7 +399,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             return renderTime;
         }
 
-        public void MapChanged()
+        public override void MapChanged()
         {
             // Called when global map has changed
         }

@@ -1,0 +1,91 @@
+/*
+ * Copyright (C) SAAB AB
+ *
+ * All rights, including the copyright, to the computer program(s)
+ * herein belong to Saab AB. The program(s) may be used and/or
+ * copied only with the written permission of Saab AB, or in
+ * accordance with the terms and conditions stipulated in the
+ * agreement/contract under which the program(s) have been
+ * supplied.
+ *
+ * Information Class:          COMPANY RESTRICTED
+ * Defence Secrecy:            UNCLASSIFIED
+ * Export Control:             NOT EXPORT CONTROLLED
+ */
+
+#pragma kernel CopyDepth
+#pragma kernel ReduceDepth
+
+#include "HLSLSupport.cginc"
+
+Texture2D<float> _SourceDepth;
+RWTexture2D<float> _SourceMip;
+RWTexture2D<float> _DestinationMip;
+
+uint _SourceWidth;
+uint _SourceHeight;
+uint _DestinationWidth;
+uint _DestinationHeight;
+
+float SelectFarthestDepth(float currentDepth, float candidateDepth)
+{
+    // Raw depth decreases with distance on reversed-Z platforms and increases otherwise.
+#if defined(UNITY_REVERSED_Z)
+    return min(currentDepth, candidateDepth);
+#else
+    return max(currentDepth, candidateDepth);
+#endif
+}
+
+[numthreads(8, 8, 1)]
+void CopyDepth(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    if (dispatchThreadId.x >= _DestinationWidth ||
+        dispatchThreadId.y >= _DestinationHeight)
+    {
+        return;
+    }
+
+    _DestinationMip[dispatchThreadId.xy] = _SourceDepth.Load(int3(dispatchThreadId.xy, 0));
+}
+
+[numthreads(8, 8, 1)]
+void ReduceDepth(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    if (dispatchThreadId.x >= _DestinationWidth ||
+        dispatchThreadId.y >= _DestinationHeight)
+    {
+        return;
+    }
+
+    uint2 sourceSize = uint2(_SourceWidth, _SourceHeight);
+    uint2 destinationSize = uint2(_DestinationWidth, _DestinationHeight);
+    uint2 destinationCoordinate = dispatchThreadId.xy;
+
+    // Map destination texels to complete source intervals instead of assuming an exact 2x2
+    // reduction. This keeps the pyramid conservative for odd and non-power-of-two dimensions.
+    uint2 sourceStart = destinationCoordinate * sourceSize / destinationSize;
+    uint2 sourceEnd = ((destinationCoordinate + 1) * sourceSize + destinationSize - 1) /
+        destinationSize;
+    sourceEnd = min(sourceEnd, sourceSize);
+
+#if defined(UNITY_REVERSED_Z)
+    float farthestDepth = 1.0;
+#else
+    float farthestDepth = 0.0;
+#endif
+
+    [loop]
+    for (uint y = sourceStart.y; y < sourceEnd.y; y++)
+    {
+        [loop]
+        for (uint x = sourceStart.x; x < sourceEnd.x; x++)
+        {
+            // A foliage bound is hidden only when it is behind the farthest scene depth in every
+            // covered Hi-Z texel, so each mip must retain the farthest value in its source region.
+            farthestDepth = SelectFarthestDepth(farthestDepth, _SourceMip[uint2(x, y)]);
+        }
+    }
+
+    _DestinationMip[destinationCoordinate] = farthestDepth;
+}

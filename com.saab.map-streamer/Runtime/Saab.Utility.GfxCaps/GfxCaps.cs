@@ -79,12 +79,14 @@ namespace Saab.Utility.GfxCaps
         public bool Enabled;
         public float Density;
         public float DrawDistance;
+        public float NearCullDistance;
         public bool Shadows;
 
-        public SettingsFeature(float density, float drawdistance, bool shadows)
+        public SettingsFeature(float density, float drawdistance, bool shadows, float nearCullDistance = 0.0f)
         {
             Density = density;
             DrawDistance = drawdistance;
+            NearCullDistance = nearCullDistance;
             Shadows = shadows;
             Enabled = true;
 
@@ -96,6 +98,7 @@ namespace Saab.Utility.GfxCaps
     public class GfxCaps
     {
         public static Capability CurrentCaps = KeyDatabase.GetDefaultUserKey("GfxCaps/CurrentCaps", Capability.DefaultCaps);
+        public static bool FoliageOcclusion = KeyDatabase.GetDefaultUserKey("GfxCaps/Foliage/Occlusion", true);
 
         public static RenderSettings GetGrassSettings
         {
@@ -122,13 +125,14 @@ namespace Saab.Utility.GfxCaps
         public static SettingsFeature GetFoliageSettings(SettingsFeatureType type)
         {
             var renderSettings = new SettingsFeature(1.0f, 1.0f, false);
-
+            
             switch (type)
             {
                 case SettingsFeatureType.Trees:
                     renderSettings.DrawDistance =   KeyDatabase.GetDefaultUserKey("GfxCaps/Foliage/Trees/DrawDistance", renderSettings.DrawDistance);
                     renderSettings.Density =        KeyDatabase.GetDefaultUserKey("GfxCaps/Foliage/Trees/Density", renderSettings.Density);
                     renderSettings.Shadows =        KeyDatabase.GetDefaultUserKey("GfxCaps/Foliage/Trees/Shadows", true);
+                    renderSettings.NearCullDistance = KeyDatabase.GetDefaultUserKey("GfxCaps/Foliage/Trees/NearCullDistance", renderSettings.NearCullDistance);
 
                     if (renderSettings.Density <= 0.0f || renderSettings.DrawDistance <= 0.0f || !GfxCaps.CurrentCaps.HasFlag(Capability.UseFoliageCrossboards))
                         renderSettings.Enabled = false;
@@ -137,6 +141,7 @@ namespace Saab.Utility.GfxCaps
                     renderSettings.DrawDistance =   KeyDatabase.GetDefaultUserKey("GfxCaps/Foliage/Grass/DrawDistance", renderSettings.DrawDistance);
                     renderSettings.Density =        KeyDatabase.GetDefaultUserKey("GfxCaps/Foliage/Grass/Density", renderSettings.Density);
                     renderSettings.Shadows =        KeyDatabase.GetDefaultUserKey("GfxCaps/Foliage/Grass/Shadows", false);
+                    renderSettings.NearCullDistance = KeyDatabase.GetDefaultUserKey("GfxCaps/Foliage/Grass/NearCullDistance", renderSettings.NearCullDistance);
 
                     if (renderSettings.Density <= 0.0f || renderSettings.DrawDistance <= 0.0f || !GfxCaps.CurrentCaps.HasFlag(Capability.UseFoliageCrossboards))
                         renderSettings.Enabled = false;

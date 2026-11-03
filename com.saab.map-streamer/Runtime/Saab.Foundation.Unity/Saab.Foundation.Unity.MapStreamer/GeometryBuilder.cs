@@ -126,17 +126,29 @@ namespace Saab.Foundation.Unity.MapStreamer
             if (!go.TryGetComponent<MeshFilter>(out var meshFilter))
                 meshFilter = go.AddComponent<MeshFilter>();
 
-            if (!GeometryHelper.Build(geo, out Mesh mesh, out Color uniformColor))
+            var reusableMesh = meshFilter.sharedMesh;
+            meshFilter.sharedMesh = null;
+
+            if (!GeometryHelper.Build(
+                    geo,
+                    reusableMesh,
+                    out Mesh mesh,
+                    out Color uniformColor))
             {
 #if DEBUG
                 Debug.LogError("failed to generate mesh, no geometry was built");
 #endif
 
                 Destroy(mesh);
+                if (reusableMesh && reusableMesh != mesh)
+                    Destroy(reusableMesh);
                 meshFilter.sharedMesh = null;
                 meshRenderer.enabled = false;
                 return false;
             }
+
+            if (reusableMesh && reusableMesh != mesh)
+                Destroy(reusableMesh);
 
             Material material;
             if (_forceFallbackMaterial)
@@ -194,7 +206,7 @@ namespace Saab.Foundation.Unity.MapStreamer
             }
             else
             {
-                // release material & mesh resources
+                // Keep the detached mesh on the pooled object for the next native build.
                 if (gameObject.TryGetComponent<MeshRenderer>(out var renderer))
                 {
                     Material sharedMaterial = renderer.sharedMaterial;
@@ -203,11 +215,6 @@ namespace Saab.Foundation.Unity.MapStreamer
 
                     renderer.sharedMaterial = null;
                     renderer.enabled = false;
-                }
-                if (gameObject.TryGetComponent<MeshFilter>(out var meshFilter))
-                {
-                    Destroy(meshFilter.sharedMesh);
-                    meshFilter.sharedMesh = null;
                 }
             }
         }

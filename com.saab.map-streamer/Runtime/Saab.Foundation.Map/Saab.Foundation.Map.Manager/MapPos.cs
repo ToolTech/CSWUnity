@@ -226,8 +226,45 @@ namespace Saab.Foundation.Map
             return mapControl.SetPosition(this, new CartPos(x, y, z),clampType, clampFlags);
 
         }
-               
-        
+
+        public LatPos MoveAlongEllipsoid(LatPos start, double metersEast, double metersNorth)
+        {
+            // WGS84 radii of curvature
+            const double a = 6378137.0;
+            const double e2 = 6.69437999014e-3;
+
+            double sinLat = Math.Sin(start.Latitude);
+            double cosLat = Math.Cos(start.Latitude);
+
+            double denom = Math.Sqrt(1.0 - e2 * sinLat * sinLat);
+            double N = a / denom;
+            double M = a * (1.0 - e2) / (denom * denom * denom);
+
+            // Apply local ENU motion while preserving altitude
+            double dLat = metersNorth / (M + start.Altitude);
+            double dLon = metersEast / ((N + start.Altitude) * Math.Max(1e-12, cosLat));
+
+            return new LatPos(start.Latitude + dLat, start.Longitude + dLon, start.Altitude);
+        }
+
+        public (Vec3 e, Vec3 n, Vec3 u) GetEnuBasisVectors(bool unityCS = false)
+        {
+            var enu = EnuToLocal();
+
+            var east = enu * new Vec3(1, 0, 0);
+            var north = enu * new Vec3(0, 1, 0);
+            var up = enu * new Vec3(0, 0, 1);
+
+            if (unityCS)
+            {
+                east.z = -east.z;
+                north.z = -north.z;
+                up.z = -up.z;
+            }
+
+            return (east, north, up);
+        }
+
         public bool UpdatePosition()
         {
             var mapControl = MapControl.SystemMap;
@@ -237,7 +274,7 @@ namespace Saab.Foundation.Map
                 return false;
             }
 
-            if(clampFlags == ClampFlags.NONE)
+            if (clampFlags == ClampFlags.NONE)
             {
                 return false;
             }

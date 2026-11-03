@@ -26,12 +26,24 @@ A feature associates a [foliage set](#foliageSet) with information about how its
 The distribution settings you can define are: 
 -
 - **Density**
-    - defines how closely the foliage assets are placed in the world.
+    - Defines how closely foliage assets are placed in the world. The nominal spacing, before random displacement, is `1 / Density` metres. For example, a density of `0.15` produces a placement point every `6.67` metres along each axis.
 - **Boundary Radius**
     - defines the maximum size of the map node (in meters) that the feature should be rendered at. You can think of this as a kind of LOD system. 
 
 <font color="purple"><b>Note</b></font>
 -   The distribution can also be affected by the individual settings of foliage asset in your foliage set. Like for example its valid height range which would stop it from being place if the heightdata does not return a value inside that range.  
+
+<b>Placement consistency across node LODs</b>
+
+Foliage placement is anchored to a world-space lattice so overlapping nodes at different levels of detail generate the same base points. The placement kernel resolves the complete lattice position as a continuous feature-map coordinate before applying random displacement; changing the feature-map pixel size must not snap points to texel boundaries.
+
+When random displacement is disabled for diagnostics, adjacent base points should remain exactly `1 / Density` metres apart. Uneven repeating spacing, clustered points, or periodically missing points indicates that the lattice coordinate was discarded or that a candidate rejected the rest of its dispatch lane.
+
+<b>Mesh coverage</b>
+
+Feature data alone does not guarantee a valid placement position. The pixel-to-object lookup stores an object-space position and an explicit mesh-coverage flag for each pixel, and is cleared before rasterizing the node mesh. Foliage candidates are skipped unless all four lookup samples used for bilinear interpolation have mesh coverage. This prevents undefined or stale positions from placing foliage where the feature texture extends beyond the mesh, but can omit candidates immediately adjacent to coverage boundaries and holes.
+
+Culling also uses the actual number of points appended during placement, copied into a per-node GPU count buffer. Allocated capacity is not a point count: resetting an append counter does not erase previous records. Entries beyond the current count are never read or updated, so unused positions and colors cannot reappear after a tile reload.
 
 The rendering settings you can define are:
 -

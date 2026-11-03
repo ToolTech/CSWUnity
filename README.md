@@ -19,15 +19,31 @@ anders.moden@saabgroup.com
 Setup
 =====
 
-To run, open the Install_Gizmo.sln under directory 'vs17\Install_Gizmo' and select 'debug/release for each x64/ARM64 etc' solution and build. Select only one configration at a time and build this for all platforms. This will fetch nuget packages for all components and update the Assets/Plugin folder with correct binaries. The solution can deploy both Debug and Release versions to be used in development. Only one "deploy" version at a time should be used. Dont mix both Debug and Release versions. To clear the plugin folder, run the script 'cleanup_plugins.bat' that will clean the Assets/Plugin folder. Use VS2019 to build the InstallPackages or use VS2017 and install support for .NET Core 3.1 
-Dont use ARM and ARM64 builds in parallell or rename and configure dlls properly so Unity can select the right ones.
+To run, open the Install_Gizmo.sln under directory 'vs17\Install_Gizmo' and select either Debug or Release for x64. Select only one configuration at a time. This will fetch NuGet packages for all components and update the Assets/Plugin folder with the correct binaries. The solution can deploy both Debug and Release versions for development, but only one deployed version should be used at a time. Do not mix Debug and Release versions. To clear the plugin folder, run 'Clean.bat'.
+
+The maintained Install_Gizmo solution uses Visual Studio 2022 format and can also be opened by a later compatible Visual Studio version. Install .NET Core 3.1 support where it is required by the build projects. Platform-specific builds, such as ARM64 targets, require their corresponding supported solution and package configuration and must not be mixed with x64 binaries in the same Unity plugin deployment.
 
 You could also simply just run the corresponding .bat script (build_x64, build_x64_d, etc..) and every thing will be setup correctly.
+
+
+CDW installation guides
+=======================
+
+The following guides apply to users who run CSWUnity from a Cloud Development
+Workstation (CDW). They describe the complete CDW setup and Map Streamer demo
+workflow:
+
+1. [CDW installation and system requirements](tutorial/howto/CDW_Installation.md)
+2. [Visual Studio installation](tutorial/howto/CDW_Visual_Studio_Installation.md)
+3. [Unity installation](tutorial/howto/CDW_Unity_Installation.md)
+4. [Map Streamer demo](tutorial/howto/CDW_map_streamer_DEMO.md)
 
 
 Running the demo
 ================
 Open the unity project found under the under directory 'projects\com.saab.map-streamer' and Press the "play" button in the Unity editor. 
+
+The T&S BTA reference architecture in this repository uses Unity 2021.3.17f1. Other Saab projects can have different Unity-version requirements and should follow their own ProjectSettings/ProjectVersion.txt file and approved dependency set. New projects may prefer Unity 6000.3.21f1 LTS after compatibility with the required CSWUnity, GizmoSDK and package dependencies has been verified.
 
 <b>keybinds:</b>
 * WASD to move around

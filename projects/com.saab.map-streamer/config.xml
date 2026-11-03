@@ -5,14 +5,17 @@
 		<CurrentCaps info="Which graphics capabilities to use">48</CurrentCaps>
 		<Foliage>
          <!-- ****** disable by setting drawdistance or density to 0.0 ****** -->
+          <Occlusion info="Enable foliage Hi-Z occlusion culling">true</Occlusion>
           <Trees>
             <Density info="Density percentage modifier">1</Density>
             <DrawDistance info="DrawDistance percentage modifier">1</DrawDistance>
+            <NearCullDistance info="Near-camera foliage culling distance in meters; 0 disables culling">0</NearCullDistance>
             <Shadows info="foliage cast shadows">true</Shadows>
           </Trees>
           <Grass>
             <Density info="Density percentage modifier">1</Density>
             <DrawDistance info="DrawDistance percentage modifier">1</DrawDistance>
+            <NearCullDistance info="Near-camera foliage culling distance in meters; 0 disables culling">0</NearCullDistance>
             <Shadows info="foliage cast shadows">false</Shadows>
           </Grass>
         </Foliage>

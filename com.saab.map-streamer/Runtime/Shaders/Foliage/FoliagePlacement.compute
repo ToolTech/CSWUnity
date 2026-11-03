@@ -16,34 +16,14 @@
 #pragma kernel CSPlacement
 #pragma kernel CSSurfaceHeightMap
 #pragma kernel CSPixelToObject
+#pragma kernel CSClearPixelToObject
 #pragma kernel CSCull
-#pragma kernel CSPreCull
-#pragma kernel CSPostCull
 #pragma kernel CSFindBufferSize
 #pragma kernel CSClear
 
 #include "UnityCG.cginc"
 #include "CompressionUtil.cginc"
-
-struct FoliagePoint
-{
-    float3 Position;    // 12 bytes
-    uint ColorA;        // 4 bytes
-
-    uint up; // 4 bytes
-    uint right; // 4 bytes
-    
-    uint packed0; // 4  -> 28  (Height16 | Random16)
-    uint packed1; // 4  -> 32  (Visibility16 | unused/pad16)
-    
-}; // 32 bytes: AMD require data to be divisible by 16 bytes (caused by float3 => 16 bytes padding). Nvidia and Intel drivers automatically pads.
-
-struct FoliageShaderData
-{
-    float2 MaxMin;
-    float2 Offset;
-    float Weight;
-};
+#include "FoliageBufferTypes.cginc"
 
 // mesh buffers
 
@@ -68,10 +48,10 @@ RWStructuredBuffer<uint> BufferSize;
 StructuredBuffer<bool> FeatureMap; // feature map => int[255] 
 AppendStructuredBuffer<FoliagePoint> TerrainPoints;     // Calculated points for one mesh
 RWStructuredBuffer<FoliagePoint> InputBuffer;           // buffer with all points
+ByteAddressBuffer InputCount;                          // actual append count, not buffer capacity
 StructuredBuffer<float> PixelToWorld;                   // matrix pixel to world (worldpixel coord)VertexBuffer
 AppendStructuredBuffer<FoliagePoint> OutputBuffer;      // buffer with all (frustum) culled points 
-RWStructuredBuffer<uint> AngleDepth;                    // custom angle depth
-RWStructuredBuffer<float3> PixelToObjectCoord;          // pixelIndex to objectspace
+RWStructuredBuffer<float4> PixelToObjectCoord;          // xyz: object position, w: mesh coverage
 StructuredBuffer<FoliageShaderData> FoliageData;
 
 // textures input
@@ -79,28 +59,25 @@ Texture2D<unorm float> SplatMap;
 Texture2D<float4> Texture;
 Texture2D<unorm float> HeightSurface;
 RWTexture2D<float> SurfaceHeightMap;
-Texture2D<float> DepthTexture;
+Texture2D<float> HiZTexture;
 
-uint DownscaleFactor;
-Texture2D<float> DepthTextureLowRes;
 int FrameCount;
+float4 HiZTextureSize;
+uint HiZMaxMipLevel;
+float HiZDepthBias;
+bool HiZOcclusion;
 
 // Camera
 float2 Fov;
 float3 CameraPosition;          // camera position in worldPos
 float4 frustumPlanes[6];        // Frustum planes (6 planes * 4 floats: [ normal.x, normal.y, normal.z, distance ])
-uniform float4x4 WorldToScreen; // World to clipPos
+uniform float4x4 WorldToScreen; // Unity clip space, used for screen UVs
 float3 CameraRightVector;       // The right vector of the camera
 float3 CameraForwardVector;     // The right vector of the camera
 
 // Global Variables
-float AngleResolutionScale;
 uint BufferCount;
-bool Occlusion;
-uint Scale;
-float2 DownscaleSize;       // size of screen in pixels (for depthtexture)
 float2 NodeOffset;          // bottom left corner of node in "world" space
-float maxHeight;            // max size of foliage in meters
 uint uvCount;               // the size of surfaceUVs buffer
 float2 terrainResolution;   // Resolution of texture/feauture texture
 float2 heightResolution;    // Resolution of height texture
@@ -110,6 +87,7 @@ float Density;              // density of trees
 float3 MeshBoundsMax;       // Mesh offset
 float4x4 ObjToWorld;        // Local To World
 float ScreenCoverage;
+float NearCullDistance;
 
 
 // ************* triangle check ************* //
@@ -182,24 +160,27 @@ float Random2D(float2 input, float mutator = 0.546)
     return Random(i, mutator);
 }
 
-float3 BilinearPosition(int2 texCoord, float2 frac)
+bool TryBilinearPosition(int2 texCoord, float2 frac, out float3 position)
 {
-    float3 dl, dr, ul, ur;
-
     uint index_dl = PixelToIndex(texCoord, terrainResolution);
     uint index_dr = PixelToIndex(int2(texCoord.x + 1, texCoord.y), terrainResolution);
     uint index_ul = PixelToIndex(int2(texCoord.x, texCoord.y + 1), terrainResolution);
     uint index_ur = PixelToIndex(int2(texCoord.x + 1, texCoord.y + 1), terrainResolution);
     
-    dl = PixelToObjectCoord[index_dl];
-    dr = PixelToObjectCoord[index_dr];
-    ul = PixelToObjectCoord[index_ul];
-    ur = PixelToObjectCoord[index_ur];
+    float4 dl = PixelToObjectCoord[index_dl];
+    float4 dr = PixelToObjectCoord[index_dr];
+    float4 ul = PixelToObjectCoord[index_ul];
+    float4 ur = PixelToObjectCoord[index_ur];
 
-    float3 dx = lerp(dl, dr, frac.x);
-    float3 ux = lerp(ul, ur, frac.x);
+    position = 0;
+    if (dl.w == 0 || dr.w == 0 || ul.w == 0 || ur.w == 0)
+        return false;
 
-    return lerp(ux, dx, frac.y);
+    float3 dx = lerp(dl.xyz, dr.xyz, frac.x);
+    float3 ux = lerp(ul.xyz, ur.xyz, frac.x);
+
+    position = lerp(ux, dx, frac.y);
+    return true;
 }
 
 float2 GetWorldCoord(uint2 texCoord, float3x3 worldToTexCoord, float2 nodeCoord)
@@ -333,6 +314,16 @@ void CSSurfaceHeightMap(uint3 id : SV_DispatchThreadID)
 }
 
 // ************* PixelToObject ************* //
+[numthreads(128, 1, 1)]
+void CSClearPixelToObject(uint3 id : SV_DispatchThreadID)
+{
+    uint pixelCount = uint(terrainResolution.x) * uint(terrainResolution.y);
+    if (id.x >= pixelCount)
+        return;
+
+    PixelToObjectCoord[id.x] = 0;
+}
+
 [numthreads(4, 4, 4)]
 void CSPixelToObject(uint3 id : SV_DispatchThreadID)
 {
@@ -382,7 +373,7 @@ void CSPixelToObject(uint3 id : SV_DispatchThreadID)
             if (PositionFromUVInTri(uv, uv1, uv2, uv3, v1, v2, v3, result))
             {
                 uint index = PixelToIndex(uv, terrainResolution);
-                PixelToObjectCoord[index] = result;
+                PixelToObjectCoord[index] = float4(result, 1);
             }
         }
     }
@@ -424,7 +415,6 @@ void CSPlacement(uint3 id : SV_DispatchThreadID)
 	);
     
     uint feature = uint(SplatMap[uv] * 255);
-    float2 pixelOverlap = float2(2, 2);
 
     if (!FeatureMap[feature])
         return;
@@ -449,6 +439,10 @@ void CSPlacement(uint3 id : SV_DispatchThreadID)
 
             float offsetX = (wpx - worldCoord.x);
             float offsetY = (wpy - worldCoord.y);
+
+            // Each dispatch lane scans multiple candidates, so reject only this one.
+            if (offsetX >= (Resolution.x * subPixelX) || offsetY >= (Resolution.y * subPixelY))
+                continue;
                                 
             float2 randoffset = fmod(GetWorldCoord(uv, ToWorldTexCoord, NodeOffset), 1000);
             float2 rand = randoffset * 0.001;
@@ -457,27 +451,32 @@ void CSPlacement(uint3 id : SV_DispatchThreadID)
             float angle = (Random2D(rand, 3.731) * 2 - 1) * 3.141592;
             float2 randDir = float2(cos(angle), sin(angle));
                 
-            float distance = Random2D(rand, 12.243) * (stepsize * 0.5) * 1.5;
+            float distance = sqrt(Random2D(rand, 12.243)) * stepsize;
             float2 randomPoint = randDir * distance;
-                
-            float2 uvfrac = frac(randomPoint / Resolution);
-            float2 uvOffset = floor(randomPoint / Resolution);
+
+            // BTA local Z runs opposite feature-map Y.
+            float2 placementOffset = float2(
+                pixelOffset.x * Resolution.x + offsetX,
+                -(pixelOffset.y * Resolution.y + offsetY)) + randomPoint;
+            float2 placementPixelOffset = placementOffset / Resolution;
+            float2 uvfrac = frac(placementPixelOffset);
+            int2 uvOffset = int2(floor(placementPixelOffset));
             uvOffset.y *= -1;
+            int2 placementUv = int2(uv) + uvOffset;
 
             // check if uv coord is valid (handle pixel Overlap)
-            if (any((uv + uvOffset) > (terrainResolution - float2(2, 2))) || any((uv + uvOffset) < float2(1, 1)))
+            if (any(placementUv > (int2(terrainResolution) - int2(2, 2))) || any(placementUv < int2(1, 1)))
                 continue;
 
-            feature = uint(SplatMap[uv + uvOffset] * 255);
-            float3 movedCoord = BilinearPosition(uv + uvOffset, uvfrac);
+            feature = uint(SplatMap[placementUv] * 255);
+            float3 movedCoord;
+            if (!TryBilinearPosition(placementUv, uvfrac, movedCoord))
+                continue;
                 
             if (FeatureMap[feature])
             {
-                if (offsetX >= (Resolution.x * subPixelX) || offsetY >= (Resolution.y * subPixelY))
-                    return;
-                
-                float3 color = Texture[uv + uvOffset].xyz;
-                float2 texCoord = float2(clamp((uv + uvOffset).x - 1, 0, terrainResolution.x - 2), clamp((uv + uvOffset).y - 1, 0, terrainResolution.y - 2));
+                float3 color = Texture[placementUv].xyz;
+                float2 texCoord = clamp(float2(placementUv) - 1.0, 0.0, terrainResolution - 2.0);
 
                 float2 uvHeight = (texCoord / (terrainResolution.xy)) * heightResolution.xy;
                 float surfaceHeight = HeightSurface[uvHeight] * 255;
@@ -489,7 +488,6 @@ void CSPlacement(uint3 id : SV_DispatchThreadID)
                 }
                                     
                 float3 coord = movedCoord.xyz;
-                float2 uvCoord = uv.xy / terrainResolution.xy;
                     
                 FoliagePoint res;
                 res.Position = coord.xyz;
@@ -515,268 +513,126 @@ inline bool IsInFrustum(float3 positionAfterProjection, float threshold)
         dot(normalize(frustumPlanes[3].xyz), positionAfterProjection) >= threshold);
 }
 
-float3 GetScreenPos(float3 pos)
+bool ProjectToHiZ(float3 worldPos, out float2 uv)
 {
-    float4 clipCoord = mul(WorldToScreen, float4(pos.xyz, 1));
-    float DepthPos = clipCoord.z;
-    float2 screenPos = clipCoord.xy / clipCoord.w; // converts to a range (-1) - 1
-    screenPos = screenPos * 0.5 + 0.5; // convert to a range 0- 1
-    screenPos *= _ScreenParams.xy; // convert to pixel coordiantes
-    
-    // clamp screenPos to always be in screen
-    screenPos.xy = clamp(screenPos.xy, float2(0, 0), _ScreenParams.xy - 1);
-    
-    return float3(screenPos.xy, DepthPos);
+    float4 screenClip = mul(WorldToScreen, float4(worldPos, 1));
+
+    // Bounds crossing or behind the camera cannot be proven hidden conservatively.
+    if (screenClip.w <= 0.0001)
+    {
+        uv = 0;
+        return false;
+    }
+
+    uv = screenClip.xy / screenClip.w * 0.5 + 0.5;
+    return true;
 }
 
-bool IsHidden(float3 worldPos, float height, float3 toFoliage)
+float SelectFarthestDepth(float currentDepth, float candidateDepth)
 {
-    // Get projected screen-space positions
-    float3 mid = GetScreenPos(worldPos + float3(0, height * 0.5, 0) - toFoliage * height);
-    float3 topRight = GetScreenPos(worldPos + CameraRightVector * 0.5 * height * 0.2 + float3(0, height * 0.8, 0));
-    float3 bottomLeft = GetScreenPos(worldPos - CameraRightVector * 0.5 * height * 0.2);
-    
-    float depth = mid.z - 0.01;
-    
-    int2 downscale = int2(DownscaleFactor, DownscaleFactor);
-    int2 screenSize = int2(_ScreenParams.xy);
-    int2 lowResSize = floor(screenSize / (float) downscale);
-    
-    int2 minXY = int2(floor(min(bottomLeft.xy, topRight.xy) / (float) downscale));
-    int2 maxXY = int2(ceil(max(bottomLeft.xy, topRight.xy) / (float) downscale));
-    
-    // 1-pixel safety margin
-    minXY -= 1;
-    maxXY += 1;
-    
-    // Clamp to screen bounds
-    minXY = clamp(minXY, int2(0, 0), lowResSize.xy - 1);
-    maxXY = clamp(maxXY, int2(0, 0), lowResSize.xy - 1);
-    
-    for (int y = minXY.y; y < maxXY.y; y += 2)
+    // Raw depth decreases with distance on reversed-Z platforms and increases otherwise.
+#if defined(UNITY_REVERSED_Z)
+    return min(currentDepth, candidateDepth);
+#else
+    return max(currentDepth, candidateDepth);
+#endif
+}
+
+bool IsHidden(
+    float3 worldPos,
+    float height,
+    float groundOffset,
+    float cullAreaWidth,
+    float3 worldUp)
+{
+    // Project a tight camera-facing rectangle around the part of the foliage asset configured for
+    // occlusion. Using the full billboard width would select coarse mips and include unrelated sky.
+    float3 cameraForward = normalize(CameraForwardVector);
+    float3 cameraRight = normalize(CameraRightVector);
+    float3 foliageUp = normalize(worldUp);
+
+    float3 basePosition = worldPos - foliageUp * groundOffset * height;
+    float3 topPosition = basePosition + foliageUp * height;
+    float halfCullWidth = height * cullAreaWidth * 0.5;
+    float3 rightExtent = cameraRight * halfCullWidth;
+
+    float2 uv0;
+    float2 uv1;
+    float2 uv2;
+    float2 uv3;
+
+    if (!ProjectToHiZ(basePosition - rightExtent, uv0) ||
+        !ProjectToHiZ(basePosition + rightExtent, uv1) ||
+        !ProjectToHiZ(topPosition - rightExtent, uv2) ||
+        !ProjectToHiZ(topPosition + rightExtent, uv3))
     {
-        int offset = y % 2;
-        for (int x = minXY.x + offset; x < maxXY.x; x += 2)
+        return false;
+    }
+
+    float nearestFoliageEyeDepth =
+        min(
+            dot(basePosition - CameraPosition, cameraForward),
+            dot(topPosition - CameraPosition, cameraForward)) -
+        halfCullWidth;
+
+    if (nearestFoliageEyeDepth <= 0.0)
+        return false;
+
+    float2 minUv = min(min(uv0, uv1), min(uv2, uv3));
+    float2 maxUv = max(max(uv0, uv1), max(uv2, uv3));
+
+    if (any(maxUv < 0.0) || any(minUv > 1.0))
+        return false;
+
+    minUv = saturate(minUv);
+    maxUv = saturate(maxUv);
+
+    float2 extentInPixels = (maxUv - minUv) * HiZTextureSize.xy;
+    float largestExtent = max(extentInPixels.x, extentInPixels.y);
+
+    // Choose the finer adjacent mip. This keeps the projected bounds within at most a 3x3 texel
+    // footprint without pulling distant background from one excessively coarse texel.
+    uint mipLevel = (uint) floor(log2(max(largestExtent, 1.0)));
+    mipLevel = min(mipLevel, HiZMaxMipLevel);
+
+    uint2 mipSize = max(uint2(1, 1), uint2(HiZTextureSize.xy) >> mipLevel);
+    uint2 maxCoordinate = mipSize - 1;
+    uint2 minCoordinate = min((uint2) floor(minUv * mipSize), maxCoordinate);
+    uint2 maxSampleCoordinate = min((uint2) floor(maxUv * mipSize), maxCoordinate);
+    uint2 sampleSpan = min(maxSampleCoordinate - minCoordinate, uint2(2, 2));
+
+#if defined(UNITY_REVERSED_Z)
+    float farthestSceneDepth = 1.0;
+#else
+    float farthestSceneDepth = 0.0;
+#endif
+
+    [unroll]
+    for (uint y = 0; y < 3; y++)
+    {
+        [unroll]
+        for (uint x = 0; x < 3; x++)
         {
-            int2 lowResPixel = int2(x, y);
-            float sceneDepth = DepthTexture.Load(int3(lowResPixel, 0)); // point sampling
-            
-            // Early out if any pixel shows visible geometry
-            if (sceneDepth > depth + 0.02) // tweak based on scene scale
-                return false; // visible
+            if (x <= sampleSpan.x && y <= sampleSpan.y)
+            {
+                farthestSceneDepth = SelectFarthestDepth(
+                    farthestSceneDepth,
+                    HiZTexture.Load(int3(minCoordinate + uint2(x, y), mipLevel)));
+            }
         }
     }
-    
-    return true;
+
+    // Cull only when the nearest possible foliage point is behind the farthest scene depth across
+    // every covered texel. Eye-space comparison keeps the bias stable at all camera distances.
+    float farthestSceneEyeDepth = LinearEyeDepth(farthestSceneDepth);
+    return nearestFoliageEyeDepth > farthestSceneEyeDepth + HiZDepthBias;
 }
 
 float CalculateDesiredDistance(float vFov, float objectHeight, float coverage)
 {
     float halfFov = vFov * 0.5 * kDeg2Rad;
-    
+
     return objectHeight / (2.0 * tan(halfFov) * coverage);
-}
-
-uint2 UnpackIndex(uint index, uint bufferWidth)
-{
-   
-    // Recover pitchIndex and yawIndex from the single 'index'
-    uint pitchIndex = index / bufferWidth;
-    uint yawIndex = index % bufferWidth;
-    
-    return uint2(yawIndex, pitchIndex);
-}
-
-float2 IndexToAngle(uint index, float2 fov)
-{
-    // Use the same resolution and FOV parameters as in AngleIndex
-    float resolutionScale = AngleResolutionScale;
-    uint bufferWidth = (uint) (180.0 * resolutionScale);
-
-    // Recover pitchIndex and yawIndex from the single 'index'
-    uint pitchIndex = index / bufferWidth;
-    uint yawIndex = index % bufferWidth;
-
-    // Convert discrete indices back to normalized [0..1]
-    float normalizedYaw = (float) yawIndex / (float) (bufferWidth - 1);
-    float normalizedPitch = (float) pitchIndex / (float) (bufferWidth - 1);
-
-    // Convert normalized [0..1] back to angles in degrees:
-    //   0   -> -fov/2
-    //   1   -> +fov/2
-    float yawAngle = normalizedYaw * fov.x - (fov.x * 0.5);
-    float pitchAngle = normalizedPitch * fov.y - (fov.y * 0.5);
-
-    return float2(yawAngle, pitchAngle);
-}
-
-float2 GetAngle(float3 toPoint, float3 cameraForward, float3 cameraRight, float3 cameraUp, float2 fov, uint bufferWidth)
-{
-    // Normalize the direction vector
-    float3 dir = normalize(toPoint);
-   
-    // Compute camera space coordinates
-    // x: right, y: up, z: forward
-    float x = dot(dir, cameraRight);
-    float y = dot(dir, cameraUp);
-    float z = dot(dir, cameraForward);
-    
-    if (z <= 0.001)
-        z = 0;
-    
-    // Compute yaw and pitch in degrees.
-    // atan2 returns the angle (in radians) between the z-axis and the projection onto the x-z or y-z plane.
-    float yawAngle = degrees(atan2(x, z)); // horizontal angle
-    float pitchAngle = degrees(asin(y));
-           
-    return float2(yawAngle, pitchAngle);
-}
-
-uint GetIndex(float2 yawPitch, uint bufferWidth, float2 fov)
-{
-    // Remap the angles from camera space to a normalized [0, 1] range.
-    // The fov vector contains (horizontalFOV, verticalFOV)
-    // Here, we assume the center of the view is 0 deg, with -fov/2 to +fov/2 covering the full fov.
-    float normalizedYaw = saturate((yawPitch.x + (fov.x * 0.5)) / fov.x);
-    float normalizedPitch = saturate((yawPitch.y + (fov.y * 0.5)) / fov.y);
-
-    // Scale the normalized values into our discrete grid.
-    // Multiplying by (bufferWidth - 1) ensures that bottom-left is index 0 and top-right is (bufferWidth - 1).
-    uint yawIndex = (uint) (normalizedYaw * (bufferWidth - 1));
-    uint pitchIndex = (uint) (normalizedPitch * (bufferWidth - 1));
-
-    // Pack into a single index (row-major order):
-    uint index = pitchIndex * bufferWidth + yawIndex;
-    return index;
-}
-
-uint AngleIndex(float3 toPoint, float3 cameraForward, float3 cameraRight, float3 cameraUp, float2 fov, out float2 yawPitch)
-{
-    // resolutionScale is defined somewhere in your shader
-    uint bufferWidth = (uint) (180.0 * AngleResolutionScale);
-        
-    // Compute yaw and pitch in degrees.
-    yawPitch = GetAngle(toPoint, cameraForward, cameraRight, cameraUp, fov, bufferWidth);
-    return GetIndex(yawPitch, bufferWidth, fov);
-}
-
-int GetRectangleWidth(uint minIndex, uint maxIndex, uint bufferWidth)
-{
-    int minX = minIndex % bufferWidth;
-    int maxX = maxIndex % bufferWidth;
-    
-    return (maxX - minX);
-}
-
-void FillSkewedRectangleInterlockedMin(uint minIndex, uint maxIndex, float distance, float2 minYawPitch, float2 maxYawPitch, float tilt)
-{
-    uint bufferWidth = (uint) (180.0 * AngleResolutionScale);
-    int rWidth = GetRectangleWidth(minIndex, maxIndex, bufferWidth);
-    uint index = minIndex;
-    uint currentRow = 0;
-    
-    while (index < maxIndex)
-    {
-        uint rowStart = floor((float) index / (float) bufferWidth) * bufferWidth;
-        uint rowEnd = ceil((float) index / (float) bufferWidth) * bufferWidth;
-        int skew = (float) currentRow * tilt;
-        
-        int startIndex = index + skew;
-        uint endIndex = startIndex + rWidth;
-        
-        for (uint x = max(rowStart, startIndex); x <= min(rowEnd, endIndex); x++)
-        {
-            InterlockedMin(AngleDepth[x], (uint) ceil(distance));
-        }
-        
-        index += bufferWidth;
-        currentRow++;
-    }
-}
-
-void SetIndex(float3 toPoint, float3 forward, float3 right, float3 up, float distance)
-{
-    float2 YawPitch;
-    uint index = AngleIndex(toPoint, forward, right, up, Fov, YawPitch);
-    InterlockedMin(AngleDepth[index], (uint) ceil(distance));
-}
-
-bool PointInTriangle(float2 pt, float2 v0, float2 v1, float2 v2)
-{
-    // Barycentric technique
-    float2 v0v1 = v1 - v0;
-    float2 v0v2 = v2 - v0;
-    float2 v0pt = pt - v0;
-
-    float d00 = dot(v0v1, v0v1);
-    float d01 = dot(v0v1, v0v2);
-    float d11 = dot(v0v2, v0v2);
-    float d20 = dot(v0pt, v0v1);
-    float d21 = dot(v0pt, v0v2);
-    float denom = d00 * d11 - d01 * d01;
-
-    if (denom == 0.0)
-        return false;
-
-    float u = (d11 * d20 - d01 * d21) / denom;
-    float v = (d00 * d21 - d01 * d20) / denom;
-
-    return (u >= 0) && (v >= 0) && (u + v <= 1);
-}
-
-void FillIndices(float3 bottomleft, float3 topRight, float3 bottomRight, float3 topLeft, float3 forward, float3 right, float3 up, float distance)
-{
-    const uint bufferWidth = (uint) (180.0 * AngleResolutionScale);
-    const float2 halfFov = Fov * 0.5;
-
-    // Get yaw/pitch angles (in degrees)
-    float2 bl = GetAngle(bottomleft, forward, right, up, Fov, bufferWidth);
-    float2 br = GetAngle(bottomRight, forward, right, up, Fov, bufferWidth);
-    float2 tl = GetAngle(topLeft, forward, right, up, Fov, bufferWidth);
-    float2 tr = GetAngle(topRight, forward, right, up, Fov, bufferWidth);
-
-    // Angle-space bounds
-    float2 minAngle = min(min(bl, br), min(tl, tr));
-    float2 maxAngle = max(max(bl, br), max(tl, tr));
-
-    // Convert to index-space bounds (but don't round yet)
-    float2 minNorm = saturate((minAngle + halfFov) / Fov);
-    float2 maxNorm = saturate((maxAngle + halfFov) / Fov);
-
-    uint2 minIdx = (uint2) (minNorm * (bufferWidth - 1));
-    uint2 maxIdx = (uint2) (maxNorm * (bufferWidth - 1));
-
-    for (uint py = minIdx.y; py <= maxIdx.y; py++)
-    {
-        for (uint px = minIdx.x; px <= maxIdx.x; px++)
-        {
-            // Convert back to yaw/pitch angle (center of pixel)
-            float2 norm = float2(px + 0.5, py + 0.5) / (bufferWidth - 1);
-            float2 angle = norm * Fov - halfFov;
-
-            // Point-in-triangle in angle space
-            if (PointInTriangle(angle, bl, tl, tr) || PointInTriangle(angle, bl, tr, br))
-            {
-                uint index = py * bufferWidth + px;
-                InterlockedMin(AngleDepth[index], (uint) ceil(distance));
-            }
-        }
-    }
-}
-
-void SetIndices(float3 toBottomLeft, float3 toTopRight, float3 forward, float3 right, float3 up, float distance, float height = 0)
-{
-    float2 minYawPitch, maxYawPitch;
-    uint minIndex = AngleIndex(toBottomLeft, forward, right, up, Fov, minYawPitch);
-    uint maxIndex = AngleIndex(toTopRight, forward, right, up, Fov, maxYawPitch);
-    
-    FillSkewedRectangleInterlockedMin(minIndex, maxIndex, distance, minYawPitch, maxYawPitch, -0.5);
-}
-
-uint GetIndex(float3 toFoliage, float3 forward, float3 right, float3 up)
-{
-    float2 t1;
-    return AngleIndex(toFoliage, forward, right, up, Fov, t1);
 }
 
 bool GetRandomizedData(FoliagePoint data, out FoliageShaderData output)
@@ -793,24 +649,17 @@ bool GetRandomizedData(FoliagePoint data, out FoliageShaderData output)
     return true;
 }
 
-bool HiddenCheck(uint depth, float distance, float height)
-{
-    return depth <= uint(distance - (height * 0.5));
-}
-
 // ************* Cull Points ************* //
 [numthreads(128, 1, 1)]
 void CSCull(uint3 id : SV_DispatchThreadID)
 {
+    if (id.x >= InputCount.Load(0))
+        return;
+
     FoliagePoint data = InputBuffer[id.x];
             
-    // handle points with no value. (allocated points in buffer is by default float3(0,0,0))
     if (dot(data.Position, data.Position) == 0)
         return;
-    
-    float3 forward = CameraForwardVector;
-    float3 right = CameraRightVector;
-    float3 up = normalize(cross(forward, right));
     
     FoliageShaderData foliageData = (FoliageShaderData) 0;
     bool dataFound = GetRandomizedData(data, foliageData);
@@ -823,28 +672,31 @@ void CSCull(uint3 id : SV_DispatchThreadID)
     if (height == 0)
         return;
 
-    //float3 worldUp = mul(ObjToWorld, float4(0, 1, 0, 1)).xyz;
-    float3 worldUp = float3(0, 1, 0);
+    float3 worldUp = UnpackNormalOct(data.up);
     float3 topPadding = worldUp * height * 0.1;
     float3 topOffset = worldUp * (height - foliageData.Offset.y * height) - topPadding;
     float3 pos = mul(ObjToWorld, float4(data.Position.xyz, 1)).xyz;
 
-
     float3 FoliageMid = pos + topOffset * 0.45;
-    float3 FoliageTop = pos + topOffset * 0.85;
     float3 toFoliageMid = FoliageMid - CameraPosition;
-    float3 toFoliageTop = FoliageTop - CameraPosition;
-    
-    float3 foliageRight = normalize(cross(up, FoliageMid)) * height * 0.5;
-    
-    float3 FoliageRight = FoliageMid + foliageRight * 0.02;
-    float3 FoliageLeft = FoliageMid - foliageRight * 0.02;
-    float3 toFoliageRight = FoliageRight - CameraPosition;
-    float3 toFoliageLeft = FoliageLeft - CameraPosition;
     
     float distance = length(toFoliageMid);
     float desiredDistance = CalculateDesiredDistance(Fov.y/*This includes padding for shadows, but should maybe not*/, height, ScreenCoverage);
-    
+
+    bool isWithinNearCullDistance =
+        NearCullDistance > 0.0 && distance <= NearCullDistance;
+    float visibility = UnpackHalfLo(data.packed1);
+
+    if (isWithinNearCullDistance)
+    {
+        visibility = max(visibility - 0.01f, 0.0);
+        data.packed1 = Pack2Half(visibility, 0);
+        InputBuffer[id.x] = data;
+
+        if (visibility <= 0)
+            return;
+    }
+
     if (desiredDistance < distance)
         return;
   
@@ -862,12 +714,17 @@ void CSCull(uint3 id : SV_DispatchThreadID)
     if (!IsInFrustum(toFoliageMid, -height))
         return;
     
-    float visibility = UnpackHalfLo(data.packed1);
-        
-    // Only update visibility on matching frames
-    if ((uint) FrameCount % 2 == id.x % 2)
+    // Recover visibility only on matching frames outside the near-cull range.
+    if (!isWithinNearCullDistance && (uint) FrameCount % 2 == id.x % 2)
     {
-        bool hidden = Occlusion && IsHidden(pos, height, normalize(toFoliageMid));
+        bool hidden =
+            HiZOcclusion &&
+            IsHidden(
+                pos,
+                height,
+                foliageData.Offset.y,
+                foliageData.CullAreaWidth,
+                worldUp);
         // If not hidden, increase visibility up to a limit
         if (!hidden && visibility <= 1.0)
             visibility += 0.25;
@@ -878,88 +735,14 @@ void CSCull(uint3 id : SV_DispatchThreadID)
         return;
     
     // Otherwise decay a bit
-    visibility -= 0.01f;
+    if (!isWithinNearCullDistance)
+        visibility -= 0.01f;
         
     data.packed1 = Pack2Half(visibility, 0);
     InputBuffer[id.x] = data;
         
     data.Position = pos;
     OutputBuffer.Append(data);
-}
-
-[numthreads(256, 1, 1)]
-void CSPostCull(uint3 id : SV_DispatchThreadID)
-{
-    int index = id.x;
-    AngleDepth[index] = 0xffffffff;
-}
-
-[numthreads(128, 1, 1)]
-void CSPreCull(uint3 id : SV_DispatchThreadID)
-{
-    if (id.x >= FoliageCount)
-        return;
-    
-    FoliagePoint data = InputBuffer[id.x];
-    
-    // handle points with no value. (allocated points in buffer is by default float3(0,0,0)) 
-    if (dot(data.Position, data.Position) == 0)
-        return;
-    
-    float3 pos = mul(ObjToWorld, float4(data.Position.xyz, 1)).xyz;
-    FoliageShaderData foliageData = (FoliageShaderData) 0;
-    bool dataFound = GetRandomizedData(data, foliageData);
-    
-    if (!dataFound)
-        return;
-    
-    float height = GetFoliageHeight(data, foliageData);
-    float halfheight = height * 0.5;
-    
-    //float3 worldUp = mul(ObjToWorld, float4(0, 1, 0, 1)).xyz;
-    float3 worldUp = float3(0, 1, 0);
-
-    //TODO: Skip this intermediate center-calculation and calculate corners directly?
-    float3 centerOffset = worldUp * 0.5f * height;
-    float3 midPos = pos + centerOffset;
-    float3 toFoliageMid = (midPos - CameraPosition);
-    
-    if (!IsInFrustum(toFoliageMid, -height))
-        return;
-    
-    float distance = length(toFoliageMid);
-    if (distance > frustumPlanes[5].w)
-        return;
-    
-    float3 forward = CameraForwardVector;
-    float3 right = CameraRightVector;
-    float3 up = normalize(cross(forward, right));
-   
-    if (dot(toFoliageMid, forward) < 0) // Don't draw trees that are behind the camera.
-        return;
-
-    toFoliageMid = normalize(toFoliageMid);
-    
-    float3 toFoliageRight = normalize(cross(up, toFoliageMid));
-
-    float scale = 0.02;
-    float3 topPadding = worldUp * height * 0.1;
-    
-    float3 rightOffset = toFoliageRight * height * 0.5 * scale;
-    float3 topOffset = worldUp * (height - foliageData.Offset.y * height) - topPadding;
-    
-    float3 foliageBottomLeft = pos - rightOffset;
-    float3 foliageTopRight = pos + rightOffset + topOffset;
-    float3 foliageBottomRight = pos + rightOffset;
-    float3 foliageTopLeft = pos - rightOffset + topOffset;
-    
-    float3 toFoliageBottomLeft = foliageBottomLeft - CameraPosition;
-    float3 toFoliageTopRight = foliageTopRight - CameraPosition;
-    float3 toFoliageBottomRight = foliageBottomRight - CameraPosition;
-    float3 toFoliageTopLeft = foliageTopLeft - CameraPosition;
-    
-    FillIndices(toFoliageBottomLeft, toFoliageTopRight, toFoliageBottomRight, toFoliageTopLeft, forward, right, up, distance);
-    //SetIndices(toFoliageBottomLeft, toFoliageTopRight, forward, right, up, distance, data.Height);
 }
 
 [numthreads(128, 1, 1)]
