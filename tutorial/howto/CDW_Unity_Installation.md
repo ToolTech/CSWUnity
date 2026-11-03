@@ -103,4 +103,9 @@ Example for the T&S BTA project when installed through Unity Hub:
 
 
 The steps for opening and running the Map Streamer project are described in
-the [Map Streamer demo guide](CDW_map_streamer_DEMO.md).
+the CDW Map Streamer demo .
+
+
+<p align="right">
+<a href="CDW_map_streamer_DEMO.md" >CDW_map_streamer_DEMO ➡️</a>
+</p>
