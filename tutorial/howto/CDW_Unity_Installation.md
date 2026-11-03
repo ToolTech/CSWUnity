@@ -25,6 +25,8 @@ After successful login, the account information should appear in the top-right a
 *Figure: Unity Hub welcome/sign-in screen.*
 
 
+
+
 ## 3.2 Install Unity Editor
 
 For a new project, Unity 6000.3.21f1 LTS or another approved **Unity 6xxx.x.xxf1 LTS** release is preferred, provided compatibility with the required CSWUnity version, GizmoSDK, render pipeline, and package dependencies has been verified.
@@ -34,6 +36,7 @@ Select the required Unity build modules depending on the target platform.
 
 *Figure: Example Unity build modules available during Unity Editor installation.*
 
+**Note:** For a commercial Unity license or help installing a specific Unity Editor version, contact Group IT Services.
 
 ## 3.3 CDW Installation Limitation
 
