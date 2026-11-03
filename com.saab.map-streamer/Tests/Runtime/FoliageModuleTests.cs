@@ -14,6 +14,7 @@
  */
 
 using NUnit.Framework;
+using Saab.Foundation.Unity.MapStreamer.Csw;
 using Saab.Foundation.Unity.MapStreamer.Modules;
 using Saab.Utility.GfxCaps;
 using System.Collections.Generic;
@@ -66,6 +67,16 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
                 GfxCaps.CurrentCaps = previousCaps;
                 Object.DestroyImmediate(gameObject);
             }
+        }
+
+        [TestCase(0.3f, 100000f, false, ExpectedResult = true)]
+        [TestCase(0.3f, 1000000f, false, ExpectedResult = true)]
+        [TestCase(0.3f, 100000f, true, ExpectedResult = false)]
+        public bool HiZOcclusionRequiresAFiniteFarPlane(
+            float nearDistance, float farDistance, bool infiniteFar)
+        {
+            return FoliageModule.HasFiniteFarPlane(CameraBridge.NativeProjection(
+                60f, 16f / 9f, nearDistance, farDistance, infiniteFar));
         }
 
         private static void InvokeStart(FoliageModule module)

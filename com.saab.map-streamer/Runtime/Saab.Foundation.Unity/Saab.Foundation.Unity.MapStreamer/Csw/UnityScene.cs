@@ -17,12 +17,16 @@
 // AMO	261022	Added command-driven hierarchy ownership, pooling and camera-relative frame publication.	(2.12.327)
 // AMO	261023	Indexed shared resource users through rebind and pooling; profiled publication and frame commits.	(2.12.327)
 // AMO	261028	Moved event delegates and build diagnostics off the removed legacy SceneManager.	(2.12.327)
+// AMO	261103	Split pooling into capped group and renderable prototype pools with explicit prewarming and counters.	(2.12.327)
+// AMO	261103	Recycled occurrences without closures or eager failure lists, so returns to a pool allocate nothing.	(2.12.327)
+// AMO	261103	Activated occurrences hidden at creation and showed and hid them through renderer state in frame commits.	(2.12.327)
 //
 //*****************************************************************************
 
 using System;
 using System.Collections.Generic;
 using Thread = System.Threading.Thread;
+using Stopwatch = System.Diagnostics.Stopwatch;
 using GizmoSDK.GizmoBase;
 using GizmoSDK.Gizmo3D;
 using Saab.Unity.Extensions;
@@ -53,13 +57,14 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 			new Dictionary<IntPtr, HashSet<SceneInstanceHandle>>();
 		private readonly Dictionary<IntPtr, HashSet<SceneInstanceHandle>> _stateUsers =
 			new Dictionary<IntPtr, HashSet<SceneInstanceHandle>>();
-		private readonly Stack<SceneInstanceHandle> _pool = new Stack<SceneInstanceHandle>();
 		private readonly HashSet<SceneInstanceHandle> _pendingTerrain = new HashSet<SceneInstanceHandle>();
 		private readonly HashSet<SceneInstanceHandle> _notified = new HashSet<SceneInstanceHandle>();
 		private readonly HashSet<SceneInstanceHandle> _pendingPresentation = new HashSet<SceneInstanceHandle>();
 		private readonly HashSet<SceneInstanceHandle> _pendingVisibility = new HashSet<SceneInstanceHandle>();
-		private readonly int _maximumPooledObjects;
-		private readonly GameObject _poolRoot;
+		private readonly SceneObjectPool _groupPool;
+		private readonly SceneObjectPool _renderablePool;
+		private Stack<(SceneInstanceHandle Handle, bool Visited)> _deletion =
+			new Stack<(SceneInstanceHandle Handle, bool Visited)>();
 		private bool _disposed;
 		private ulong _nextLifetime;
 
@@ -69,7 +74,11 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		public Camera Camera { get; }
 		public ulong Generation { get; private set; }
 		public int InstanceCount => _instances.Count - 1;
-		public int PooledObjectCount => _pool.Count;
+		public int PooledObjectCount => _groupPool.Free + _renderablePool.Free;
+		/// <summary>Counters of the pool for occurrences without render resources.</summary>
+		public SceneObjectPoolDiagnostics GroupPoolDiagnostics => _groupPool.Diagnostics;
+		/// <summary>Counters of the pool for builder-realized occurrences with a mesh filter and renderer.</summary>
+		public SceneObjectPoolDiagnostics RenderablePoolDiagnostics => _renderablePool.Diagnostics;
 		public int MeshCount => Resources.MeshCount;
 		public int MaterialCount => Resources.MaterialCount;
 		internal long ResourcePublicationVisits { get; private set; }
@@ -99,7 +108,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		public event Action<CameraRelativeFrame> FrameCommitting;
 
 		/// <summary>Creates an owned scene attachment beneath a borrowed parent.</summary>
-		/// <remarks>The supplied camera and coordinate context remain caller-owned.</remarks>
+		/// <remarks>
+		/// The supplied camera and coordinate context remain caller-owned. maximumPooledObjects caps the free
+		/// GameObjects of each occurrence pool; returned GameObjects beyond the cap are destroyed.
+		/// </remarks>
 		public UnityScene(Transform parent, Camera camera, SceneCoordinateContext coordinates,
 			int maximumPooledObjects = 2048, IntersectMaskValue intersectMask = IntersectMaskValue.ALL)
 		{
@@ -110,7 +122,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 			ValidateAttachment(parent);
 			Coordinates = coordinates ?? throw new ArgumentNullException(nameof(coordinates));
 			Camera = camera;
-			_maximumPooledObjects = Math.Max(0, maximumPooledObjects);
 			Root = new GameObject("CSW Scene");
 			Root.transform.SetParent(parent, false);
 			Root.transform.localScale = Coordinates.Axes.RootScale;
@@ -118,11 +129,16 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 			root.IsReady = true;
 			root.IsLocallyActive = true;
 			root.IsPresented = true;
+			root.IsShown = true;
+			root.IsVisible = true;
 			root.IntersectMask = intersectMask;
 			_instances.Add(SceneInstanceKey.Root, root);
-			_poolRoot = new GameObject("CSW Pool");
-			_poolRoot.transform.SetParent(Root.transform, false);
-			_poolRoot.SetActive(false);
+			var poolRoot = new GameObject("CSW Pool");
+			poolRoot.transform.SetParent(Root.transform, false);
+			poolRoot.SetActive(false);
+			_groupPool = new SceneObjectPool(poolRoot.transform, "CSW Group Prototype", maximumPooledObjects, false);
+			_renderablePool = new SceneObjectPool(poolRoot.transform, "CSW Renderable Prototype",
+				maximumPooledObjects, true);
 		}
 
 		internal void RequireMainThread()
@@ -166,7 +182,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 			if (data.Key.Equals(SceneInstanceKey.Root) || _instances.ContainsKey(data.Key))
 				throw new InvalidOperationException($"Duplicate scene occurrence {data.Key}.");
 			var parent = Parent(data.Parent);
-			var handle = _pool.Count > 0 ? _pool.Pop() : new GameObject().AddComponent<SceneInstanceHandle>();
+			var handle = data.Kind == SceneNodeKind.Geometry && data.Builder
+				? _renderablePool.Acquire()
+				: _groupPool.Acquire();
 			handle.gameObject.SetActive(false);
 			handle.Key = data.Key;
 			handle.ParentKey = data.Parent;
@@ -175,6 +193,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 			handle.Lifetime = checked(++_nextLifetime);
 			handle.ParentVersion = 1;
 			handle.IsPresented = false;
+			handle.IsShown = false;
+			handle.IsVisible = false;
 			handle.IsLocallyActive = !data.Parent.Equals(SceneInstanceKey.Root);
 			handle.IsStatic = data.IsStatic;
 			handle.IsAsset = false;
@@ -188,6 +208,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 				: data.Name;
 			handle.transform.SetParent(parent.transform, false);
 			ApplyLocalTransform(handle.transform, data.LocalTransform);
+			if (handle.Renderer)
+				handle.Renderer.forceRenderingOff = true;
+			// Activated hidden under the build limits, so that frame commits only change rendering.
+			handle.gameObject.SetActive(true);
 			_instances.Add(data.Key, handle);
 			parent.Children.Add(data.Key);
 			_pendingPresentation.Add(handle);
@@ -218,6 +242,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 				handle.ParentKey = data.Parent;
 				handle.ParentVersion++;
 				handle.transform.SetParent(parent.transform, false);
+				Propagate(handle);
 			}
 			handle.Version++;
 			if (data.Kind == SceneNodeKind.Geometry && !data.Builder && handle.Resources != null)
@@ -277,13 +302,14 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 			AddResourceUser(_meshUsers, replacement.Mesh.Source, handle);
 			if (replacement.State != null)
 				AddResourceUser(_stateUsers, replacement.State.Source, handle);
-			if (!handle.TryGetComponent<MeshFilter>(out var filter))
-				filter = handle.gameObject.AddComponent<MeshFilter>();
-			if (!handle.TryGetComponent<MeshRenderer>(out var renderer))
-				renderer = handle.gameObject.AddComponent<MeshRenderer>();
-			filter.sharedMesh = replacement.Mesh.Mesh;
-			renderer.sharedMaterial = replacement.Material.Material;
-			renderer.enabled = true;
+			if (!handle.Filter && !handle.TryGetComponent(out handle.Filter))
+				handle.Filter = handle.gameObject.AddComponent<MeshFilter>();
+			if (!handle.Renderer && !handle.TryGetComponent(out handle.Renderer))
+				handle.Renderer = handle.gameObject.AddComponent<MeshRenderer>();
+			handle.Filter.sharedMesh = replacement.Mesh.Mesh;
+			handle.Renderer.sharedMaterial = replacement.Material.Material;
+			handle.Renderer.enabled = true;
+			handle.Renderer.forceRenderingOff = !handle.IsVisible;
 			handle.gameObject.layer = handle.Builder.SceneLayer;
 			handle.Feature = handle.Builder.Feature;
 			previous?.Dispose();
@@ -381,10 +407,25 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		{
 			if (handlers == null)
 				return;
-			var cleanup = new SceneCleanup();
+			List<Exception> failures = null;
 			foreach (SceneGameObjectReleaseHandler handler in handlers.GetInvocationList())
-				cleanup.Attempt(() => handler(value));
-			cleanup.Complete("A scene cleanup observer failed.");
+			{
+				try
+				{
+					handler(value);
+				}
+				catch (Exception exception)
+				{
+					AddFailure(ref failures, exception);
+				}
+			}
+			if (failures != null)
+				throw new AggregateException("A scene cleanup observer failed.", failures);
+		}
+
+		private static void AddFailure(ref List<Exception> failures, Exception exception)
+		{
+			(failures ??= new List<Exception>()).Add(exception);
 		}
 
 		internal void SetTransform(SceneInstanceKey key, Matrix4x4 matrix, Vec3D? frameCamera = null)
@@ -407,9 +448,30 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 				throw new InvalidOperationException($"Activation referenced missing occurrence {key}.");
 			handle.IsLocallyActive = activation == CSW.Activation.ON;
 			if (applyVisibility)
-				handle.gameObject.SetActive(handle.IsPresented && handle.IsReady && handle.IsLocallyActive);
+				Show(handle);
 			else
 				_pendingVisibility.Add(handle);
+		}
+
+		// Takes the own state of an occurrence and realizes it through the rendering of its subtree.
+		private void Show(SceneInstanceHandle handle)
+		{
+			handle.IsShown = handle.IsPresented && handle.IsReady && handle.IsLocallyActive;
+			Propagate(handle);
+		}
+
+		// Mirrors activeInHierarchy on renderer state; a subtree whose visibility is unchanged is skipped.
+		private void Propagate(SceneInstanceHandle handle)
+		{
+			var visible = handle.IsShown &&
+				(handle.Key.Equals(SceneInstanceKey.Root) || Parent(handle.ParentKey).IsVisible);
+			if (visible == handle.IsVisible)
+				return;
+			handle.IsVisible = visible;
+			if (handle.Renderer)
+				handle.Renderer.forceRenderingOff = !visible;
+			foreach (var child in handle.Children)
+				Propagate(_instances[child]);
 		}
 
 		internal void Delete(SceneInstanceKey key)
@@ -419,32 +481,66 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 				return;
 			if (key.Equals(SceneInstanceKey.Root))
 				throw new InvalidOperationException("The native stream cannot delete the host-owned scene attachment.");
-			var pending = new Stack<(SceneInstanceHandle Handle, bool Visited)>();
-			var cleanup = new SceneCleanup();
-			pending.Push((handle, false));
-			while (pending.Count > 0)
+			// Rented, so that a cleanup observer that deletes again works on its own stack.
+			var pending = _deletion ?? new Stack<(SceneInstanceHandle Handle, bool Visited)>();
+			_deletion = null;
+			List<Exception> failures = null;
+			try
 			{
-				var item = pending.Pop();
-				if (!item.Visited)
+				pending.Push((handle, false));
+				while (pending.Count > 0)
 				{
-					pending.Push((item.Handle, true));
-					foreach (var child in item.Handle.Children)
-						pending.Push((_instances[child], false));
-					continue;
+					var item = pending.Pop();
+					if (!item.Visited)
+					{
+						pending.Push((item.Handle, true));
+						foreach (var child in item.Handle.Children)
+							pending.Push((_instances[child], false));
+						continue;
+					}
+					try
+					{
+						Recycle(item.Handle);
+					}
+					catch (Exception exception)
+					{
+						AddFailure(ref failures, exception);
+					}
 				}
-				cleanup.Attempt(() => Recycle(item.Handle));
 			}
-			cleanup.Complete("Could not recycle every occurrence in the hierarchy.");
+			finally
+			{
+				pending.Clear();
+				_deletion = pending;
+			}
+			if (failures != null)
+				throw new AggregateException("Could not recycle every occurrence in the hierarchy.", failures);
 		}
 
 		private void Recycle(SceneInstanceHandle handle)
 		{
-			var cleanup = new SceneCleanup();
-			cleanup.Attempt(() => NotifyRemoved(handle));
+			List<Exception> failures = null;
+			try
+			{
+				NotifyRemoved(handle);
+			}
+			catch (Exception exception)
+			{
+				AddFailure(ref failures, exception);
+			}
 			handle.gameObject.SetActive(false);
+			handle.IsShown = false;
+			handle.IsVisible = false;
 			handle.IsReady = false;
 			handle.Version++;
-			cleanup.Attempt(() => DetachResources(handle));
+			try
+			{
+				DetachResources(handle);
+			}
+			catch (Exception exception)
+			{
+				AddFailure(ref failures, exception);
+			}
 			_pendingPresentation.Remove(handle);
 			_pendingVisibility.Remove(handle);
 			handle.IsPresented = false;
@@ -452,24 +548,28 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 			handle.Children.Clear();
 			Parent(handle.ParentKey).Children.Remove(handle.Key);
 			_instances.Remove(handle.Key);
-			cleanup.Attempt(() => InvokeCleanupEvent(OnEnterPool, handle.gameObject));
-			handle.transform.SetParent(_poolRoot.transform, false);
-			if (_pool.Count < _maximumPooledObjects)
-				_pool.Push(handle);
-			else
-				SceneObjects.Destroy(handle.gameObject);
-			cleanup.Complete("Occurrence cleanup failed.");
+			try
+			{
+				InvokeCleanupEvent(OnEnterPool, handle.gameObject);
+			}
+			catch (Exception exception)
+			{
+				AddFailure(ref failures, exception);
+			}
+			(handle.Renderer ? _renderablePool : _groupPool).Return(handle);
+			if (failures != null)
+				throw new AggregateException("Occurrence cleanup failed.", failures);
 		}
 
 		private void DetachResources(SceneInstanceHandle handle)
 		{
 			RemoveResourceUsers(handle);
-			if (handle.TryGetComponent<MeshFilter>(out var filter))
-				filter.sharedMesh = null;
-			if (handle.TryGetComponent<MeshRenderer>(out var renderer))
+			if (handle.Filter)
+				handle.Filter.sharedMesh = null;
+			if (handle.Renderer)
 			{
-				renderer.sharedMaterial = null;
-				renderer.enabled = false;
+				handle.Renderer.sharedMaterial = null;
+				handle.Renderer.enabled = false;
 			}
 			try
 			{
@@ -499,7 +599,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 			}
 			_pendingPresentation.Clear();
 			foreach (var handle in _pendingVisibility)
-				handle.gameObject.SetActive(handle.IsPresented && handle.IsReady && handle.IsLocallyActive);
+				Show(handle);
 			_pendingVisibility.Clear();
 			OnUpdateCamera?.Invoke(frame.RenderTime);
 		}
@@ -556,6 +656,27 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 			Resources.ResetDiagnostics();
 		}
 
+		/// <summary>Clones free occurrence GameObjects until each pool holds the reserve or the budget is spent.</summary>
+		/// <remarks>
+		/// Fills the renderable pool before the group pool, never beyond the pool cap, and checks the budget after
+		/// each clone. Returns the number of GameObjects added.
+		/// </remarks>
+		public int PrewarmPools(int reserve, TimeSpan budget)
+		{
+			RequireMainThread();
+			if (reserve <= 0 || budget <= TimeSpan.Zero)
+				return 0;
+			var deadline = Stopwatch.GetTimestamp() + (long)(budget.TotalSeconds * Stopwatch.Frequency);
+			var added = 0;
+			while (_renderablePool.Prewarm(reserve) || _groupPool.Prewarm(reserve))
+			{
+				added++;
+				if (Stopwatch.GetTimestamp() >= deadline)
+					break;
+			}
+			return added;
+		}
+
 		internal static void ApplyLocalTransform(Transform transform, Matrix4x4 matrix)
 		{
 			ValidateLocalTransform(matrix);
@@ -602,7 +723,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 			RequireMainThread();
 			var cleanup = new SceneCleanup();
 			cleanup.Attempt(() => Clear(Generation + 1));
-			_pool.Clear();
+			_groupPool.Clear();
+			_renderablePool.Clear();
 			cleanup.Attempt(() => SceneObjects.Destroy(Root));
 			_disposed = true;
 			cleanup.Complete("Scene disposal failed.");

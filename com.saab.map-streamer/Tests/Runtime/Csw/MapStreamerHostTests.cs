@@ -6,7 +6,7 @@
 // Defence Secrecy:		NOT CLASSIFIED
 // Export Control:		NOT EXPORT CONTROLLED
 //
-// File			: CswMapStreamerHostTests.cs
+// File			: MapStreamerHostTests.cs
 // Description	: Map URL precedence for the command-driven streaming host
 // Product		: Gizmo3D 2.12.326
 //
@@ -15,6 +15,7 @@
 // Who	Date	Description
 //
 // AMO	261028	Covered explicit, component and config.xml map URL precedence.	(2.12.327)
+// AMO	261103	Renamed from CswMapStreamerHostTests into the Csw test namespace.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -22,9 +23,9 @@ using System;
 using NUnit.Framework;
 using Saab.Foundation.Unity.MapStreamer.Csw;
 
-namespace Saab.Foundation.Unity.MapStreamer.Tests
+namespace Saab.Foundation.Unity.MapStreamer.Tests.Csw
 {
-	public sealed class CswMapStreamerHostTests
+	public sealed class MapStreamerHostTests
 	{
 		private int _configurationReads;
 
@@ -37,7 +38,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 		[Test]
 		public void ExplicitUrlWinsWithoutReadingConfiguration()
 		{
-			Assert.That(CswMapStreamerHost.ResolveMapUrl("explicit.gzd", "component.gzd", Configured("config.gzd")),
+			Assert.That(MapStreamerHost.ResolveMapUrl("explicit.gzd", "component.gzd", Configured("config.gzd")),
 				Is.EqualTo("explicit.gzd"));
 			Assert.That(_configurationReads, Is.Zero);
 		}
@@ -45,9 +46,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 		[Test]
 		public void ComponentUrlWinsWithoutReadingConfiguration()
 		{
-			Assert.That(CswMapStreamerHost.ResolveMapUrl(null, "component.gzd", Configured("config.gzd")),
+			Assert.That(MapStreamerHost.ResolveMapUrl(null, "component.gzd", Configured("config.gzd")),
 				Is.EqualTo("component.gzd"));
-			Assert.That(CswMapStreamerHost.ResolveMapUrl(" ", "component.gzd", Configured("config.gzd")),
+			Assert.That(MapStreamerHost.ResolveMapUrl(" ", "component.gzd", Configured("config.gzd")),
 				Is.EqualTo("component.gzd"));
 			Assert.That(_configurationReads, Is.Zero);
 		}
@@ -55,9 +56,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 		[Test]
 		public void BlankComponentUrlUsesConfiguration()
 		{
-			Assert.That(CswMapStreamerHost.ResolveMapUrl(null, "", Configured("config.gzd")),
+			Assert.That(MapStreamerHost.ResolveMapUrl(null, "", Configured("config.gzd")),
 				Is.EqualTo("config.gzd"));
-			Assert.That(CswMapStreamerHost.ResolveMapUrl("", "  ", Configured("config.gzd")),
+			Assert.That(MapStreamerHost.ResolveMapUrl("", "  ", Configured("config.gzd")),
 				Is.EqualTo("config.gzd"));
 			Assert.That(_configurationReads, Is.EqualTo(2));
 		}
@@ -68,7 +69,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			foreach (var configured in new[] { null, "", " " })
 			{
 				var exception = Assert.Throws<InvalidOperationException>(() =>
-					CswMapStreamerHost.ResolveMapUrl(null, null, Configured(configured)));
+					MapStreamerHost.ResolveMapUrl(null, null, Configured(configured)));
 				Assert.That(exception.Message, Does.Contain("MapUrl").And.Contain("config.xml"));
 			}
 			Assert.That(_configurationReads, Is.EqualTo(3));

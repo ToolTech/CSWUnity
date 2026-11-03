@@ -19,6 +19,8 @@
  * AMO	261022	Added shared placement ownership and copied presentation inputs.	(2.12.327)
  * AMO	261028	Removed the legacy NodeHandle placement overload and its map-based basis.	(2.12.327)
  * AMO	261030	Removed the unused GetClipToWorld helper.	(2.12.327)
+ * AMO	261103	Culled only tiles whose occurrence is visible, since hidden occurrences keep active GameObjects.	(2.12.327)
+ * AMO	261103	Removed the unused FeatureData maxSide parameter and disabled members.	(2.12.327)
  */
 
 using UnityEngine;
@@ -29,7 +31,6 @@ using GizmoSDK.GizmoBase;
 using ProfilerMarker = global::Unity.Profiling.ProfilerMarker;
 using ProfilerCategory = global::Unity.Profiling.ProfilerCategory;
 using System.Runtime.InteropServices;
-using Saab.Unity.Extensions;
 using Saab.Foundation.Unity.MapStreamer.Csw;
 
 namespace Saab.Foundation.Unity.MapStreamer.Modules
@@ -97,7 +98,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
         public GameObject Object { get; private set; }
         public ComputeBuffer PlacementMatrix { get; private set; }
         public Vector2 NodeOffset { get; private set; }
-        //public ComputeBuffer MinXY { get; private set; }
         public ComputeBuffer TerrainPoints;
         public ComputeBuffer TerrainPointCount;
         public Texture2D FeatureMap;
@@ -106,10 +106,15 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
         public ComputeBuffer PixelToObject;
         internal Matrix4x4 LocalEunBasis;
         internal FoliagePlacementLease PlacementResources;
+        private readonly SceneInstanceHandle _handle;
 
-        public FeatureData(GameObject gameObject, Matrix3D matrix, float density, uint maxSide, float scale = 1000)
+        // A hidden occurrence keeps its GameObject active, so its committed visibility decides.
+        internal bool IsVisible => Object && Object.activeInHierarchy && (!_handle || _handle.IsVisible);
+
+        public FeatureData(GameObject gameObject, Matrix3D matrix, float density, float scale = 1000)
         {
             Object = gameObject;
+            _handle = gameObject && gameObject.TryGetComponent(out SceneInstanceHandle handle) ? handle : null;
 
             var stepsize = (1 / density) * 10;
 
@@ -191,7 +196,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             get
             {
                 foreach (var item in _items)
-                    if (item.Object && item.Object.activeInHierarchy)
+                    if (item.IsVisible)
                         return true;
                 return false;
             }
@@ -246,10 +251,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             if (size >= ushort.MaxValue * 128)
                 return false;
 
-            var maxside = Mathf.Max(featureMap.width, featureMap.height);
-
             Texture2D texture = terrain.Texture;
-            var data = new FeatureData(go, terrain.FeatureInfo, _density, (uint)maxside, _scale)
+            var data = new FeatureData(go, terrain.FeatureInfo, _density, _scale)
             {
                 FeatureMap = featureMap,
                 Texture = texture,
@@ -394,7 +397,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             public static readonly int SplatMap = Shader.PropertyToID("SplatMap");
             public static readonly int Texture = Shader.PropertyToID("Texture");
 
-            //public static readonly int HeightMap = Shader.PropertyToID("HeightMap");
             public static readonly int HeightSurface = Shader.PropertyToID("HeightSurface");
 
             public static readonly int heightResolution = Shader.PropertyToID("heightResolution");
@@ -481,8 +483,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                 var item = _items[i];
                 var go = item.Object;
 
-                // don't cull disabled objects
-                if (!go.activeInHierarchy)
+                // don't cull hidden tiles
+                if (!item.IsVisible)
                     continue;
 
                 int itemPoints = item.TerrainPoints.count;

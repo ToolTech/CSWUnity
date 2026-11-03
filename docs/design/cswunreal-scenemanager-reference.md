@@ -135,6 +135,15 @@ counted against `MaxPrimitivesPerFrame`. `processActivation` (lines 859–877)
 calls `SetVisibility` with propagation to the children (line 874); see row 20
 of [Deviations](#deviations).
 
+`processNewNode` (line 725) builds a component and registers it with Unreal
+(line 772), and `UCSWGeometry::build` registers its mesh component in the
+same call ([`cswGeometry.cpp`][geometry-cpp] line 130). Neither sets the
+visibility of the component. Registration is thus part of building a node,
+which `processNewBuffer` counts against `MaxPrimitivesPerFrame`, and an
+activation only changes the visibility of components that are already
+registered. `processDeleteNode` (line 822) unregisters a component with
+`DestroyComponent` (line 847).
+
 According to AD-CSWU-003, SceneManager orders its output at a
 level-of-detail transition so that no hole is visible: the commands that
 close a hole with the closing level are processed first, the geometry of the
@@ -229,7 +238,7 @@ line 135) uninitializes the database managers (line 167) before it
 uninitializes Gizmo3D (line 170), whose shutdown stops the loaders. A loader
 that is still loading then uses database managers that are no longer
 registered; in the CSWUnity PlayMode tests, such a load allocated memory until
-the process ended with `std::bad_alloc`. The last `CswMapStreamerHost` that
+the process ended with `std::bad_alloc`. The last `MapStreamerHost` that
 holds the CSW platform therefore stops the dynamic loaders and waits for their
 loads in progress before it releases the platform, as REQ-CSWU-SM-047
 requires, and each new session starts them again with `SetLoaders`. The CSW
@@ -258,8 +267,8 @@ in the GizmoSDK sources at version 2.12.349.
 | `SetLoaders` | Not submitted; `ACSWWorld` sets six active loaders through `gzDynamicLoaderManager` | `SetLoaders` with the configured loader count at session creation |
 | Map selection | `SetMapUrls` with a list of URLs separated by `;`, or `ClearMaps` for an empty list, on one manager | `AddNewMap(url)` once in a new session per map; see [Gaps](#gaps) |
 | `SetOmniTraverse` | At startup and on change | In every refresh input |
-| `CameraSettings` | `(50, 10000, TRUE)` at startup | Near and far of the Unity camera in every refresh input |
-| `SetLodFactor` | On change | In every refresh input |
+| `CameraSettings` | `(50, 10000, TRUE)` at startup | Near and far of the Unity camera with the far plane mode that the host selects, finite by default, in every refresh input |
+| `SetLodFactor` | On change | The factor of the host in every refresh input, scaled with the zoom of the camera when the host sets a reference field of view |
 | `PositionCamera` | Before each refresh, without trigger | In every refresh input, before `RefreshScene` |
 | `RefreshScene` | With trigger after a consumed frame or on the first run | Last command of the refresh input, one per consumed `EndFrame`, also while the camera is stationary |
 | `EnableCapabilities` | `CONVERT_TO_TRIANGLE \| INDEX_GEOMETRY` before the receiver is added | Not called; see [Gaps](#gaps) |
@@ -282,7 +291,7 @@ implementation and the requirements is a gap, not a deviation; see
 | 3 | Mesh preparation | `FMeshDescription` built on a SceneManager thread in `preBuildReferenceInstance` | Meshes and textures captured on the Unity main thread under edit access (`PrepareMeshExport` with `TRIS`); materials and scene objects after release | The C# SceneManager exposes no preparation hooks (row 18) | REQ-CSWU-SM-026 |
 | 4 | Unknown or unbuildable content | Skipped or dropped | Fault | A silent skip appears as a hole in the map | REQ-CSWU-SM-015, REQ-CSWU-SM-038 |
 | 5 | Activation | `SetVisibility` per command while the frame buffer is processed | All changes of a frame committed together at `EndFrame` | A half-applied level-of-detail switch shows holes or overlaps | REQ-CSWU-SM-019 |
-| 6 | Camera settings | `CameraSettings(50, 10000, TRUE)` once at startup | Near and far of the Unity camera in every refresh input, finite far by default | CSWUnreal renders with reversed-Z and an infinite far plane; a Unity camera has a finite far clip plane | REQ-CSWU-SM-021 |
+| 6 | Camera settings | `CameraSettings(50, 10000, TRUE)` once at startup | Near and far of the Unity camera in every refresh input, with a finite or an infinite far plane that the host selects, finite by default; Unity renders and culls with the same projection | CSWUnreal renders with reversed-Z and an infinite far plane; Unity effects that derive depth from the camera use its finite far clip plane | REQ-CSWU-SM-021, REQ-CSWU-SM-049 |
 | 7 | Budget | At most one frame buffer and 1000 new and update commands per tick; the activations of a frame are not counted, and a frame buffer is processed in one call | Configurable command and time budgets per Unity update; the command count includes `DeleteNode` and every other command except the transforms and activations of a frame; the limits never split a frame, so a frame is processed in one Unity update; at most one frame is pending, because at most one refresh is outstanding; in synchronized presentation, the wait for the outstanding frame can exceed the time budget, up to the frame-wait timeout | A command count alone does not bound main-thread time; whole frames as in CSWUnreal (AD-CSWU-004, AD-CSWU-005). Whether `DeleteNode` counts is open; see [Owner attention](#owner-attention) | REQ-CSWU-SM-042, REQ-CSWU-SM-043, REQ-CSWU-SM-046 |
 | 8 | First refresh | Forced on the first tick after map URLs are set (`m_firstRun`) | Waits for `GeoInfo` and a camera pose | The camera pose is defined in map coordinates | REQ-CSWU-SM-042 |
 | 9 | Edit-lock wait | `tryLockEdit(FrameSkipLatency)` and `tryLockEdit()` | `TryLockEdit(0)` | The Unity main thread never blocks on edit access | REQ-CSWU-SM-016 |
@@ -297,6 +306,7 @@ implementation and the requirements is a gap, not a deviation; see
 | 18 | Preparation hooks | `cswUESceneManager` overrides `preBuildReference`, `updateReference`, and `preDestroyReference`; an unchanged update ID reuses prepared data | The C# SceneManager exposes no hooks, and the C# `Node` class of GizmoSDK exposes no update ID; transform-only updates are recognized from `UpdateNode.TransformOnly` | C# API limitation | REQ-CSWU-SM-026, REQ-CSWU-SM-028 |
 | 19 | Refresh input | Separate single commands; `SetOmniTraverse` and `SetLodFactor` only on change | One ordered buffer with five commands per refresh | The pose and settings of one refresh apply together | REQ-CSWU-SM-020, REQ-CSWU-SM-022 |
 | 20 | Activation scope | `SetVisibility` with propagation sets the visibility of the component and of all its descendants ([`cswScene.cpp`][scene-cpp] line 874) | An activation sets only the state of its own occurrence; an occurrence is visible only when it and all its ancestors are active | SceneManager reports an activation only when it changes ([`cswSceneManager.cpp`][sm-cpp] line 1538), so propagation would make nested levels visible that SceneManager keeps deactivated | REQ-CSWU-SM-029, REQ-CSWU-SM-043 |
+| 21 | Level-of-detail factor | `LodFactor`, default 1.0 ([`cswScene.h`][scene-h] line 127), submitted when it changes and not scaled with the field of view ([`cswScene.cpp`][scene-cpp] line 1072) | The factor of the host, multiplied by the zoom of the camera against a reference vertical field of view when the host sets one; unscaled by default | SceneManager selects levels of detail from distance only, and a zoomed camera shows distant content larger; the effective level-of-detail factor of GizmoSDK keeps the level of detail matching, also when the views differ with omni traversal | REQ-CSWU-SM-022, REQ-CSWU-SM-050 |
 
 ## Owner attention
 
@@ -332,10 +342,6 @@ requirements. Their status and evidence are in
 
 - CSWUnity does not call `EnableCapabilities` (REQ-CSWU-SM-011,
   REQ-CSWU-SM-012).
-- `SceneCommandCameraSettings` accepts `infiniteFar`, but CSWUnity always
-  submits a finite far distance, and the host cannot select an infinite one
-  (REQ-CSWU-SM-021).
-- The host has no setting for the level-of-detail factor (REQ-CSWU-SM-022).
 - Without the update ID in the C# `Node` class of GizmoSDK, an unchanged
   update ID cannot be recognized (REQ-CSWU-SM-028).
 - An empty coordinate system leaves the coordinate context unconfigured, so
@@ -345,8 +351,6 @@ requirements. Their status and evidence are in
 - An error that references the map request faults the session instead of
   rejecting the map with a warning (REQ-CSWU-SM-040).
 - Error reports do not include the native message level (REQ-CSWU-SM-040).
-- In unsynchronized presentation, a frame commit writes the projection of an
-  older refresh into the Unity camera (REQ-CSWU-SM-044).
 - No test checks after every Unity update that a level-of-detail transition
   that the budgets split keeps either the closing level or every replacing
   level visible, and no automated test checks the rendered view for holes

@@ -45,8 +45,8 @@ Offset rebases, and round-trip conversions.
 - **Milestone:** M2
 - **Primary actor:** Tester
 - **Related requirements:** REQ-CSWU-PERF-001, REQ-CSWU-PERF-002,
-  REQ-CSWU-PERF-004, REQ-CSWU-PERF-008, REQ-CSWU-PERF-009, REQ-CSWU-RENDER-019,
-  REQ-CSWU-RENDER-020
+  REQ-CSWU-PERF-004, REQ-CSWU-PERF-008, REQ-CSWU-PERF-009, REQ-CSWU-PERF-010,
+  REQ-CSWU-PERF-012, REQ-CSWU-RENDER-019, REQ-CSWU-RENDER-020
 - **Former ID:** CSWU-UC-TEST-003
 
 #### Main Flow

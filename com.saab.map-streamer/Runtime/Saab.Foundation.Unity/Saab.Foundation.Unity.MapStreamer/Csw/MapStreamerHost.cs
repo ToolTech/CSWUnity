@@ -6,7 +6,7 @@
 // Defence Secrecy:		NOT CLASSIFIED
 // Export Control:		NOT EXPORT CONTROLLED
 //
-// File			: CswMapStreamerHost.cs
+// File			: MapStreamerHost.cs
 // Description	: Host for CSW command-driven map streaming
 // Product		: Gizmo3D 2.12.326
 //
@@ -20,6 +20,9 @@
 // AMO	261028	Removed the legacy lane; the host starts in Start and prefers its MapUrl over config.xml.	(2.12.327)
 // AMO	261030	Stopped dynamic loaders before the last host releases its platforms, so DB managers outlive in-flight loads.	(2.12.327)
 // AMO	261030	Applied the synchronized frame wait timeout setting every update.	(2.12.327)
+// AMO	261103	Configured the occurrence pool cap and prewarmed the pools within a time budget each update.	(2.12.327)
+// AMO	261103	Applied the infinite far plane, LOD factor and LOD reference field of view settings every update.	(2.12.327)
+// AMO	261103	Renamed from CswMapStreamerHost; the Csw namespace carries the CSW name.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -39,7 +42,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 	/// Manager, Scene and Coordinates are host-owned views; callers must not dispose them.
 	/// </remarks>
 	[DefaultExecutionOrder(-2000)]
-	public sealed class CswMapStreamerHost : MonoBehaviour
+	public sealed class MapStreamerHost : MonoBehaviour
 	{
 		public Camera ViewCamera;
 		public UnityEngine.Transform TargetParent;
@@ -54,6 +57,15 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		public SceneManagerSettings Settings = SceneManagerSettings.Default;
 		[Min(1)]
 		public int MaximumCommandsPerTick = 128;
+		[Tooltip("Free GameObjects kept in each occurrence pool; returned GameObjects beyond this cap are destroyed.")]
+		[Min(0)]
+		public int MaximumPooledObjects = 4096;
+		[Tooltip("Free GameObjects that each occurrence pool is filled to ahead of demand. Zero disables prewarming.")]
+		[Min(0)]
+		public int PooledObjectReserve = 1024;
+		[Tooltip("Longest time in seconds spent prewarming the occurrence pools in each Unity update.")]
+		[Min(0)]
+		public float PoolPrewarmTime = 0.001f;
 		[Min(1)]
 		public double InitialAltitude = 500;
 		public bool FlightInput = true;
@@ -133,10 +145,12 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 				Coordinates = new SceneCoordinateContext();
 				Camera = new CameraBridge(ViewCamera, Coordinates)
 				{
-					SynchronizeFrames = Settings.SynchronizeFrames
+					SynchronizeFrames = Settings.SynchronizeFrames,
+					InfiniteFarPlane = Settings.InfiniteFarPlane,
+					LodReferenceFieldOfView = Settings.LodReferenceFieldOfView
 				};
 				Scene = new UnityScene(TargetParent ? TargetParent : transform, ViewCamera, Coordinates,
-					intersectMask: Settings.IntersectMask);
+					Math.Max(0, MaximumPooledObjects), Settings.IntersectMask);
 				Scene.FrameCommitting += Camera.Commit;
 				if (Foliage)
 				{
@@ -206,6 +220,12 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 				: TimeSpan.Zero;
 		}
 
+		/// <summary>Returns a positive finite LOD factor setting, otherwise the native default 1.</summary>
+		internal static float ToLodFactor(float value)
+		{
+			return value > 0 && float.IsFinite(value) ? value : 1;
+		}
+
 		/// <summary>Replaces the current map session and resets the stored global camera pose.</summary>
 		public void OpenMap(string url)
 		{
@@ -230,27 +250,35 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 			Manager.SynchronizeFrames = Settings.SynchronizeFrames;
 			Manager.FrameWaitTimeout = ToFrameWaitTimeout(Settings.FrameWaitTimeout);
 			Camera.SynchronizeFrames = Settings.SynchronizeFrames;
+			Camera.InfiniteFarPlane = Settings.InfiniteFarPlane;
+			Camera.LodReferenceFieldOfView = Settings.LodReferenceFieldOfView;
 			if (FlightInput && Camera.HasPose)
 				UpdateFlightInput();
 			if (!Manager.SynchronizeFrames)
-				Manager.Tick(Camera.HasPose
-					? Camera.Sample(GizmoSDK.GizmoBase.Time.SystemSeconds)
-					: (CameraRelativeFrame?)null);
+				Manager.Tick(SampleCamera());
+			if (PooledObjectReserve > 0 && PoolPrewarmTime > 0)
+				Scene.PrewarmPools(PooledObjectReserve, TimeSpan.FromSeconds(PoolPrewarmTime));
 		}
 
 		private void LateUpdate()
 		{
 			if (_streaming && !_stopping && Manager?.SynchronizeFrames == true)
-				Manager.Tick(Camera.HasPose
-					? Camera.Sample(GizmoSDK.GizmoBase.Time.SystemSeconds)
-					: (CameraRelativeFrame?)null);
+				Manager.Tick(SampleCamera());
 			Camera?.PresentPose();
 			Scene?.PostPresent();
 		}
 
+		private CameraRelativeFrame? SampleCamera()
+		{
+			return Camera.HasPose
+				? Camera.Sample(GizmoSDK.GizmoBase.Time.SystemSeconds, ToLodFactor(Settings.LodFactor))
+				: (CameraRelativeFrame?)null;
+		}
+
 		private void BeforeCameraRender(UnityEngine.Camera camera)
 		{
-			if (_streaming && !_stopping && camera == ViewCamera && Camera?.SynchronizeFrames == true)
+			if (_streaming && !_stopping && camera == ViewCamera &&
+				(Camera?.SynchronizeFrames == true || Camera?.InfiniteFarPlane == true))
 				Camera.PresentPose();
 		}
 

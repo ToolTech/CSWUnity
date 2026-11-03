@@ -25,7 +25,7 @@ This document contains requirements of the following groups:
 - **Use cases:** None
 - **Depends on:** REQ-CSW-SM-006
 - **Verification:** EditMode test of new, update, and delete with identity
-  registration and failure cleanup (intended fixture: `CswSceneCommandTests`)
+  registration and failure cleanup (intended fixture: `SceneCommandTests`)
 - **Superseded by:**
   [REQ-CSWU-SM-027](../architecture/csw-scenemanager-integration.md#req-cswu-sm-027-occurrence-lifecycle)
 

@@ -4,7 +4,7 @@
 
 The MapGen generation and publication steps remain valid for the target
 architecture. The Unity configuration steps use the command-driven
-`CswMapStreamerHost`.
+`MapStreamerHost`.
 
 ## Goal
 

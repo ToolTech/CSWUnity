@@ -19,6 +19,7 @@
  * AMO	261022	Added borrowed presentation adapters and explicit module resource teardown.	(2.12.327)
  * AMO	261028	Removed the legacy SceneManager source; shading follows the command-driven presentation only.	(2.12.327)
  * AMO	261030	Removed the unused TerrainData normal generator and its cache.	(2.12.327)
+ * AMO	261103	Removed an unused local list.	(2.12.327)
  */
 
 using UnityEngine;
@@ -184,7 +185,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                 int width = _detailTextureSet.Textures[0].Asset.Albedo.width;
                 int height = _detailTextureSet.Textures[0].Asset.Albedo.height;
 
-                List<int> resolved = new List<int>();
                 for (int i = 0; i < _detailTextureSet.Textures.Count; i++)
                 {
                     var textureAsset = _detailTextureSet.Textures[i];

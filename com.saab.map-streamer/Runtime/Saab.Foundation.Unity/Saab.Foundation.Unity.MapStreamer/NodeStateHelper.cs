@@ -34,6 +34,7 @@
 // AMO	261022	Added revision-aware copied texture metadata for command-driven scenes.	(2.12.327)
 // AMO	261028	Recorded texture builds in the shared build diagnostics after removing the legacy SceneManager.	(2.12.327)
 // AMO	261103	Marked white placeholder textures for states without an active texture.	(2.12.350)
+// AMO	261103	Disposed the image homography wrapper after copying its matrix instead of leaving it to the finalizer.	(2.12.327)
 //
 //******************************************************************************
 
@@ -478,7 +479,8 @@ namespace Saab.Foundation.Unity.MapStreamer
                         if (imageInfo.homography != null &&
                             imageInfo.homography.Is("gzImageHomography"))
                         {
-                            imageInfo.Homography = (ImageHomography)imageInfo.homography;
+                            using (var homography = new ImageHomography(imageInfo.homography))
+                                imageInfo.Homography = homography.GetMatrix();
                             imageInfo.HasHomography = true;
                         }
                         if (imageInfo.CopyOnly)

@@ -180,7 +180,7 @@ materials, shaders, Unity thread affinity, and Unity resource lifetime.
 - **Use cases:** None
 - **Verification:** Design review plus EditMode tests that drive realization
   only through commands and typed buffers (intended fixture:
-  `CswSceneCommandTests`)
+  `SceneCommandTests`)
 
 All communication across the CSW SceneManager/CSWUnity boundary shall use a
 documented command and typed-buffer contract. CSWUnity shall not traverse the
@@ -210,7 +210,7 @@ surfaces are specified in
 - **Milestone:** M1
 - **Use cases:** None
 - **Verification:** EditMode test proving that dependent features observe only
-  completed frames (intended fixture: `CswSceneCommandTests`)
+  completed frames (intended fixture: `SceneCommandTests`)
 
 A refresh shall produce an ordered frame consisting of a start boundary, zero
 or more structural or activation changes, and an end boundary. CSWUnity shall
@@ -224,7 +224,7 @@ features.
 - **Milestone:** M1
 - **Use cases:** None
 - **Verification:** EditMode test of occurrence and parent identity with
-  recycled path identifiers (intended fixture: `CswSceneCommandTests`)
+  recycled path identifiers (intended fixture: `SceneCommandTests`)
 
 Each realized scene instance shall have an identity that remains unambiguous
 for its lifetime. The identity shall account for source-node identity,
@@ -237,7 +237,7 @@ hierarchical path, and reuse or generation when path identifiers are recycled.
 - **Milestone:** M1
 - **Use cases:** None
 - **Verification:** Design review of payload lifetimes plus graphics-enabled
-  PlayMode test of texture leases (intended fixture: `CswSceneResourceTests`)
+  PlayMode test of texture leases (intended fixture: `SceneResourceTests`)
 
 The lifetime of every command, buffer, node description, and resource payload
 shall be explicit. Unity processing shall not retain a raw native pointer or a
@@ -319,7 +319,7 @@ activate, deactivate, and release its Unity representation.
 - **Use cases:** None
 - **Verification:** EditMode test of partial-buffer budgets, structural
   ordering, and stale lifetime rejection (intended fixture:
-  `CswSceneCommandTests`)
+  `SceneCommandTests`)
 
 Realizers shall be able to classify work by cost or priority. Expensive Unity
 resource creation shall be schedulable across frames without violating
@@ -332,7 +332,7 @@ structural ordering or using an object after it has been deleted or recycled.
 - **Milestone:** M1
 - **Use cases:** None
 - **Verification:** Graphics-enabled PlayMode test of resource sharing, pooling,
-  and lease release (intended fixture: `CswSceneResourceTests`)
+  and lease release (intended fixture: `SceneResourceTests`)
 
 Mesh, texture, material, object, and instance lifetime shall be managed through
 shared services with pooling, caching, and explicit ownership. Resource sharing
@@ -347,7 +347,7 @@ available.
 - **Use cases:** None
 - **Verification:** Graphics-enabled PlayMode test of module activation and
   reinjection through the realization profile (intended fixture:
-  `CswPresentationModuleTests`)
+  `PresentationModuleTests`)
 
 Shader and GPU-driven features shall be separate components/assets that
 subscribe to documented realization or frame extension points. Their
@@ -428,7 +428,7 @@ backpressure and overload policy. Queue growth shall be observable.
 - **Use cases:** None
 - **Verification:** EditMode test of per-frame time and item budgets with
   preserved frame and hierarchy ordering (intended fixture:
-  `CswSceneCommandTests`)
+  `SceneCommandTests`)
 
 Unity realization work shall respect a configurable per-frame time and item
 budget while preserving required frame and hierarchy ordering.
@@ -498,6 +498,99 @@ frame, all camera-relative placement shall use the same presentation
 reference, and differences of double-precision positions shall be formed
 before conversion to single precision. In synchronized presentation,
 REQ-CSWU-SM-044 governs the presented camera pose.
+
+### REQ-CSWU-PERF-010: Occurrence object pools
+
+- **Status:** Accepted (2026-11-03, AMO, AD-CSWU-006)
+- **Kind:** Mechanism
+- **Milestone:** M2
+- **Use cases:** UC-CSWU-015
+- **Depends on:** REQ-CSWU-SM-026, REQ-CSWU-SM-027
+- **Verification:** PlayMode test of reuse identity, retained render
+  components, the pool cap, explicit prewarming, and the pool counters
+  (intended fixture: `SceneResourceTests`), plus a profiling scenario on
+  the release performance profile that counts the GameObjects that streaming
+  creates and destroys after warm-up
+
+CSWUnity shall realize occurrences with GameObjects from two pools, one for
+occurrences without render resources and one for occurrences that geometry
+builders realize, whose GameObjects keep a mesh filter and a mesh renderer.
+CSWUnity shall:
+
+- take the GameObject for a new occurrence from the pool of its kind, and
+  create one, from an inactive prototype of that kind, only when the pool is
+  empty;
+- bind render resources to a reused GameObject without adding components;
+- return the GameObjects of a removed occurrence to their pools after the
+  cleanup notifications of the occurrence, with the render resources detached
+  and the renderer disabled, and destroy a GameObject only when its pool has
+  reached a configurable cap;
+- fill the pools ahead of demand only when the host requests it, up to a
+  configurable reserve and within a configurable time budget for each Unity
+  update; and
+- expose for each pool the number of free GameObjects and the counts of
+  prewarmed, created, reused, returned, and destroyed GameObjects.
+
+Taking a GameObject from a pool and returning it shall allocate no managed
+memory. This realizes REQ-CSWU-PERF-005 for scene objects and supports
+REQ-CSWU-PERF-004.
+
+### REQ-CSWU-PERF-012: Activation through rendering state
+
+- **Status:** Accepted (2026-11-03, AMO, AD-CSWU-006)
+- **Kind:** Mechanism
+- **Milestone:** M2
+- **Use cases:** UC-CSWU-015
+- **Depends on:** REQ-CSWU-SM-019, REQ-CSWU-SM-029, REQ-CSWU-SM-043,
+  REQ-CSWU-SM-046, REQ-CSWU-PERF-010
+- **Verification:** PlayMode test (intended fixtures: `SceneResourceTests`
+  and `PresentationModuleTests`) proving that the GameObject of a new
+  occurrence is active but not rendered before its frame commit, that a frame
+  commit shows and hides the occurrences of its frame together without
+  activating or deactivating GameObjects, that an occurrence is rendered only
+  while it is visible, and that foliage culls and draws only the tiles of
+  visible occurrences; EditMode test (intended fixture:
+  `SceneCommandTests`) proving that moving an occurrence to another parent
+  recomputes the visibility of its subtree; and a profiling scenario on the
+  release performance profile that measures the main-thread time of frame
+  commits that present many new occurrences
+
+In CSWUnreal, `processNewNode` registers a component with Unreal when it
+builds the component, within the build limit of each tick, and
+`processActivation` only changes the visibility of registered components.
+Likewise, CSWUnity shall not activate or deactivate GameObjects in a frame
+commit. It shall show and hide occurrences through the rendering state of
+their renderers, which decides whether Unity renders a renderer whose
+GameObject is active. An occurrence is visible while a frame commit has
+presented it and it and all its ancestors are active (REQ-CSWU-SM-019,
+REQ-CSWU-SM-029). CSWUnity shall:
+
+- activate the GameObject of a new occurrence when it creates the
+  occurrence, under the per-update limits, with the rendering of its
+  renderers suppressed;
+- realize the presentation of new occurrences and every activation and
+  deactivation by changing the rendering state of the renderers of the
+  affected occurrences and their descendants, and apply all changes of a
+  frame in its frame commit;
+- let Unity render the renderers of an occurrence only while the occurrence
+  is visible;
+- deactivate the GameObjects of a removed occurrence when they return to
+  their pools (REQ-CSWU-PERF-010); and
+- expose for each occurrence whether it is visible, so that presentation
+  modules use this state instead of the active state of GameObjects.
+
+A presentation module that culls or draws per tile, such as foliage, shall
+cull and draw only the tiles of visible occurrences. The GPU work of a level
+of detail then stops in the frame commit that hides it, and a frame commit
+that exchanges levels of detail never draws both levels. A module that only
+sets material data when an occurrence is created, such as terrain shading,
+does not depend on the visibility.
+
+The rendering state that CSWUnity changes shall be
+`Renderer.forceRenderingOff`, and the GameObject of an occurrence that stays
+deactivated shall stay active until the occurrence is removed (OD-CSWU-008).
+A hidden renderer therefore stays registered with Unity and costs as much as
+a visible renderer when its transform changes.
 
 ## Reliability and validation
 
@@ -573,6 +666,7 @@ The following open decisions are resolved. Their IDs are not reused.
 | ID | Decision needed | Resolution | Date | Affects |
 | --- | --- | --- | --- | --- |
 | OD-CSWU-007 | The session model for multiple maps, whether individual maps can be added and removed, and whether a correlated error for one map faults the session. | One session with an ordered map list, as in CSWUnreal. Maps are added and removed by submitting a changed map list. A map that SceneManager rejects is reported as a warning, and the other maps stay presented ([AD-CSWU-002](../README.md#acceptance-decisions)). | 2026-10-29 | REQ-CSWU-SM-039, REQ-CSWU-SM-040, REQ-CSWU-MAPCTRL-004 |
+| OD-CSWU-008 | The rendering state through which CSWUnity shows and hides occurrences: `Renderer.forceRenderingOff`, which is the cheapest to change but keeps a hidden renderer registered, so that it costs as much as a visible renderer when its transform changes, or `Renderer.enabled`, which costs more to change but unregisters a hidden renderer. Also whether CSWUnity deactivates the GameObject of an occurrence that stays deactivated before the occurrence is removed. | `Renderer.forceRenderingOff`, as CSWUnreal changes only the visibility of a registered component. A GameObject is deactivated only when it returns to its pool. In the Stensholm flight profile, the main-thread and GPU time of the steady flight did not change beyond the variation between runs ([AD-CSWU-006](../README.md#acceptance-decisions)). | 2026-11-03 | REQ-CSWU-PERF-012 |
 
 ## Verification
 

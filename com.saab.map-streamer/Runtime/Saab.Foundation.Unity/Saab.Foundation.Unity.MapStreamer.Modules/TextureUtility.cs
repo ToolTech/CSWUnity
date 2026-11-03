@@ -47,18 +47,11 @@ namespace Saab.Foundation.Unity.MapStreamer.Utils
                 wrapMode = TextureWrapMode.Clamp
             };
 
-            //RenderTexture temporaryRenderTexture = new RenderTexture(textureResolution, textureResolution, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default)
-            //{
-            //    useMipMap = true,
-            //    antiAliasing = 1
-            //};
-
             RenderTexture temporaryRenderTexture = RenderTexture.GetTemporary(textureResolution, textureResolution, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default, 1);
 
 
             for (int i = 0; i < textureCount; i++)
             {
-                //Debug.LogWarning($"graphic format: {foliages[i].MainTexture.graphicsFormat} format: {foliages[i].MainTexture.format}");
                 Graphics.Blit(Textures[i], temporaryRenderTexture);
                 RenderTexture.active = temporaryRenderTexture;
 

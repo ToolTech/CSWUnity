@@ -16,6 +16,8 @@
 //
 // AMO	261022	Added occurrence identity and copied presentation data with borrowed resource views.	(2.12.327)
 // AMO	261028	Added scene presentation event delegates replacing the removed legacy SceneManager delegates.	(2.12.327)
+// AMO	261103	Cached the mesh filter and renderer of pooled occurrences.	(2.12.327)
+// AMO	261103	Added the committed visibility that presentation modules use instead of active GameObjects.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -108,6 +110,13 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		public bool IsStatic { get; internal set; }
 		public bool IsReady { get; internal set; }
 		public bool IsLocallyActive { get; internal set; }
+		/// <summary>Whether the occurrence is presented, ready and active together with all its ancestors.</summary>
+		/// <remarks>
+		/// The GameObject of an occurrence stays active while the occurrence is hidden; only its rendering is
+		/// suppressed. Presentation modules use this state instead of activeInHierarchy. Deactivating the
+		/// GameObjects that hold the scene attachment hides occurrences without changing this state.
+		/// </remarks>
+		public bool IsVisible { get; internal set; }
 		public IntersectMaskValue IntersectMask { get; internal set; }
 		public TerrainPresentationData Terrain { get; internal set; }
 
@@ -121,6 +130,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		internal ulong Lifetime;
 		internal uint ParentVersion;
 		internal bool IsPresented;
+		internal bool IsShown;
+		internal MeshFilter Filter;
+		internal MeshRenderer Renderer;
 	}
 
 	/// <summary>Notifies that a presented Unity object was created or activated for a scene occurrence.</summary>

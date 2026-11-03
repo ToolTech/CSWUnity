@@ -6,7 +6,7 @@
 // Defence Secrecy:		NOT CLASSIFIED
 // Export Control:		NOT EXPORT CONTROLLED
 //
-// File			: CswSceneCommandTests.cs
+// File			: SceneCommandTests.cs
 // Description	: Native command ownership and camera-relative realization tests
 // Product		: Gizmo3D 2.12.326
 //
@@ -22,6 +22,10 @@
 // AMO	261028	Removed the legacy NodeHandle check.	(2.12.327)
 // AMO	261030	Covered whole frames that exceed both per-update limits.	(2.12.327)
 // AMO	261030	Covered the synchronized frame wait timeout default and setting conversion.	(2.12.327)
+// AMO	261103	Covered capture wrapper release under edit access with a finalizer pass during held edit access.	(2.12.327)
+// AMO	261103	Asserted committed visibility of active occurrences and covered visibility after reparenting.	(2.12.327)
+// AMO	261103	Covered native finite/infinite projections, zoom-scaled LOD factors and presentation without frustum write-back.	(2.12.327)
+// AMO	261103	Renamed from CswSceneCommandTests into the Csw test namespace.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -42,9 +46,9 @@ using Camera = UnityEngine.Camera;
 using Quaternion = UnityEngine.Quaternion;
 using Object = UnityEngine.Object;
 
-namespace Saab.Foundation.Unity.MapStreamer.Tests
+namespace Saab.Foundation.Unity.MapStreamer.Tests.Csw
 {
-	public sealed class CswSceneCommandTests
+	public sealed class SceneCommandTests
 	{
 		private GameObject _parent;
 		private GameObject _cameraObject;
@@ -53,6 +57,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 		private SceneCommandInbox _inbox;
 		private SceneCommandPump _pump;
 		private readonly List<Node> _nodes = new List<Node>();
+		private readonly List<State> _states = new List<State>();
 
 		[OneTimeSetUp]
 		public void InitializeNative()
@@ -89,8 +94,11 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			NodeLock.WaitLockEdit();
 			try
 			{
+				foreach (var state in _states)
+					state.ReleaseAlreadyLocked();
 				foreach (var node in _nodes)
 					node.ReleaseAlreadyLocked();
+				_states.Clear();
 				_nodes.Clear();
 			}
 			finally
@@ -131,10 +139,11 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			Assert.That(_scene.InstanceCount, Is.EqualTo(2));
 			Assert.That(childHandle.transform.parent, Is.SameAs(parentHandle.transform));
 			Assert.That(childHandle, Is.Not.SameAs(parentHandle));
-			Assert.That(parentHandle.gameObject.activeSelf, Is.False);
+			Assert.That(parentHandle.IsVisible, Is.False);
 			Assert.That(childHandle.IsLocallyActive, Is.True);
-			Assert.That(childHandle.gameObject.activeSelf, Is.False);
-			Assert.That(childHandle.gameObject.activeInHierarchy, Is.False);
+			Assert.That(childHandle.IsVisible, Is.False);
+			Assert.That(childHandle.gameObject.activeInHierarchy, Is.True,
+				"An occurrence is activated hidden when it is created (REQ-CSWU-PERF-012).");
 		}
 
 		[Test]
@@ -155,7 +164,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			Assert.That(a, Is.Not.SameAs(b));
 			Assert.That(a.transform.parent, Is.SameAs(Handle(left, 1).transform));
 			Assert.That(b.transform.parent, Is.SameAs(Handle(right, 2).transform));
-			Assert.That(a.gameObject.activeSelf, Is.False);
+			Assert.That(a.IsVisible, Is.False);
 			Assert.That(b.IsLocallyActive, Is.True);
 		}
 
@@ -183,20 +192,20 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 
 			Assert.That(_pump.Pump(2, TimeSpan.FromSeconds(1)), Is.EqualTo(4));
 			Assert.That(rootHandle.transform.localPosition, Is.EqualTo(Vector3.zero));
-			Assert.That(rootHandle.gameObject.activeSelf, Is.False);
+			Assert.That(rootHandle.IsVisible, Is.False);
 			Assert.That(childHandle.IsLocallyActive, Is.True);
 			Assert.That(_scene.HasCommittedFrame, Is.False);
 			Enqueue(new SceneCommandEndFrame(42));
 			Pump();
 			Assert.That(rootHandle.transform.localPosition, Is.EqualTo(new Vector3(10, 20, 30)));
-			Assert.That(rootHandle.gameObject.activeSelf, Is.True);
-			Assert.That(childHandle.gameObject.activeSelf, Is.False);
+			Assert.That(rootHandle.IsVisible, Is.True);
+			Assert.That(childHandle.IsVisible, Is.False);
 			Assert.That(_scene.CommittedFrame.GlobalPosition.x, Is.EqualTo(global.x));
 			Assert.That(_scene.CommittedFrame.VerticalFieldOfView, Is.EqualTo(67).Within(0.001));
 
 			Enqueue(new SceneCommandActivation(root, 1, Activation.OFF));
 			Pump();
-			Assert.That(rootHandle.gameObject.activeSelf, Is.False);
+			Assert.That(rootHandle.IsVisible, Is.False);
 			_pump.ExpectFrame(43, frame);
 			Enqueue(
 				new SceneCommandStartFrame(43, 101, global),
@@ -208,7 +217,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			Assert.That(rootHandle.transform.localPosition, Is.EqualTo(Vector3.zero));
 			Assert.That(rootHandle.transform.localScale, Is.EqualTo(Vector3.one));
 			Assert.That(rootHandle.transform.localRotation, Is.EqualTo(Quaternion.identity));
-			Assert.That(childHandle.gameObject.activeSelf, Is.False);
+			Assert.That(rootHandle.IsVisible, Is.True);
+			Assert.That(childHandle.IsVisible, Is.False);
 			Assert.That(_scene.Camera.transform.position, Is.EqualTo(Vector3.zero));
 		}
 
@@ -267,6 +277,45 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			Assert.That(first.GetReferenceCount(), Is.EqualTo(firstReferences));
 			Assert.That(second.GetReferenceCount(), Is.EqualTo(secondReferences));
 			Assert.That(_pump.PendingBuffers, Is.Zero);
+		}
+
+		[Test]
+		public void CaptureLeavesNoWrapperWhoseFinalizerWaitsForEditAccess()
+		{
+			var root = Group("Map");
+			var child = Group("Child");
+			var state = EmptyState();
+			var rootReferences = root.GetReferenceCount();
+			var childReferences = child.GetReferenceCount();
+			var stateReferences = state.GetReferenceCount();
+			Enqueue(
+				new SceneCommandNewNode(root, 1, null, 0, null),
+				new SceneCommandNewNode(child, 2, root, 1, state),
+				new SceneCommandUpdateNode(child, 2, root, 1, state),
+				new SceneCommandActivation(child, 2, Activation.ON),
+				new SceneCommandDeleteNode(child, 2));
+			GC.Collect();
+			GC.WaitForPendingFinalizers();
+			Pump();
+			Assert.That(_scene.InstanceCount, Is.EqualTo(1));
+			Assert.That(root.GetReferenceCount(), Is.EqualTo(rootReferences));
+			Assert.That(child.GetReferenceCount(), Is.EqualTo(childReferences));
+			Assert.That(state.GetReferenceCount(), Is.EqualTo(stateReferences));
+			Thread finalizers = null;
+			NodeLock.WaitLockEdit();
+			try
+			{
+				GC.Collect();
+				finalizers = new Thread(GC.WaitForPendingFinalizers) { IsBackground = true };
+				finalizers.Start();
+				Assert.That(finalizers.Join(2000), Is.True,
+					"A wrapper captured under edit access was left to a finalizer that waits for edit access.");
+			}
+			finally
+			{
+				NodeLock.UnLock();
+				finalizers?.Join(5000);
+			}
 		}
 
 		[Test]
@@ -366,12 +415,14 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			}
 		}
 
-		[TestCase(false)]
-		[TestCase(true)]
-		public void FrameInputContainsExactlyOneOrderedValueOnlyRefreshBatch(bool omniView)
+		[TestCase(false, false)]
+		[TestCase(true, false)]
+		[TestCase(false, true)]
+		[TestCase(true, true)]
+		public void FrameInputContainsExactlyOneOrderedValueOnlyRefreshBatch(bool omniView, bool infiniteFar)
 		{
 			var camera = new CameraRelativeFrame(new Vec3D(123.25, 456.5, 789.75),
-				new Vec3(12, 34, 56), 123.5, 67, 1.5f, 0.3f, 50000, 600, 400);
+				new Vec3(12, 34, 56), 123.5, 67, 1.5f, 0.3f, 50000, 600, 400, 2.5f, infiniteFar: infiniteFar);
 			using (var buffer = new CommandBuffer())
 			{
 				uint refresh = 0;
@@ -402,12 +453,12 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 						var settings = (SceneCommandCameraSettings)command;
 						Assert.That(settings.NearDistance, Is.EqualTo(camera.NearDistance));
 						Assert.That(settings.FarDistance, Is.EqualTo(camera.FarDistance));
-						Assert.That(settings.InfiniteFar, Is.False);
+						Assert.That(settings.InfiniteFar, Is.EqualTo(infiniteFar));
 					}
 					using (var command = buffer.GetCommand())
 					{
 						Assert.That(command, Is.TypeOf<SceneCommandSetLodFactor>());
-						Assert.That(((SceneCommandSetLodFactor)command).LodFactor, Is.EqualTo(camera.LodFactor));
+						Assert.That(((SceneCommandSetLodFactor)command).LodFactor, Is.EqualTo(2.5f));
 					}
 					using (var command = buffer.GetCommand())
 					{
@@ -431,12 +482,24 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			Assert.That(SceneManagerSettings.Default.OmniView, Is.True);
 			Assert.That(SceneManagerSettings.Default.SynchronizeFrames, Is.False);
 			Assert.That(SceneManagerSettings.Default.FrameWaitTimeout, Is.EqualTo(5));
-			Assert.That(CswMapStreamerHost.ToFrameWaitTimeout(SceneManagerSettings.Default.FrameWaitTimeout),
+			Assert.That(MapStreamerHost.ToFrameWaitTimeout(SceneManagerSettings.Default.FrameWaitTimeout),
 				Is.EqualTo(TimeSpan.FromSeconds(5)));
-			Assert.That(CswMapStreamerHost.ToFrameWaitTimeout(1e-9), Is.EqualTo(TimeSpan.FromTicks(1)));
+			Assert.That(MapStreamerHost.ToFrameWaitTimeout(1e-9), Is.EqualTo(TimeSpan.FromTicks(1)));
 			foreach (var invalid in new[] { 0, -1, double.NaN, double.PositiveInfinity })
-				Assert.That(CswMapStreamerHost.ToFrameWaitTimeout(invalid), Is.EqualTo(TimeSpan.Zero),
+				Assert.That(MapStreamerHost.ToFrameWaitTimeout(invalid), Is.EqualTo(TimeSpan.Zero),
 					"An invalid timeout setting must fault synchronized updates instead of waiting unbounded.");
+			Assert.That(SceneManagerSettings.Default.InfiniteFarPlane, Is.False,
+				"Depth-based effects still use the finite far plane, so the finite frustum remains the default.");
+			Assert.That(SceneManagerSettings.Default.LodFactor, Is.EqualTo(1));
+			Assert.That(SceneManagerSettings.Default.LodReferenceFieldOfView, Is.Zero,
+				"Without a reference field of view the LOD factor is submitted unscaled, like CSWUnreal.");
+			Assert.That(MapStreamerHost.ToLodFactor(2.5f), Is.EqualTo(2.5f));
+			foreach (var invalid in new[] { 0, -1, float.NaN, float.PositiveInfinity })
+				Assert.That(MapStreamerHost.ToLodFactor(invalid), Is.EqualTo(1),
+					"An invalid LOD factor setting must submit the native default instead of faulting every update.");
+			var bridge = new CameraBridge(_scene.Camera, _coordinates);
+			Assert.That(bridge.InfiniteFarPlane, Is.False);
+			Assert.That(bridge.LodReferenceFieldOfView, Is.Zero);
 			using (var manager = new MapManager(_scene, Array.Empty<GeometryBuilderBase>()))
 			{
 				Assert.That(manager.OmniView, Is.True);
@@ -569,8 +632,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			Assert.That(_pump.LastLockAttempts, Is.EqualTo(1));
 			Assert.That(_scene.CommittedFrame.RefreshId, Is.EqualTo(42));
 			Assert.That(Handle(root, 1).transform.localPosition, Is.EqualTo(new Vector3(10, 20, 30)));
-			Assert.That(Handle(root, 1).gameObject.activeSelf, Is.True);
-			Assert.That(Handle(first, 2).gameObject.activeSelf, Is.False);
+			Assert.That(Handle(root, 1).IsVisible, Is.True);
+			Assert.That(Handle(first, 2).IsVisible, Is.False);
 			Assert.That(_scene.TryGetInstance(Key(third, 4), out _), Is.False);
 			Assert.That(_pump.PendingBuffers, Is.EqualTo(5));
 
@@ -587,7 +650,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 				"The transforms and activations of a frame must not count toward the command limit.");
 			Assert.That(_scene.CommittedFrame.RefreshId, Is.EqualTo(43));
 			Assert.That(Handle(root, 1).transform.localPosition, Is.EqualTo(new Vector3(40, 50, 60)));
-			Assert.That(Handle(first, 2).gameObject.activeSelf, Is.True);
+			Assert.That(Handle(first, 2).IsVisible, Is.True);
 			Assert.That(_scene.TryGetInstance(Key(fifth, 6), out _), Is.True);
 			Assert.That(_scene.TryGetInstance(Key(sixth, 7), out _), Is.False);
 			Pump();
@@ -791,8 +854,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 					bridge.PresentPose();
 					Assert.That(_scene.Camera.transform.position, Is.EqualTo(Vector3.zero));
 					Assert.That(Quaternion.Angle(_scene.Camera.transform.rotation, rotation), Is.LessThan(0.05));
-					var expected = Matrix4x4.Perspective(submitted.VerticalFieldOfView, submitted.Aspect,
-						submitted.NearDistance, submitted.FarDistance);
+					var expected = submitted.Projection;
+					Assert.That(expected, Is.EqualTo(Matrix4x4.Perspective(submitted.VerticalFieldOfView,
+						submitted.Aspect, submitted.NearDistance, submitted.FarDistance)));
 					for (var i = 0; i < 16; i++)
 						Assert.That(_scene.Camera.projectionMatrix[i], Is.EqualTo(expected[i]).Within(0.00001));
 				}, renderLock);
@@ -961,16 +1025,161 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 		[Test]
 		public void SubmittedProjectionSurvivesHardcodedNativeFrameFov()
 		{
-			var submitted = new CameraRelativeFrame(default, default, 1, 67, 2, 1, 10000, 640, 480);
+			var submitted = new CameraRelativeFrame(default, default, 1, 67, 2, 1, 10000, 640, 480, 1.75f,
+				infiniteFar: true);
 			var committed = submitted.WithNativePose(123, 2, new Vec3D(1, 2, 3), new Vec3(4, 5, 6));
 			Assert.That(committed.VerticalFieldOfView, Is.EqualTo(67));
 			Assert.That(committed.HorizontalFieldOfView, Is.EqualTo(submitted.HorizontalFieldOfView));
 			Assert.That(committed.Aspect, Is.EqualTo(2));
+			Assert.That(committed.NearDistance, Is.EqualTo(1));
+			Assert.That(committed.FarDistance, Is.EqualTo(10000));
+			Assert.That(committed.InfiniteFar, Is.True, "The native frame must keep the submitted far plane mode.");
+			Assert.That(committed.LodFactor, Is.EqualTo(1.75f));
+			Assert.That(committed.Projection, Is.EqualTo(submitted.Projection));
 			Assert.That(committed.GlobalPosition.x, Is.EqualTo(1));
 			Assert.That(committed.Hpr.y, Is.EqualTo(5));
 			Assert.That(committed.RefreshId, Is.EqualTo(123));
 			Assert.Throws<ArgumentException>(() =>
 				new CameraRelativeFrame(new Vec3D(double.NaN, 0, 0), default, 1, 60, 1, 1, 100, 1, 1));
+		}
+
+		[Test]
+		public void FrameProjectionMatchesGzPerspCameraWithFiniteAndInfiniteFarPlanes()
+		{
+			const float near = 0.5f;
+			const float far = 2000;
+			var finite = new CameraRelativeFrame(default, default, 1, 50, 1.6f, near, far, 640, 400);
+			var infinite = new CameraRelativeFrame(default, default, 1, 50, 1.6f, near, far, 640, 400,
+				infiniteFar: true);
+			// gzPerspCamera::getProjectionTransform with m_width = near * tan(hfov / 2), m_height = near * tan(vfov / 2).
+			var width = 1 / Math.Tan(finite.HorizontalFieldOfView * Math.PI / 360);
+			var height = 1 / Math.Tan(finite.VerticalFieldOfView * Math.PI / 360);
+			var expectedFinite = GizmoProjection(width, height,
+				-(far + near) / (double)(far - near), -2.0 * near * far / (far - near));
+			var expectedInfinite = GizmoProjection(width, height, -0.995, -2.0 * near * 0.995);
+			for (var i = 0; i < 16; i++)
+			{
+				Assert.That(finite.Projection[i], Is.EqualTo(expectedFinite[i]).Within(0.00001), $"finite[{i}]");
+				Assert.That(infinite.Projection[i], Is.EqualTo(expectedInfinite[i]).Within(0.00001), $"infinite[{i}]");
+			}
+			Assert.That(finite.Projection, Is.EqualTo(Matrix4x4.Perspective(50, 1.6f, near, far)));
+			Assert.That(ProjectedDepth(infinite.Projection, near), Is.EqualTo(-0.995f).Within(0.00001));
+			Assert.That(ProjectedDepth(infinite.Projection, 1e12f), Is.EqualTo(0.995f).Within(0.0001).And.LessThan(1),
+				"An infinite far plane keeps arbitrarily distant points inside the depth range.");
+			Assert.That(ProjectedDepth(infinite.Projection, 2 * far), Is.LessThan(1));
+			Assert.That(ProjectedDepth(finite.Projection, 2 * far), Is.GreaterThan(1),
+				"A finite far plane clips beyond far like gzPerspCamera.");
+			var distant = new Bounds(new Vector3(0, 0, -1e9f), Vector3.one * 1000);
+			Assert.That(GeometryUtility.TestPlanesAABB(
+				GeometryUtility.CalculateFrustumPlanes(infinite.Projection), distant), Is.True,
+				"Unity culling must keep bounds beyond far with an infinite far plane.");
+			Assert.That(GeometryUtility.TestPlanesAABB(
+				GeometryUtility.CalculateFrustumPlanes(finite.Projection), distant), Is.False);
+		}
+
+		[Test]
+		public void SampledLodFactorScalesWithZoomAgainstTheReferenceFieldOfView()
+		{
+			Assert.That(CameraBridge.EffectiveLodFactor(2, 30, 0), Is.EqualTo(2));
+			foreach (var disabled in new[] { -1, 180, float.NaN, float.PositiveInfinity })
+				Assert.That(CameraBridge.EffectiveLodFactor(2, 30, disabled), Is.EqualTo(2));
+			Assert.That(CameraBridge.EffectiveLodFactor(2, 60, 60), Is.EqualTo(2).Within(0.00001));
+			var zoom = Math.Tan(Math.PI / 6) / Math.Tan(Math.PI / 12);
+			Assert.That(CameraBridge.EffectiveLodFactor(1, 30, 60), Is.EqualTo(zoom).Within(0.00001),
+				"Halving the field of view must raise the LOD factor by GizmoSDK's zoom.");
+			Assert.That(CameraBridge.EffectiveLodFactor(1, 90, 60), Is.EqualTo(Math.Tan(Math.PI / 6)).Within(0.00001));
+			var bridge = new CameraBridge(_scene.Camera, _coordinates);
+			bridge.SetPose(new Vec3D(6378137, 0, 0), Quaternion.identity);
+			_scene.Camera.fieldOfView = 30;
+			var unscaled = bridge.Sample(100, 1.5f);
+			Assert.That(unscaled.LodFactor, Is.EqualTo(1.5f));
+			Assert.That(unscaled.InfiniteFar, Is.False);
+			bridge.LodReferenceFieldOfView = 60;
+			bridge.InfiniteFarPlane = true;
+			var zoomed = bridge.Sample(100, 1.5f);
+			Assert.That(zoomed.LodFactor, Is.EqualTo(1.5 * zoom).Within(0.00001));
+			Assert.That(zoomed.VerticalFieldOfView, Is.EqualTo(30));
+			Assert.That(zoomed.InfiniteFar, Is.True);
+		}
+
+		[TestCase(false)]
+		[TestCase(true)]
+		public void CameraPresentsTheNativeFarPlaneModeWithoutWritingTheHostFrustum(bool synchronize)
+		{
+			using (var system = new CoordinateSystem(
+				Datum.WGS84_ELLIPSOID, FlatGaussProjection.NOT_DEFINED, CoordinateType.GEOCENTRIC))
+				_coordinates.Configure(system.AsString(), default);
+			var camera = _scene.Camera;
+			camera.aspect = 1.5f;
+			camera.fieldOfView = 50;
+			camera.nearClipPlane = 0.5f;
+			camera.farClipPlane = 2000;
+			var bridge = new CameraBridge(camera, _coordinates)
+			{
+				SynchronizeFrames = synchronize, InfiniteFarPlane = true
+			};
+			var position = new Vec3D(6378137, 0, 0);
+			bridge.SetPose(position, Quaternion.identity);
+			var submitted = bridge.Sample(100);
+			var worldOffset = Shader.GetGlobalVector("_WorldOffset");
+			var localToEun = Shader.GetGlobalMatrix("_LocalToEUN");
+			try
+			{
+				Assert.That(submitted.InfiniteFar, Is.True);
+				bridge.Commit(submitted);
+				AssertProjection(camera, submitted.Projection);
+				Assert.That(camera.projectionMatrix.m22, Is.EqualTo(-CameraBridge.InfiniteFarNudge));
+				camera.fieldOfView = 70;
+				camera.nearClipPlane = 1;
+				camera.farClipPlane = 5000;
+				var requested = CameraBridge.NativeProjection(70, 1.5f, 1, 5000, true);
+				bridge.PresentPose();
+				AssertProjection(camera, synchronize ? submitted.Projection : requested);
+				var older = new CameraRelativeFrame(position, default, 99, 30, 1.5f, 2, 100, 640, 480);
+				bridge.Commit(older);
+				Assert.That(camera.fieldOfView, Is.EqualTo(70),
+					"Committing a refresh must not write its frustum back over the host's camera settings.");
+				Assert.That(camera.nearClipPlane, Is.EqualTo(1));
+				Assert.That(camera.farClipPlane, Is.EqualTo(5000));
+				AssertProjection(camera, synchronize ? older.Projection : requested);
+				bridge.InfiniteFarPlane = false;
+				bridge.PresentPose();
+				AssertProjection(camera, synchronize ? older.Projection : Matrix4x4.Perspective(70, 1.5f, 1, 5000));
+				var next = bridge.Sample(101);
+				Assert.That(next.VerticalFieldOfView, Is.EqualTo(70));
+				Assert.That(next.NearDistance, Is.EqualTo(1));
+				Assert.That(next.FarDistance, Is.EqualTo(5000));
+				Assert.That(next.InfiniteFar, Is.False);
+			}
+			finally
+			{
+				bridge.ResetPose();
+				Shader.SetGlobalVector("_WorldOffset", worldOffset);
+				Shader.SetGlobalMatrix("_LocalToEUN", localToEun);
+			}
+		}
+
+		private static Matrix4x4 GizmoProjection(double width, double height, double m22, double m23)
+		{
+			var projection = Matrix4x4.zero;
+			projection.m00 = (float)width;
+			projection.m11 = (float)height;
+			projection.m22 = (float)m22;
+			projection.m23 = (float)m23;
+			projection.m32 = -1;
+			return projection;
+		}
+
+		private static float ProjectedDepth(Matrix4x4 projection, float distance)
+		{
+			var clip = projection * new Vector4(0, 0, -distance, 1);
+			return clip.z / clip.w;
+		}
+
+		private static void AssertProjection(Camera camera, Matrix4x4 expected)
+		{
+			for (var i = 0; i < 16; i++)
+				Assert.That(camera.projectionMatrix[i], Is.EqualTo(expected[i]).Within(0.00001), $"projection[{i}]");
 		}
 
 		[TestCase("delete")]
@@ -1037,7 +1246,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 				new SceneCommandActivation(root, 1, Activation.ON));
 			Pump();
 			_scene.CommitFrame(Frame(default));
-			Assert.That(Handle(root, 1).gameObject.activeInHierarchy, Is.True);
+			Assert.That(Handle(root, 1).IsVisible, Is.True);
 			_pump.ExpectFrame(44, Frame(default));
 			Enqueue(
 				new SceneCommandStartFrame(44, 0, default),
@@ -1047,12 +1256,44 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			var branch = Handle(child, 2);
 			Assert.That(branch.IsReady, Is.True);
 			Assert.That(branch.IsPresented, Is.False);
-			Assert.That(branch.gameObject.activeInHierarchy, Is.False);
+			Assert.That(branch.IsVisible, Is.False);
+			Assert.That(branch.gameObject.activeInHierarchy, Is.True);
 			Enqueue(new SceneCommandEndFrame(44));
 			Pump();
 			Assert.That(branch.IsPresented, Is.True);
 			Assert.That(branch.IsLocallyActive, Is.False);
-			Assert.That(branch.gameObject.activeInHierarchy, Is.False);
+			Assert.That(branch.IsVisible, Is.False);
+		}
+
+		[Test]
+		public void ReparentingRecomputesTheVisibilityOfTheMovedSubtree()
+		{
+			var root = Group("Visible map");
+			var shown = Group("Shown parent");
+			var hidden = Group("Hidden parent");
+			var moved = Group("Moved occurrence");
+			var leaf = Group("Moved leaf");
+			Enqueue(
+				new SceneCommandNewNode(root, 1, null, 0, null),
+				new SceneCommandActivation(root, 1, Activation.ON),
+				new SceneCommandNewNode(shown, 2, root, 1, null),
+				new SceneCommandNewNode(hidden, 3, root, 1, null),
+				new SceneCommandActivation(hidden, 3, Activation.OFF),
+				new SceneCommandNewNode(moved, 4, shown, 2, null),
+				new SceneCommandNewNode(leaf, 5, moved, 4, null));
+			Pump();
+			_scene.CommitFrame(Frame(default));
+			var movedHandle = Handle(moved, 4);
+			var leafHandle = Handle(leaf, 5);
+			Assert.That(leafHandle.IsVisible, Is.True);
+			Enqueue(new SceneCommandUpdateNode(moved, 4, hidden, 3, null));
+			Pump();
+			Assert.That(movedHandle.IsVisible, Is.False);
+			Assert.That(leafHandle.IsVisible, Is.False);
+			Enqueue(new SceneCommandUpdateNode(moved, 4, shown, 2, null));
+			Pump();
+			Assert.That(movedHandle.IsVisible, Is.True);
+			Assert.That(leafHandle.IsVisible, Is.True);
 		}
 
 		[Test]
@@ -1154,6 +1395,18 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 				var group = new Group(name);
 				_nodes.Add(group);
 				return group;
+			}
+			finally { NodeLock.UnLock(); }
+		}
+
+		private State EmptyState()
+		{
+			NodeLock.WaitLockEdit();
+			try
+			{
+				var state = new State();
+				_states.Add(state);
+				return state;
 			}
 			finally { NodeLock.UnLock(); }
 		}

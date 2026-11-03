@@ -63,7 +63,7 @@ capabilities, not hard-coded native node type checks in a monolithic manager.
 - **Milestone:** M1
 - **Use cases:** UC-CSWU-001
 - **Verification:** EditMode test proving that rendering observes only committed
-  frames (intended fixture: `CswSceneCommandTests`)
+  frames (intended fixture: `SceneCommandTests`)
 
 Rendering modules shall observe only committed map, object, environment, and
 Local 3D Frame state. Partial scene-buffer application shall not be visible to
@@ -103,7 +103,7 @@ placement, culling, and drawing where required by the release profile.
 - **Milestone:** M1
 - **Use cases:** None
 - **Verification:** Graphics-enabled PlayMode test of resource leases and
-  sharing (intended fixture: `CswSceneResourceTests`)
+  sharing (intended fixture: `SceneResourceTests`)
 
 Meshes, textures, materials, shaders, and referenced assets shall use explicit
 sharing, leases, pooling, caching, budgets, and eviction.
@@ -127,7 +127,7 @@ thread-affinity rules.
 - **Milestone:** M2
 - **Use cases:** None
 - **Verification:** EditMode test of publication budgets and stale-work
-  cancellation (intended fixture: `CswSceneCommandTests`)
+  cancellation (intended fixture: `SceneCommandTests`)
 
 Main-thread resource and hierarchy publication shall use configurable time and
 item budgets with stale-work cancellation.

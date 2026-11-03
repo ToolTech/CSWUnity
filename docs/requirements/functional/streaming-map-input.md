@@ -24,7 +24,7 @@ area. Its Principle requirements are in
 - **Milestone:** M1
 - **Use cases:** UC-CSWU-001
 - **Verification:** PlayMode test with a published GZD map from the supported
-  CSWMapGenerator version (intended fixture: `CswNativeMapTests`)
+  CSWMapGenerator version (intended fixture: `NativeMapTests`)
 
 CSWUnity shall load GZD maps generated and published by a supported version of
 CSWMapGenerator through the C# CSW SceneManager and GizmoSDK.
@@ -64,8 +64,8 @@ REQ-CSWU-MAPCTRL-004.
 - **Milestone:** M1
 - **Use cases:** UC-CSWU-001
 - **Verification:** EditMode test of ordered structural and activation changes
-  (intended fixture: `CswSceneCommandTests`) plus PlayMode map test (intended
-  fixture: `CswNativeMapTests`)
+  (intended fixture: `SceneCommandTests`) plus PlayMode map test (intended
+  fixture: `NativeMapTests`)
 
 CSWUnity shall process structural `New`, `Update`, `Delete`, and `Activation`
 changes emitted by CSW SceneManager and realize supported content through a
@@ -92,7 +92,7 @@ identity and generation while applying the current Unity Viewer Transform.
 - **Use cases:** UC-CSWU-001
 - **Verification:** PlayMode test with a published GZD map proving that camera
   movement updates streamed content and LOD (intended fixture:
-  `CswNativeMapTests`)
+  `NativeMapTests`)
 
 CSWUnity shall submit camera and frame information to CSW SceneManager so that
 GizmoSDK can update dynamic content and levels of detail without loading the

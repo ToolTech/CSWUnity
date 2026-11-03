@@ -45,7 +45,7 @@ code.
 - **Use cases:** None
 - **Depends on:** REQ-CSW-SM-002
 - **Verification:** EditMode test of receiver enqueueing and main-thread
-  execution (intended fixture: `CswSceneCommandTests`)
+  execution (intended fixture: `SceneCommandTests`)
 - **Superseded by:**
   [REQ-CSWU-SM-013](csw-scenemanager-integration.md#req-cswu-sm-013-receiver-handoff),
   [REQ-CSWU-SM-015](csw-scenemanager-integration.md#req-cswu-sm-015-ordered-typed-processing)
@@ -63,7 +63,7 @@ Unity main thread.
 - **Use cases:** None
 - **Depends on:** REQ-CSW-SM-001, REQ-CSW-SM-003
 - **Verification:** EditMode test of ordered typed buffers and partial-buffer
-  budgets (intended fixture: `CswSceneCommandTests`)
+  budgets (intended fixture: `SceneCommandTests`)
 - **Superseded by:**
   [REQ-CSWU-SM-015](csw-scenemanager-integration.md#req-cswu-sm-015-ordered-typed-processing),
   [REQ-CSWU-SM-017](csw-scenemanager-integration.md#req-cswu-sm-017-per-update-budgets-and-frame-synchronization)
@@ -81,7 +81,7 @@ for a later Unity update.
 - **Use cases:** None
 - **Depends on:** REQ-CSW-SM-004
 - **Verification:** EditMode test of occurrence and parent identity (intended
-  fixture: `CswSceneCommandTests`)
+  fixture: `SceneCommandTests`)
 - **Superseded by:**
   [REQ-CSWU-SM-023](csw-scenemanager-integration.md#req-cswu-sm-023-occurrence-identity)
 

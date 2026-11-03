@@ -17,6 +17,7 @@
 // AMO	261022	Added bounded owned-buffer handoff and native session lifetime handling.	(2.12.327)
 // AMO	261023	Queued value-only frame controls with one trigger and no graph-lock wait.	(2.12.327)
 // AMO	261026	Included Omni mode in frame input and versioned inbox notifications for optional frame waits.	(2.12.327)
+// AMO	261103	Submitted the frame's infinite far plane selection with its camera settings.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -268,7 +269,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 			AppendInput(buffer, new SceneCommandSetOmniTraverse(omniView));
 			AppendInput(buffer, new SceneCommandPositionCamera(
 				camera.GlobalPosition, camera.Hpr, camera.HorizontalFieldOfView, camera.VerticalFieldOfView));
-			AppendInput(buffer, new SceneCommandCameraSettings(camera.NearDistance, camera.FarDistance));
+			AppendInput(buffer, new SceneCommandCameraSettings(
+				camera.NearDistance, camera.FarDistance, camera.InfiniteFar));
 			AppendInput(buffer, new SceneCommandSetLodFactor(camera.LodFactor));
 			return AppendInput(buffer, new SceneCommandRefreshScene(
 				camera.RenderTime, camera.Width, camera.Height, camera.Width));

@@ -50,8 +50,8 @@ resources when activation alone is sufficient.
 - **Milestone:** M1
 - **Use cases:** UC-CSWU-001
 - **Verification:** Graphics-enabled PlayMode resource test plus PlayMode test
-  with a published GZD map (intended fixtures: `CswSceneResourceTests`,
-  `CswNativeMapTests`)
+  with a published GZD map (intended fixtures: `SceneResourceTests`,
+  `NativeMapTests`)
 
 The baseline realization shall support the terrain, static geometry, material,
 texture, transform, hierarchy, reference-instance, update, activation, and

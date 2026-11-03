@@ -457,7 +457,7 @@ user observes no jump.
 - **Primary actor:** Scene service
 - **Related requirements:** REQ-CSWU-POS-001, REQ-CSWU-POS-003,
   REQ-CSWU-SM-020, REQ-CSWU-SM-021, REQ-CSWU-SM-022, REQ-CSWU-SM-041,
-  REQ-CSWU-SM-044
+  REQ-CSWU-SM-044, REQ-CSWU-SM-049, REQ-CSWU-SM-050
 - **Former ID:** CSWU-UC-CAM-062
 
 #### Main Flow

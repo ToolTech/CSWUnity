@@ -14,9 +14,14 @@ maps and camera synchronization modes in
 level-of-detail transitions without visible holes in
 [AD-CSWU-003](../README.md#acceptance-decisions), with the processing of
 a whole frame in one Unity update in
-[AD-CSWU-004](../README.md#acceptance-decisions), and with pipelined frame
+[AD-CSWU-004](../README.md#acceptance-decisions), with pipelined frame
 synchronization and the stop of the dynamic loaders at shutdown in
-[AD-CSWU-005](../README.md#acceptance-decisions).
+[AD-CSWU-005](../README.md#acceptance-decisions), with the release of
+GizmoSDK wrappers within the edit access that obtained them in
+[AD-CSWU-006](../README.md#acceptance-decisions), and with a camera frustum
+that matches SceneManager with a finite or an infinite far plane and a
+level-of-detail factor that follows the zoom of the camera in
+[AD-CSWU-007](../README.md#acceptance-decisions).
 
 ## Scope
 
@@ -24,8 +29,8 @@ This document holds the Principle, Mechanism, and Class requirements for the
 CSWUnity use of the C# SceneManager: the session and its map list, the
 receiver handoff, buffer ownership and edit access, command processing and
 frame presentation, continuous refresh, level-of-detail transitions, camera
-synchronization, refresh input, the occurrence lifecycle, and the classes that
-carry these contracts.
+synchronization, the camera frustum and the level-of-detail factor, refresh
+input, the occurrence lifecycle, and the classes that carry these contracts.
 The analysis that the requirements derive from is in
 [CSWUnreal SceneManager reference](../../design/cswunreal-scenemanager-reference.md).
 Implementation progress is recorded in
@@ -143,6 +148,8 @@ requirement in this document, the Accepted requirement governs.
 - Camera, coordinate, query, and movement behavior of milestone M3 beyond the
   SceneManager protocol, except REQ-CSWU-SM-033.
 - Rendering and optional presentation modules.
+- How shaders and other presentation effects learn that the camera uses an
+  infinite far plane and derive depth from it (REQ-CSWU-SM-049).
 - The MapManager realization of REQ-CSWU-MM-001.
 
 ## Principles
@@ -154,7 +161,7 @@ requirement in this document, the Accepted requirement governs.
 - **Milestone:** M1
 - **Use cases:** UC-CSWU-001
 - **Verification:** Design review plus PlayMode test that a real map is
-  realized from received buffers (intended fixture: `CswNativeMapTests`)
+  realized from received buffers (intended fixture: `NativeMapTests`)
 
 The C# SceneManager shall be the only authority for traversal, level-of-detail
 selection, loading, unloading, and the resulting occurrences and their
@@ -186,7 +193,7 @@ changes, the record shall be reviewed again.
 - **Milestone:** M1
 - **Use cases:** None
 - **Verification:** Code review of native access plus EditMode test (intended
-  fixture: `CswSceneCommandTests`)
+  fixture: `SceneCommandTests`)
 
 CSWUnity shall read or modify native nodes, node states, attributes, and the
 contents of received command buffers only while it holds edit access. Outside
@@ -203,7 +210,7 @@ not decided by this requirement
 - **Milestone:** M1
 - **Use cases:** None
 - **Verification:** Code review plus EditMode test that a foreign thread cannot
-  realize Unity objects (intended fixture: `CswSceneCommandTests`)
+  realize Unity objects (intended fixture: `SceneCommandTests`)
 
 Code that runs on a SceneManager thread, including the command receiver
 callback, shall not use Unity objects or main-thread-only Unity APIs.
@@ -218,8 +225,8 @@ callback, shall not use Unity objects or main-thread-only Unity APIs.
 - **Use cases:** UC-CSWU-007
 - **Depends on:** REQ-CSWU-SM-012
 - **Verification:** EditMode test of the startup commands and PlayMode test of
-  a real map start (intended fixtures: `CswSceneCommandTests` and
-  `CswNativeMapTests`)
+  a real map start (intended fixtures: `SceneCommandTests` and
+  `NativeMapTests`)
 
 Before it creates a session, CSWUnity shall hold a CSW platform reference and
 then a Coordinate platform reference, both reference-counted. It shall then
@@ -258,7 +265,7 @@ the geometry.
 - **Use cases:** None
 - **Depends on:** REQ-CSWU-SM-010, REQ-CSWU-SM-014
 - **Verification:** EditMode test of handoff, wake-up, and overflow (intended
-  fixture: `CswSceneCommandTests`)
+  fixture: `SceneCommandTests`)
 
 The command receiver callback shall only take ownership of the buffer, enqueue
 it, and signal the Unity side. It shall neither process commands nor wait for
@@ -274,7 +281,7 @@ rejected buffer and fault. A buffer shall never be dropped silently.
 - **Use cases:** None
 - **Depends on:** REQ-CSWU-SM-009
 - **Verification:** EditMode test of release after consumption, rejection,
-  stop, and partial consumption (intended fixture: `CswSceneCommandTests`)
+  stop, and partial consumption (intended fixture: `SceneCommandTests`)
 
 CSWUnity shall set the delete mode `EDIT_LOCK` on each command buffer that it
 receives and shall release each received buffer exactly once while it holds
@@ -289,7 +296,7 @@ consumed buffers.
 - **Use cases:** None
 - **Depends on:** REQ-CSWU-SM-013
 - **Verification:** EditMode test of ordered and partial buffer processing
-  (intended fixture: `CswSceneCommandTests`) plus code review of the
+  (intended fixture: `SceneCommandTests`) plus code review of the
   unsupported-type handling
 
 CSWUnity shall process buffers in arrival order and the commands of a buffer
@@ -308,7 +315,7 @@ shall fault.
 - **Use cases:** None
 - **Verification:** EditMode tests that a busy edit lock defers output and that
   control and frame submission do not wait (intended fixture:
-  `CswSceneCommandTests`)
+  `SceneCommandTests`)
 
 During a Unity update, CSWUnity shall not wait for edit access without a
 bound. Output processing shall try to take edit access with a zero or bounded
@@ -324,9 +331,9 @@ creation and shutdown may wait for edit access without a bound.
 - **Milestone:** M1
 - **Use cases:** None
 - **Verification:** EditMode tests of budgets and synchronous draining
-  (intended fixture: `CswSceneCommandTests`) plus PlayMode tests of
+  (intended fixture: `SceneCommandTests`) plus PlayMode tests of
   synchronized frames and the frame timeout (intended fixture:
-  `CswNativeMapTests`)
+  `NativeMapTests`)
 - **Superseded by:** [REQ-CSWU-SM-045](#req-cswu-sm-045-per-update-budgets-whole-frames-and-frame-synchronization)
 
 CSWUnity shall limit the work of each Unity update by a configurable maximum
@@ -346,7 +353,7 @@ instead of presenting a partial frame.
 - **Use cases:** UC-CSWU-001
 - **Depends on:** REQ-CSWU-SM-030
 - **Verification:** EditMode test of refresh fences (intended fixture:
-  `CswSceneCommandTests`)
+  `SceneCommandTests`)
 - **Superseded by:** [REQ-CSWU-SM-042](#req-cswu-sm-042-continuous-refresh)
 
 CSWUnity shall have at most one `RefreshScene` outstanding per session and
@@ -362,7 +369,7 @@ REQ-CSWU-SM-030 is configured and a camera pose is available.
 - **Use cases:** None
 - **Depends on:** REQ-CSWU-SM-023
 - **Verification:** EditMode tests of atomic frame commits, frame fences, and
-  occurrence lifetime checks (intended fixture: `CswSceneCommandTests`)
+  occurrence lifetime checks (intended fixture: `SceneCommandTests`)
 
 CSWUnity shall collect the transform and activation changes received between
 `StartFrame` and `EndFrame` and apply them together when it consumes
@@ -382,7 +389,7 @@ mismatched refresh ID, shall fault.
 - **Use cases:** UC-CSWU-001, UC-CSWU-162
 - **Verification:** EditMode tests of the refresh input order, the axis
   mapping, and the submitted projection (intended fixture:
-  `CswSceneCommandTests`)
+  `SceneCommandTests`)
 
 For each refresh, CSWUnity shall submit `PositionCamera` with the camera
 position as a double-precision global 3D position, its heading, pitch, and
@@ -398,7 +405,7 @@ Unity.
 - **Milestone:** M1
 - **Use cases:** UC-CSWU-162
 - **Verification:** EditMode test of the refresh input (intended fixture:
-  `CswSceneCommandTests`)
+  `SceneCommandTests`)
 
 CSWUnity shall submit `CameraSettings` with the near and far distances of the
 Unity camera before the first refresh and whenever they change. The host
@@ -412,7 +419,7 @@ submit the finite far distance of the Unity camera.
 - **Milestone:** M1
 - **Use cases:** UC-CSWU-162
 - **Verification:** EditMode tests of the refresh input and the camera option
-  defaults (intended fixture: `CswSceneCommandTests`)
+  defaults (intended fixture: `SceneCommandTests`)
 
 CSWUnity shall submit `SetOmniTraverse` and `SetLodFactor` before the first
 refresh and whenever their values change. By default, omni traversal shall be
@@ -428,7 +435,7 @@ shall be able to change both at runtime.
 - **Milestone:** M1
 - **Use cases:** None
 - **Verification:** EditMode tests of occurrence and parent identity
-  (intended fixture: `CswSceneCommandTests`)
+  (intended fixture: `SceneCommandTests`)
 
 CSWUnity shall identify an occurrence by its native node and its full 64-bit
 PathID, and the parent of an occurrence by the parent native node and the
@@ -444,7 +451,7 @@ this identity.
 - **Use cases:** None
 - **Depends on:** REQ-CSWU-SM-023
 - **Verification:** Code review plus EditMode test of hierarchy publication
-  (intended fixture: `CswSceneCommandTests`)
+  (intended fixture: `SceneCommandTests`)
 
 For each `NewNode` and `UpdateNode`, CSWUnity shall resolve the parent
 occurrence before it changes the Unity realization. It shall neither
@@ -458,7 +465,7 @@ parent shall fault.
 - **Milestone:** M1
 - **Use cases:** None
 - **Verification:** Code review plus PlayMode test of resource realization
-  (intended fixture: `CswSceneResourceTests`)
+  (intended fixture: `SceneResourceTests`)
 
 CSWUnity shall select the realizer of a node deterministically as the realizer
 of the most specific Gizmo3D type of the node for which a realizer exists.
@@ -474,7 +481,7 @@ Realizers shall exist at least for `gzNode`, `gzGroup`, `gzTransform`,
 - **Depends on:** REQ-CSWU-SM-009, REQ-CSWU-SM-025
 - **Verification:** Code review plus EditMode test that frame changes share
   one buffer lock and publish after unlock (intended fixture:
-  `CswSceneCommandTests`)
+  `SceneCommandTests`)
 
 For each `NewNode` and `UpdateNode` command, CSWUnity shall resolve the
 realizer and capture the realization inputs from the native node, its state,
@@ -496,7 +503,7 @@ preparation stages run outside the Unity main thread
 - **Use cases:** UC-CSWU-001
 - **Depends on:** REQ-CSWU-SM-023, REQ-CSWU-SM-024
 - **Verification:** EditMode tests of creation, update, deletion, and
-  recycling (intended fixture: `CswSceneCommandTests`) plus code review of the
+  recycling (intended fixture: `SceneCommandTests`) plus code review of the
   fault paths
 
 `NewNode` shall create and register exactly one occurrence, and a `NewNode`
@@ -515,7 +522,7 @@ for an unregistered identity shall have no effect. An `UpdateNode` or
 - **Use cases:** None
 - **Verification:** PlayMode test that scope hiding and transform-only
   re-entry do not rebuild resources (intended fixture:
-  `CswSceneResourceTests`)
+  `SceneResourceTests`)
 
 A transform-only `UpdateNode` shall change only the transform of the
 occurrence. An `UpdateNode` for a node whose update ID is unchanged shall not
@@ -528,8 +535,8 @@ rebuild render resources.
 - **Milestone:** M1
 - **Use cases:** None
 - **Verification:** EditMode test of frame commits and scope gating (intended
-  fixture: `CswSceneCommandTests`) plus PlayMode test of scope hiding
-  (intended fixture: `CswSceneResourceTests`)
+  fixture: `SceneCommandTests`) plus PlayMode test of scope hiding
+  (intended fixture: `SceneResourceTests`)
 
 An occurrence that `NewNode` creates directly under the root shall stay
 hidden until an `Activation` makes it visible. `Activation` shall change only
@@ -542,7 +549,7 @@ visibility and shall not rebuild, recreate, or reparent the occurrence.
 - **Milestone:** M1
 - **Use cases:** None
 - **Verification:** EditMode test of the coordinate context (intended fixture:
-  `CswSceneCommandTests`)
+  `SceneCommandTests`)
 
 CSWUnity shall configure its coordinate context from each `GeoInfo` command
 before it processes the commands that follow it. An empty coordinate system
@@ -557,8 +564,8 @@ fault.
 - **Milestone:** M1
 - **Use cases:** UC-CSWU-001
 - **Verification:** PlayMode test of repeated map lifetimes (intended fixture:
-  `CswNativeMapTests`) plus EditMode test that a stale generation cannot
-  publish (intended fixture: `CswSceneCommandTests`)
+  `NativeMapTests`) plus EditMode test that a stale generation cannot
+  publish (intended fixture: `SceneCommandTests`)
 - **Superseded by:** [REQ-CSWU-SM-039](#req-cswu-sm-039-map-list)
 
 When the host opens another map or clears the map, CSWUnity shall release the
@@ -572,7 +579,7 @@ shall reach Unity afterwards.
 - **Milestone:** M1
 - **Use cases:** None
 - **Verification:** Code review plus PlayMode test that a missing map fails
-  explicitly (intended fixture: `CswNativeMapTests`)
+  explicitly (intended fixture: `NativeMapTests`)
 - **Superseded by:** [REQ-CSWU-SM-040](#req-cswu-sm-040-error-buffers)
 
 CSWUnity shall process error buffers in order and report the message and
@@ -587,7 +594,7 @@ Other errors shall be reported as warnings.
 - **Milestone:** M3
 - **Use cases:** UC-CSWU-006
 - **Verification:** EditMode test of correlated callback and polling results
-  (intended fixture: `CswSceneCommandTests`)
+  (intended fixture: `SceneCommandTests`)
 
 For each asynchronous request, CSWUnity shall preserve the reference identity
 of the submitted command and match the response by that identity. A C#
@@ -602,8 +609,8 @@ result and consume it.
 - **Use cases:** UC-CSWU-007
 - **Depends on:** REQ-CSWU-SM-011, REQ-CSWU-SM-014
 - **Verification:** EditMode test of idempotent shutdown and buffer release
-  (intended fixture: `CswSceneCommandTests`) plus PlayMode test of repeated
-  lifetimes (intended fixture: `CswNativeMapTests`)
+  (intended fixture: `SceneCommandTests`) plus PlayMode test of repeated
+  lifetimes (intended fixture: `NativeMapTests`)
 - **Superseded by:** [REQ-CSWU-SM-047](#req-cswu-sm-047-session-shutdown-order)
 
 To stop a session, CSWUnity shall perform these steps in order:
@@ -635,8 +642,8 @@ Stopping a stopped session shall have no effect.
 - **Depends on:** REQ-CSWU-SM-015, REQ-CSWU-SM-027, REQ-CSWU-SM-030
 - **Verification:** PlayMode test that sets a list of two maps, replaces it,
   and clears it in one session and that no output of a removed map follows
-  its `DeleteNode` (intended fixture: `CswNativeMapTests`) plus EditMode test
-  of the submitted map commands (intended fixture: `CswSceneCommandTests`)
+  its `DeleteNode` (intended fixture: `NativeMapTests`) plus EditMode test
+  of the submitted map commands (intended fixture: `SceneCommandTests`)
 
 The host shall select the maps of a session as one ordered map list, as the
 CSWUnreal `MapUrls` property does. CSWUnity shall submit each new map list to
@@ -664,7 +671,7 @@ REQ-CSWU-SM-030 specifies.
 - **Verification:** Code review plus PlayMode tests that a missing map and a
   map with another coordinate system are rejected with a warning while the
   other maps of the list stay presented (intended fixture:
-  `CswNativeMapTests`)
+  `NativeMapTests`)
 
 CSWUnity shall process error buffers in order and report the message,
 severity, and reference ID of each error. An error with severity `FATAL`, or
@@ -682,9 +689,9 @@ list, CSWUnity shall keep presenting the maps that SceneManager accepted.
 - **Depends on:** REQ-CSWU-SM-017, REQ-CSWU-SM-018, REQ-CSWU-SM-019,
   REQ-CSWU-SM-020
 - **Verification:** EditMode tests of the presented camera in both modes and
-  of a mode change (intended fixture: `CswSceneCommandTests`) plus PlayMode
+  of a mode change (intended fixture: `SceneCommandTests`) plus PlayMode
   test that changes the mode at runtime while the camera moves and rotates
-  (intended fixture: `CswNativeMapTests`)
+  (intended fixture: `NativeMapTests`)
 - **Superseded by:** [REQ-CSWU-SM-044](#req-cswu-sm-044-camera-synchronization-modes)
 
 A host setting shall select synchronized or unsynchronized camera
@@ -712,9 +719,9 @@ presentation, and the host shall be able to change it at runtime.
 - **Depends on:** REQ-CSWU-SM-019, REQ-CSWU-SM-030, REQ-CSWU-SM-046
 - **Verification:** EditMode tests of refresh fences and that a camera change
   while a refresh is outstanding submits no refresh (intended fixture:
-  `CswSceneCommandTests`) plus PlayMode test that refreshes continue in both
+  `SceneCommandTests`) plus PlayMode test that refreshes continue in both
   camera synchronization modes while the camera is stationary (intended
-  fixture: `CswNativeMapTests`)
+  fixture: `NativeMapTests`)
 
 CSWUnity shall refresh continuously, as CSWUnreal does, whether or not the
 camera moves. SceneManager reports activation changes only from the traversal
@@ -747,12 +754,12 @@ starts; later refreshes activate the loaded content.
 - **Verification:** EditMode test of a synthetic level-of-detail transition
   whose output the budgets split over several Unity updates, checking after
   every update that either the closing level or every replacing level is
-  visible (intended fixture: `CswSceneCommandTests`), plus PlayMode test with
+  visible (intended fixture: `SceneCommandTests`), plus PlayMode test with
   omni traversal in both camera synchronization modes that turns the camera
   in place and lowers it toward the ground, so that levels of detail change,
   over a published map that covers the whole test area and checks after every
   Unity frame that no pixel below the horizon shows the camera background
-  (intended fixture: `CswNativeMapTests`)
+  (intended fixture: `NativeMapTests`)
 
 SceneManager orders its output so that a level-of-detail transition opens no
 visible hole. When a camera change would open a hole, a frame first activates
@@ -786,9 +793,9 @@ defect.
 - **Depends on:** REQ-CSWU-SM-019, REQ-CSWU-SM-020, REQ-CSWU-SM-042,
   REQ-CSWU-SM-046
 - **Verification:** EditMode tests of the presented camera in both modes and
-  of a mode change (intended fixture: `CswSceneCommandTests`) plus PlayMode
+  of a mode change (intended fixture: `SceneCommandTests`) plus PlayMode
   test that changes the mode at runtime while the camera moves and rotates
-  (intended fixture: `CswNativeMapTests`)
+  (intended fixture: `NativeMapTests`)
 
 A host setting shall select synchronized or unsynchronized camera
 presentation, and the host shall be able to change it at runtime.
@@ -820,8 +827,8 @@ presentation, and the host shall be able to change it at runtime.
 - **Verification:** EditMode tests of the budgets, of a frame that exceeds
   both limits and is consumed in one Unity update while commands outside
   frames still respect both limits, and of synchronous draining (intended
-  fixture: `CswSceneCommandTests`) plus PlayMode tests of synchronized frames
-  and the frame timeout (intended fixture: `CswNativeMapTests`)
+  fixture: `SceneCommandTests`) plus PlayMode tests of synchronized frames
+  and the frame timeout (intended fixture: `NativeMapTests`)
 - **Superseded by:** [REQ-CSWU-SM-046](#req-cswu-sm-046-per-update-budgets-whole-frames-and-pipelined-frame-synchronization)
 
 CSWUnity shall limit the work of each Unity update by a configurable maximum
@@ -855,11 +862,11 @@ CSWUnity shall fault instead of presenting a partial frame.
 - **Verification:** EditMode tests of the budgets, of a frame that exceeds
   both limits and is consumed in one Unity update while commands outside
   frames still respect both limits, of synchronous draining, and of the
-  default frame timeout setting (intended fixture: `CswSceneCommandTests`)
+  default frame timeout setting (intended fixture: `SceneCommandTests`)
   plus PlayMode tests that each synchronized Unity update commits the refresh
   that the previous update submitted and then submits the next one, that a
   timeout setting changed at runtime applies, and of the frame timeout
-  (intended fixture: `CswNativeMapTests`)
+  (intended fixture: `NativeMapTests`)
 
 CSWUnity shall limit the work of each Unity update by a configurable maximum
 command count and a configurable time budget and shall leave the remaining
@@ -901,10 +908,10 @@ of presenting a partial frame.
 - **Use cases:** UC-CSWU-007
 - **Depends on:** REQ-CSWU-SM-011, REQ-CSWU-SM-014
 - **Verification:** EditMode test of idempotent shutdown and buffer release
-  (intended fixture: `CswSceneCommandTests`) plus PlayMode test of repeated
+  (intended fixture: `SceneCommandTests`) plus PlayMode test of repeated
   lifetimes that checks that the dynamic loaders run in each session and have
   stopped after the last host stops streaming (intended fixture:
-  `CswNativeMapTests`)
+  `NativeMapTests`)
 
 To stop a session, CSWUnity shall perform these steps in order:
 
@@ -931,9 +938,115 @@ still runs when the CSW platform releases its database managers can crash the
 process. The `SetLoaders` of the next session (REQ-CSWU-SM-011 step 4) starts
 the loaders again.
 
+### REQ-CSWU-SM-048: Wrapper release under edit access
+
+- **Status:** Accepted (2026-11-03, AMO, AD-CSWU-006)
+- **Kind:** Mechanism
+- **Milestone:** M1
+- **Use cases:** None
+- **Depends on:** REQ-CSWU-SM-009, REQ-CSWU-SM-014, REQ-CSWU-SM-026
+- **Verification:** Code review of each GizmoSDK wrapper that CSWUnity
+  obtains under edit access, plus EditMode test that, after a capture, a
+  garbage collection and its finalizer pass complete while the test holds
+  edit access (intended fixture: `SceneCommandTests`)
+
+The GizmoSDK wrappers of nodes, node states, and textures take edit access
+when they are released, also when the garbage collector finalizes them. A
+finalizer that waits for edit access blocks the finalizer thread of the
+process for as long as another thread holds edit access.
+
+CSWUnity shall release each GizmoSDK wrapper of Gizmo3D graph data that it
+obtains while it holds edit access, including commands, nodes, parents,
+states, textures, images, attributes, and homographies, before it releases
+that edit access, also when the capture faults. The release shall not take
+edit access again and shall suppress the finalization of the wrapper. A
+wrapper that CSWUnity keeps after it releases edit access shall have one
+owner that disposes it explicitly. CSWUnreal holds native reference pointers
+that it releases deterministically, and this requirement gives the C#
+wrappers the same deterministic release.
+
+### REQ-CSWU-SM-049: Matching camera frustum
+
+- **Status:** Accepted (2026-11-03, AMO, AD-CSWU-007)
+- **Kind:** Mechanism
+- **Milestone:** M1
+- **Use cases:** UC-CSWU-001, UC-CSWU-162
+- **Depends on:** REQ-CSWU-SM-020, REQ-CSWU-SM-021, REQ-CSWU-SM-044
+- **Verification:** EditMode tests that the projection of a refresh equals
+  the projection of `gzPerspCamera` with a finite and an infinite far plane,
+  that a committed refresh keeps the frustum that CSWUnity submitted, and
+  that presentation in both camera synchronization modes does not write the
+  field of view or the near or far distance of the camera (intended fixture:
+  `SceneCommandTests`), PlayMode test that renders geometry beyond the far
+  distance of the camera only with an infinite far plane (intended fixture:
+  `PresentationModuleTests`), plus PlayMode test that streams a real map with
+  and without omni traversal and with a finite and an infinite far plane
+  (intended fixture: `NativeMapTests`)
+
+A camera shall be able to render the scene with a defined frustum that matches
+the frustum of the SceneManager camera, with a finite or an infinite far
+plane.
+
+- The host defines the frustum with the Unity camera: its vertical field of
+  view, its aspect ratio, and its near and far distances. CSWUnity shall
+  submit them in each refresh (REQ-CSWU-SM-020, REQ-CSWU-SM-021) and shall
+  not write the field of view or the near or far distance of the camera.
+- A host setting shall select a finite or an infinite far plane, and the host
+  shall be able to change it at runtime. Selecting an infinite far plane shall
+  only set `infiniteFar` in the `CameraSettings` that CSWUnity submits; the
+  submitted near and far distances stay those of the camera. By default, the
+  far plane shall be finite.
+- Unity shall render and cull with the projection of `gzPerspCamera` for this
+  frustum and far plane. With an infinite far plane, SceneManager does not
+  cull beyond the far distance, and Unity shall neither clip nor cull beyond
+  it either.
+- In synchronized presentation, Unity shall render with the frustum of the
+  committed refresh (REQ-CSWU-SM-044). In unsynchronized presentation, it
+  shall render with the frustum that the host requests.
+- Without omni traversal, SceneManager traverses and selects levels of detail
+  only within the submitted frustum. The rendered frustum shall then match
+  it, so that the culling of SceneManager and the culling of Unity agree. In
+  unsynchronized presentation, the rendered camera pose can differ from the
+  pose of the last submitted refresh, as REQ-CSWU-SM-044 permits.
+- With omni traversal, the rendered view may differ from the submitted
+  frustum, and REQ-CSWU-SM-050 makes the level of detail follow the zoom of
+  the camera.
+
+### REQ-CSWU-SM-050: Level-of-detail factor and zoom
+
+- **Status:** Accepted (2026-11-03, AMO, AD-CSWU-007)
+- **Kind:** Mechanism
+- **Milestone:** M1
+- **Use cases:** UC-CSWU-162
+- **Depends on:** REQ-CSWU-SM-022, REQ-CSWU-SM-049
+- **Verification:** EditMode tests of the submitted level-of-detail factor
+  with and without a reference field of view (intended fixture:
+  `SceneCommandTests`) plus PlayMode test that streams a real map with a
+  reference field of view, with and without omni traversal (intended fixture:
+  `NativeMapTests`)
+
+SceneManager selects levels of detail from the distance to the camera and the
+level-of-detail factor; the field of view does not affect the selection. A
+camera that zooms in shows distant content larger, so the same distance needs
+a higher level of detail.
+
+The host shall be able to set the level-of-detail factor and a reference
+vertical field of view at runtime. When the reference field of view F is
+greater than 0 and less than 180 degrees, CSWUnity shall submit the factor
+multiplied by the zoom tan(F/2)/tan(V/2), where V is the vertical field of
+view of the refresh, with and without omni traversal. This is the effective
+level-of-detail factor of GizmoSDK. Otherwise, CSWUnity shall submit the
+factor unscaled. By default, the reference field of view shall be 0, so that
+the factor is unscaled, as in CSWUnreal. CSWUnity shall use 1.0 for a factor
+that is not positive and finite.
+
+With omni traversal, the rendered view may thus differ from the frustum that
+SceneManager traverses, but the level of detail shall follow the zoom of the
+camera through this factor.
+
 ## Classes
 
-### REQ-CSWU-SM-035: CswMapStreamerHost component
+### REQ-CSWU-SM-035: MapStreamerHost component
 
 - **Status:** Accepted (2026-10-29, AMO, AD-CSWU-001)
 - **Kind:** Class
@@ -941,9 +1054,9 @@ the loaders again.
 - **Use cases:** UC-CSWU-007
 - **Depends on:** REQ-CSWU-SM-011, REQ-CSWU-SM-047
 - **Verification:** API review plus PlayMode tests of real map lifetimes and
-  repeated stops (intended fixture: `CswNativeMapTests`)
+  repeated stops (intended fixture: `NativeMapTests`)
 
-`CswMapStreamerHost` shall be the public sealed `MonoBehaviour` that hosts
+`MapStreamerHost` shall be the public sealed `MonoBehaviour` that hosts
 streaming in a Unity scene, with this contract:
 
 - It is declared with `[DefaultExecutionOrder(-2000)]`.
@@ -972,7 +1085,7 @@ contract.
 - **Use cases:** None
 - **Depends on:** REQ-CSWU-SM-011, REQ-CSWU-SM-013, REQ-CSWU-SM-047
 - **Verification:** EditMode tests of submission, overflow, and idempotent
-  disposal (intended fixture: `CswSceneCommandTests`)
+  disposal (intended fixture: `SceneCommandTests`)
 
 `SceneManagerSession` shall be an internal sealed `IDisposable` class that owns
 exactly one C# SceneManager, its command receiver, and the CSWUnity buffer
@@ -993,7 +1106,7 @@ consumed buffer that it holds.
 - **Use cases:** None
 - **Depends on:** REQ-CSWU-SM-009, REQ-CSWU-SM-023
 - **Verification:** API review plus EditMode test of identity (intended
-  fixture: `CswSceneCommandTests`)
+  fixture: `SceneCommandTests`)
 
 `SceneInstanceKey` shall be a public readonly struct that implements
 `IEquatable<SceneInstanceKey>` and has the properties `Node` (`IntPtr`) and
@@ -1009,7 +1122,7 @@ native reference, and `Node` shall serve only as an opaque identity.
 - **Use cases:** None
 - **Depends on:** REQ-CSWU-SM-009, REQ-CSWU-SM-026
 - **Verification:** API review plus PlayMode tests of builder selection and
-  zero masks (intended fixture: `CswSceneResourceTests`)
+  zero masks (intended fixture: `SceneResourceTests`)
 
 `GeometryBuilderBase` shall be the public abstract `MonoBehaviour` extension
 point that selects geometry and supplies material templates and a layer. It
@@ -1071,6 +1184,45 @@ effective mask shall keep its structure and shall not be built.
   before it releases the CSW platform (REQ-CSWU-SM-047), because the
   `CSW.Platform.Uninitialize` of the referenced CSW release does not stop the
   loaders before it releases the database managers.
+- GizmoSDK wrappers of graph data are released within the edit access that
+  obtained them, and their finalization is suppressed (REQ-CSWU-SM-048). The
+  finalizer of a node, state, or texture wrapper waits for edit access on the
+  finalizer thread of the process, which stops every finalizer while
+  SceneManager or CSWUnity holds edit access. On the reference workstation
+  (Mono development player, 20,000 wrappers), the finalizer pass for leaked
+  wrappers took 4.35 ms and waited for the whole of a 250 ms edit access. For
+  wrappers released under edit access without suppression it took 2.16 ms, and
+  for suppressed wrappers it did no work. The release under edit access costs
+  about 0.1 µs for each wrapper with the suppression.
+- With an infinite far plane, Unity renders and culls with the projection of
+  `gzPerspCamera` (REQ-CSWU-SM-049), but the far clip plane of the camera
+  stays finite. Effects that derive depth from the camera, such as shadows,
+  fog, the skybox, and deferred lighting, therefore still use the finite far
+  distance. This is why the far plane is finite by default.
+- Unity derives the depth parameters of shaders (`_ZBufferParams`) from the
+  projection that it renders with. For the infinite projection of
+  `gzPerspCamera`, they describe a far distance of about 400 times the near
+  distance, so a shader that linearizes depth with them gets too short
+  distances. No depth parameters fit both that projection and the cleared
+  depth of the sky, which lies beyond the depth of points at infinity. The
+  Hi-Z occlusion culling of the foliage module linearizes depth this way, and
+  in a rotation over the Stensholm map it drew 12,600 trees on average with
+  Hi-Z occlusion and 22,600 without it. The foliage module therefore uses Hi-Z
+  occlusion only with a finite far plane, and otherwise culls with the frustum
+  and draw distance only.
+- Unity culls with the near and far distances of the camera unless it has a
+  culling matrix. CSWUnity therefore sets the culling matrix from the
+  projection that it presents. With a finite far plane, this culling equals
+  the default culling of Unity.
+- A frame commit does not write the frustum of its refresh into the camera
+  (REQ-CSWU-SM-049). A projection that the host changes therefore stays in
+  effect in unsynchronized presentation and is not replaced by the projection
+  of an older refresh.
+- A higher level-of-detail factor, also through zoom (REQ-CSWU-SM-050), makes
+  SceneManager load more levels of detail. SceneManager emits a buffer for
+  each loader event, so when the per-update budgets consume buffers slowly,
+  the queue can reach the bound of REQ-CSWU-SM-013 and fault the session. A
+  test with a factor of 1.5 and one command per Unity update did so.
 - A change of the map list stays in one session. SceneManager output order
   keeps output of removed maps from reaching Unity after their `DeleteNode`
   (REQ-CSWU-SM-039). The session generation separates only sessions.
@@ -1087,11 +1239,12 @@ effective mask shall keep its structure and shall not be built.
 ## Verification
 
 Each requirement states its own verification method. The intended fixtures
-are `CswSceneCommandTests` in the EditMode assembly `MAPSTREAMER.TESTS` and
-`CswNativeMapTests` and `CswSceneResourceTests` in the PlayMode assembly
-`MAPSTREAMER.PLAYMODE.TESTS`, together with the named reviews. The area is
-verified when [Implementation Status](../implementation-status.md) records
-evidence for every requirement in this document.
+are `SceneCommandTests` in the EditMode assembly `MAPSTREAMER.TESTS` and
+`NativeMapTests`, `SceneResourceTests`, and `PresentationModuleTests` in the
+PlayMode assembly `MAPSTREAMER.PLAYMODE.TESTS`, together with the named
+reviews. The area is verified when
+[Implementation Status](../implementation-status.md) records evidence for
+every requirement in this document.
 
 ## Related Documentation
 

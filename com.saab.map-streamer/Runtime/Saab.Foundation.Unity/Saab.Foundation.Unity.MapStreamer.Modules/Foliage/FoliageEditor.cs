@@ -13,8 +13,6 @@
  * Export Control:             NOT EXPORT CONTROLLED
  */
 
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -48,12 +46,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             foliage.MaxMin.x = Mathf.Min(foliage.MaxMin.x, foliage.MaxMin.y);
             EditorGUILayout.EndHorizontal();
 
-            //foliage.Offset = EditorGUILayout.Vector2Field("Origin", foliage.Offset);
             foliage.Offset.y = EditorGUILayout.FloatField("GroundOffset", foliage.Offset.y);
             foliage.Offset.y = Mathf.Abs(foliage.Offset.y > 1 ? 1 : foliage.Offset.y);
 
             foliage.Offset.x = 0;
-            foliage.Offset.x = foliage.Offset.x > 0.5f ? 0.5f : foliage.Offset.x < -0.5f ? -0.5f : foliage.Offset.x;
 
             foliage.TextureMode = (TextureMode)EditorGUILayout.EnumPopup("Mode", foliage.TextureMode);
             EditorGUILayout.BeginHorizontal();
@@ -83,11 +79,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                     EditorGUI.DrawRect(new Rect(3, HeightPos - 5 + PreviewSize * (1 - foliage.Offset.y) + 4, PreviewSize, 2), new Color(1, 0, 0, 0.5f));
 
                     var width = PreviewSize * foliage.CullAreaWidth;
-                    var height = width;
 
                     var offset = PreviewSize * (foliage.Offset.y);
                     var rect = new Rect(3 + PreviewSize / 2f - width / 2f, HeightPos + offset, width, PreviewSize);
-                    //DrawRect(rect, 2, Color.blue);
                     rect.y -= offset;
                     rect.height -= offset;
                     DrawRect(rect, 2, Color.green);
@@ -98,12 +92,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                     GUI.DrawTextureWithTexCoords(new Rect(3, HeightPos, PreviewSize, PreviewSize), foliage.MainTexture, new Rect(0, 0, 1, 1));
                 }
 
-                //EditorGUI.DrawRect(new Rect(3, HeightPos - 5 + PreviewSize * (1 - foliage.Offset.y) + 4, PreviewSize, 2), new Color(1, 0, 0, 0.5f));
                 EditorGUILayout.EndVertical();
             }
             EditorUtility.SetDirty(foliage);
-
-            //DrawDefaultInspector();
         }
 
         private static void DrawRect(Rect rect, float strokeWidth, Color color)

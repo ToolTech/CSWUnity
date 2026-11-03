@@ -7,7 +7,7 @@ the last commit that contained it.
 ## Purpose
 
 This document records the Unity-owned streaming architecture that this
-repository implemented before `CswMapStreamerHost` became its only streaming
+repository implemented before `MapStreamerHost` became its only streaming
 lane. It remains as migration input: it identifies proven patterns to retain
 and responsibilities that move to the C# CSW SceneManager.
 

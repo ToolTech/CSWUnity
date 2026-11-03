@@ -6,7 +6,7 @@
 // Defence Secrecy:		NOT CLASSIFIED
 // Export Control:		NOT EXPORT CONTROLLED
 //
-// File			: CswSceneResourceTests.cs
+// File			: SceneResourceTests.cs
 // Description	: Shared rendering-resource and optional-module lifetime tests
 // Product		: Gizmo3D 2.12.326
 //
@@ -17,6 +17,9 @@
 // AMO	261022	Source sharing, replacement and resource lifetime tests	(2.12.327)
 // AMO	261023	Bounded publication visits independently of unrelated and recycled scene occurrences.	(2.12.327)
 // AMO	261028	Used the scene release delegate after legacy SceneManager removal.	(2.12.327)
+// AMO	261103	Covered occurrence pool reuse, routing, cap, explicit prewarming, counters and allocation-free reuse.	(2.12.327)
+// AMO	261103	Covered hidden creation, atomic LOD swaps and scope gates through renderer state.	(2.12.327)
+// AMO	261103	Renamed from CswSceneResourceTests into the Csw test namespace; resolved the fixture from the new folder.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -34,11 +37,13 @@ using Saab.Foundation.Unity.MapStreamer.Csw;
 using Saab.Foundation.Unity.MapStreamer.Modules;
 using Saab.Unity.Extensions;
 using UnityEngine;
+using UnityEngine.TestTools.Constraints;
+using Is = UnityEngine.TestTools.Constraints.Is;
 using Object = UnityEngine.Object;
 
-namespace Saab.Foundation.Unity.MapStreamer.Tests
+namespace Saab.Foundation.Unity.MapStreamer.Tests.Csw
 {
-	public sealed class CswSceneResourceTests
+	public sealed class SceneResourceTests
 	{
 		private GameObject _host;
 		private GameObject _cameraObject;
@@ -395,7 +400,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 					new Matrix4 { v11 = 1, v22 = 1, v33 = 1, v44 = 1, v14 = 25, v24 = -3, v34 = 8 }),
 				() => new SceneCommandActivation(geometry, 1, Activation.ON));
 			Assert.That(instance.transform.localPosition, Is.EqualTo(new Vector3(25, -3, 8)));
-			Assert.That(instance.gameObject.activeSelf, Is.True);
+			Assert.That(Rendered(instance), Is.True);
 			Assert.That(instance.GetComponent<MeshFilter>().sharedMesh, Is.SameAs(mesh));
 			Assert.That(instance.GetComponent<MeshRenderer>().sharedMaterial, Is.SameAs(material));
 			Assert.That(_scene.MeshTotalDiagnostics.TotalMeshes, Is.EqualTo(meshBuilds));
@@ -477,7 +482,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			var notifications = 0;
 			_scene.OnNewTerrain += (go, isAsset) =>
 			{
-				Assert.That(go.activeInHierarchy, Is.False);
+				Assert.That(Rendered(go.GetComponent<SceneInstanceHandle>()), Is.False);
 				Assert.That(isAsset, Is.False);
 				Assert.That(_scene.TryGetTerrain(go, out var terrain), Is.True);
 				Assert.That(terrain.BoundaryCenter, Is.EqualTo(boundaryCenter));
@@ -498,7 +503,42 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 				() => new SceneCommandActivation(geometry, 1, Activation.ON),
 				() => new SceneCommandEndFrame(99));
 			Assert.That(notifications, Is.EqualTo(1));
-			Assert.That(Handle(geometry, 1).gameObject.activeSelf, Is.True);
+			Assert.That(Rendered(Handle(geometry, 1)), Is.True);
+		}
+
+		[Test]
+		public void LodSwapAndScopeGateChangeOnlyRendererStateAtFrameCommits()
+		{
+			var map = Group("Map");
+			var geometry = Sphere();
+			Enqueue(
+				() => new SceneCommandNewNode(map, 1, null, 0, null),
+				() => new SceneCommandActivation(map, 1, Activation.ON),
+				() => new SceneCommandNewNode(geometry, 2, map, 1, null),
+				() => new SceneCommandNewNode(geometry, 3, map, 1, null),
+				() => new SceneCommandActivation(geometry, 3, Activation.OFF));
+			var coarse = Handle(geometry, 2);
+			var fine = Handle(geometry, 3);
+			Assert.That(Rendered(coarse), Is.False, "A new occurrence renders only from its frame commit.");
+			_scene.CommitFrame(Frame());
+			Assert.That(Rendered(coarse), Is.True);
+			Assert.That(Rendered(fine), Is.False);
+			_pump.ExpectFrame(7, Frame());
+			Enqueue(
+				() => new SceneCommandStartFrame(7, 1, default),
+				() => new SceneCommandActivation(geometry, 2, Activation.OFF),
+				() => new SceneCommandActivation(geometry, 3, Activation.ON));
+			Assert.That(Rendered(coarse), Is.True, "A LOD swap must not apply before its frame ends.");
+			Assert.That(Rendered(fine), Is.False);
+			Enqueue(() => new SceneCommandEndFrame(7));
+			Assert.That(Rendered(coarse), Is.False);
+			Assert.That(Rendered(fine), Is.True);
+			Enqueue(() => new SceneCommandActivation(map, 1, Activation.OFF));
+			Assert.That(Rendered(coarse), Is.False);
+			Assert.That(Rendered(fine), Is.False);
+			Enqueue(() => new SceneCommandActivation(map, 1, Activation.ON));
+			Assert.That(Rendered(coarse), Is.False, "Scope On must preserve a child LOD Off.");
+			Assert.That(Rendered(fine), Is.True);
 		}
 
 		[Test]
@@ -516,6 +556,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			Assert.That(_scene.MeshCount, Is.Zero);
 			Assert.That(Handle(geometry, 1).GetComponent<MeshRenderer>(), Is.Null);
 			Assert.That(Handle(geometry, 1).IntersectMask, Is.EqualTo(IntersectMaskValue.NOTHING));
+			Assert.That(_scene.GroupPoolDiagnostics.Created, Is.EqualTo(1));
+			Assert.That(_scene.RenderablePoolDiagnostics.Created, Is.Zero);
 		}
 
 		[Test]
@@ -534,6 +576,135 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			Assert.That(_scene.MaterialCount, Is.Zero);
 			Assert.That(_scene.PooledObjectCount, Is.EqualTo(2));
 			Assert.DoesNotThrow(() => _scene.Clear(2));
+		}
+
+		[Test]
+		public void RemovedOccurrencesReuseTheirGameObjectsAndRenderComponents()
+		{
+			var geometry = Sphere();
+			Enqueue(
+				() => new SceneCommandNewNode(geometry, 1, null, 0, null),
+				() => new SceneCommandActivation(geometry, 1, Activation.ON));
+			var first = Handle(geometry, 1);
+			var filter = first.GetComponent<MeshFilter>();
+			var renderer = first.GetComponent<MeshRenderer>();
+			var components = first.GetComponents<Component>().Length;
+			Assert.That(renderer.enabled, Is.True);
+			_scene.CommitFrame(Frame());
+			Assert.That(Rendered(first), Is.True);
+			Enqueue(() => new SceneCommandDeleteNode(geometry, 1));
+			Assert.That(first.gameObject.activeSelf, Is.False);
+			Assert.That(filter.sharedMesh, Is.Null);
+			Assert.That(renderer.sharedMaterial, Is.Null);
+			Assert.That(renderer.enabled, Is.False);
+			Enqueue(() => new SceneCommandNewNode(geometry, 2, null, 0, null));
+			var second = Handle(geometry, 2);
+			Assert.That(second, Is.SameAs(first));
+			Assert.That(second.GetComponents<Component>().Length, Is.EqualTo(components));
+			Assert.That(second.GetComponent<MeshFilter>(), Is.SameAs(filter));
+			Assert.That(second.GetComponent<MeshRenderer>(), Is.SameAs(renderer));
+			Assert.That(filter.sharedMesh, Is.Not.Null);
+			Assert.That(renderer.enabled, Is.True);
+			Assert.That(Rendered(second), Is.False, "A reused occurrence must start hidden until its frame commit.");
+			var renderable = _scene.RenderablePoolDiagnostics;
+			Assert.That(renderable.Created, Is.EqualTo(1));
+			Assert.That(renderable.Reused, Is.EqualTo(1));
+			Assert.That(renderable.Returned, Is.EqualTo(1));
+			Assert.That(renderable.Destroyed, Is.Zero);
+			Assert.That(renderable.Free, Is.Zero);
+			Assert.That(_scene.GroupPoolDiagnostics.Created, Is.Zero);
+		}
+
+		[Test]
+		public void PoolsKeepReturnedGameObjectsUpToTheirCapAndDestroyTheRest()
+		{
+			_pump.Dispose();
+			_scene.Dispose();
+			_scene = new UnityScene(_host.transform, _cameraObject.GetComponent<UnityEngine.Camera>(),
+				_coordinates, maximumPooledObjects: 1);
+			_inbox = new SceneCommandInbox();
+			_pump = new SceneCommandPump(_scene, _inbox, new GeometryBuilderBase[] { _builder });
+			var geometry = Sphere();
+			Enqueue(
+				() => new SceneCommandNewNode(geometry, 1, null, 0, null),
+				() => new SceneCommandNewNode(geometry, 2, null, 0, null),
+				() => new SceneCommandNewNode(geometry, 3, null, 0, null));
+			var childCount = _scene.Root.transform.childCount;
+			Enqueue(
+				() => new SceneCommandDeleteNode(geometry, 1),
+				() => new SceneCommandDeleteNode(geometry, 2),
+				() => new SceneCommandDeleteNode(geometry, 3));
+			var renderable = _scene.RenderablePoolDiagnostics;
+			Assert.That(renderable.Capacity, Is.EqualTo(1));
+			Assert.That(renderable.Created, Is.EqualTo(3));
+			Assert.That(renderable.Returned, Is.EqualTo(1));
+			Assert.That(renderable.Destroyed, Is.EqualTo(2));
+			Assert.That(renderable.Free, Is.EqualTo(1));
+			Assert.That(_scene.Root.transform.childCount, Is.EqualTo(childCount - 3),
+				"A destroyed GameObject must leave the scene hierarchy at once.");
+			Assert.That(_scene.PrewarmPools(5, TimeSpan.FromSeconds(1)), Is.EqualTo(1));
+			Assert.That(_scene.GroupPoolDiagnostics.Free, Is.EqualTo(1));
+			Assert.That(_scene.RenderablePoolDiagnostics.Prewarmed, Is.Zero);
+		}
+
+		[Test]
+		public void PoolsPrewarmOnlyOnRequestWithinTheirReserveAndBudget()
+		{
+			Assert.That(_scene.PooledObjectCount, Is.Zero);
+			Assert.That(_scene.PrewarmPools(0, TimeSpan.FromSeconds(1)), Is.Zero);
+			Assert.That(_scene.PrewarmPools(2, TimeSpan.Zero), Is.Zero);
+			Assert.That(_scene.PrewarmPools(2, TimeSpan.FromTicks(1)), Is.EqualTo(1),
+				"The budget is checked after each prewarmed GameObject.");
+			Assert.That(_scene.RenderablePoolDiagnostics.Free, Is.EqualTo(1));
+			Assert.That(_scene.PrewarmPools(2, TimeSpan.FromSeconds(1)), Is.EqualTo(3));
+			Assert.That(_scene.PrewarmPools(2, TimeSpan.FromSeconds(1)), Is.Zero);
+			var renderable = _scene.RenderablePoolDiagnostics;
+			var group = _scene.GroupPoolDiagnostics;
+			Assert.That(renderable.Free, Is.EqualTo(2));
+			Assert.That(renderable.Prewarmed, Is.EqualTo(2));
+			Assert.That(group.Free, Is.EqualTo(2));
+			Assert.That(group.Prewarmed, Is.EqualTo(2));
+			Assert.That(renderable.Created + group.Created, Is.Zero);
+			var geometry = Sphere();
+			Enqueue(() => new SceneCommandNewNode(geometry, 1, null, 0, null));
+			var handle = Handle(geometry, 1);
+			Assert.That(handle.GetComponents<MeshFilter>().Length, Is.EqualTo(1));
+			Assert.That(handle.GetComponents<MeshRenderer>().Length, Is.EqualTo(1));
+			Assert.That(handle.GetComponent<MeshRenderer>().enabled, Is.True);
+			Assert.That(_scene.RenderablePoolDiagnostics.Reused, Is.EqualTo(1));
+			Assert.That(_scene.RenderablePoolDiagnostics.Created, Is.Zero);
+		}
+
+		[Test]
+		public void ReusingAPooledOccurrenceAllocatesNoManagedMemory()
+		{
+			var map = new SceneNodeData
+			{
+				Key = new SceneInstanceKey(new IntPtr(1), 1),
+				Parent = SceneInstanceKey.Root,
+				Name = "Map",
+				Kind = SceneNodeKind.Group
+			};
+			var occurrence = new SceneNodeData
+			{
+				Key = new SceneInstanceKey(new IntPtr(2), 2),
+				Parent = map.Key,
+				Name = "Pooled group",
+				Kind = SceneNodeKind.Group
+			};
+			_scene.Create(map);
+			_scene.Create(occurrence);
+			TestDelegate cycle = () =>
+			{
+				_scene.Delete(occurrence.Key);
+				_scene.Create(occurrence);
+			};
+			cycle();
+			Assert.That(() => { _ = new int[16]; }, Is.AllocatingGCMemory(),
+				"The GC allocation recorder must observe a known allocation for this test to be meaningful.");
+			Assert.That(cycle, Is.Not.AllocatingGCMemory());
+			Assert.That(_scene.GroupPoolDiagnostics.Created, Is.EqualTo(2));
+			Assert.That(_scene.GroupPoolDiagnostics.Reused, Is.EqualTo(2));
 		}
 
 		private Geometry Sphere()
@@ -555,7 +726,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 		private Geometry TexturedFixture([CallerFilePath] string sourceFile = "")
 		{
 			var path = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(sourceFile),
-				@"..\..\Fixtures\editable-rgba-2x2.gzd"));
+				@"..\..\..\Fixtures\editable-rgba-2x2.gzd"));
 			Assert.That(File.Exists(path), Is.True, path);
 			NodeLock.WaitLockEdit();
 			try
@@ -572,6 +743,32 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 		{
 			Assert.That(_scene.TryGetInstance(new SceneInstanceKey(node.GetNativeReference(), path), out var handle), Is.True);
 			return handle;
+		}
+
+		private Group Group(string name)
+		{
+			NodeLock.WaitLockEdit();
+			try
+			{
+				var group = new Group(name);
+				_nodes.Add(group);
+				return group;
+			}
+			finally { NodeLock.UnLock(); }
+		}
+
+		private static CameraRelativeFrame Frame()
+		{
+			return new CameraRelativeFrame(default, default, 1, 60, 1, 1, 1000, 128, 128);
+		}
+
+		// Checks that hidden and shown occurrences keep active GameObjects and that rendering follows the commit.
+		private static bool Rendered(SceneInstanceHandle handle)
+		{
+			var renderer = handle.GetComponent<MeshRenderer>();
+			Assert.That(handle.gameObject.activeInHierarchy, Is.True);
+			Assert.That(renderer.forceRenderingOff, Is.EqualTo(!handle.IsVisible));
+			return handle.IsVisible && renderer.enabled;
 		}
 
 		private void Enqueue(params Func<SceneCommand>[] commands)

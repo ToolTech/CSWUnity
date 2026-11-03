@@ -1,6 +1,6 @@
 # Configure runtime initialization
 
-**Applies to:** Current implementation (`CswMapStreamerHost`)
+**Applies to:** Current implementation (`MapStreamerHost`)
 
 ## Goal
 
@@ -20,7 +20,7 @@ and starts command-driven Streaming Map loading.
 
 1. Create or select the GameObject that owns the Streaming Map runtime.
 2. Add the `Saab.Unity.Initializer.Initializer` component.
-3. Add `Saab.Foundation.Unity.MapStreamer.Csw.CswMapStreamerHost`.
+3. Add `Saab.Foundation.Unity.MapStreamer.Csw.MapStreamerHost`.
 4. Assign the host's `ViewCamera` and at least one geometry builder to
    `Builders`.
 5. Set **Map Url**, or leave it empty to use `SceneManager/MapUrl` from

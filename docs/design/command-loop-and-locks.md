@@ -237,16 +237,29 @@ editaccess, medan publiceringen använder kopierade värden och ägda resurser.
 
 ### 4.1 Omni/frustum och fullbordad frame före rendering
 
-De två valen är oberoende:
+De tre valen är oberoende:
 
 | Inställning | `false` | `true` |
 | --- | --- | --- |
 | `OmniView` | Native traversal använder kamerans frustum. | Native traversal och LOD-val åt alla håll, som CSWUnreals Omni-val. Unity gör fortfarande sin egen renderculling. |
 | `SynchronizeFrames` | Budgeterad pump i Update; senaste önskade pose kan ligga före native-framen. | Pump och snapshot i LateUpdate; föregående uppdaterings refresh fullbordas till sin `EndFrame`, sedan skickas refresh för snapshoten. Den fullbordade framens pose/projektion presenteras, en uppdatering efter den önskade posen. |
+| `InfiniteFarPlane` | Ändligt far-plan med kamerans vanliga perspektivprojektion. | `gzPerspCamera`:s oändliga far-plan skickas med kamerans near och far, och Unity renderar och cullar med samma projektion via kamerans projektions- och cullingmatris. Kamerans `farClipPlane` förblir ändligt, så djupbaserade effekter använder fortfarande det ändliga far-planet. |
 
-Båda ligger i värdens `Settings` och kan ändras i runtime. `OmniView` är
-**true som standard**, som i CSWUnreal; `SynchronizeFrames` är false.
-Standardvalet för synkläget är fortfarande öppet i REQ-CSWU-POS-003.
+Alla tre ligger i värdens `Settings` och kan ändras i runtime. `OmniView` är
+**true som standard**, som i CSWUnreal; `SynchronizeFrames` och
+`InfiniteFarPlane` är false. Standardvalet för synkläget är fortfarande öppet
+i REQ-CSWU-POS-003.
+
+CSWUnity skriver aldrig kamerans synfält, near eller far; värden äger
+frustumet. Utan Omni renderar och cullar Unity med samma projektion som
+SceneManager traverserar med (REQ-CSWU-SM-049). Med `SynchronizeFrames` gäller
+det även posen, medan asynkron presentation kan ligga före den senast skickade
+refreshen när kameran rör sig eller zoomar. `LodFactor` (standard 1) och
+`LodReferenceFieldOfView` (standard 0, oskalad som i CSWUnreal) ger LOD-faktorn
+i varje refresh. Med en referensvinkel F mellan 0 och 180 grader multipliceras
+faktorn med zoomen tan(F/2)/tan(V/2) för kamerans vertikala synfält V, så att
+LOD följer kamerans zoom även när vyerna skiljer sig med Omni
+(REQ-CSWU-SM-050).
 
 Med frustumtraversal laddar och aktiverar native bara kartan inom
 SceneManager-kamerans frustum. Mätt på Stensholm före borttagningen av
@@ -395,7 +408,9 @@ binds innan gamla resurser pensioneras och poolning tar bort indexmedlemskapet.
 | Pollning av managed inbox | Inget eget SDK-lås | Kort lokalt inboxlås; släpps före SDK-låsförsöket. |
 | Iterera och fånga output | EDIT via `TryLockEdit(0)` | Ingen väntetid; ingen låsning över Unity-framegränsen. |
 | Synkront resursbygge i Capture | EDIT | Mesh-export, MeshData/meshbygge och state-/texturarbete kan göra låshållningen lång. |
+| Släppa wrappers från capture | Redan hållet EDIT | Nod-, parent- och state-wrappers släpps med `ReleaseAlreadyLocked` och `GC.SuppressFinalize` före unlock, också när capture faller. En wrapper som GC finaliserar tar EDIT på finalizertråden och stoppar den så länge en annan tråd håller EDIT (REQ-CSWU-SM-048). |
 | Hierarki, bindning, materialinstans och framecommit | Inget | Sker efter capture-slicens unlock. |
+| Poolade GameObjects och prewarm | Inget | Publiceringen återanvänder GameObjects ur poolerna. `MapStreamerHost.Update` fyller poolerna i slutet av uppdateringen, högst `PoolPrewarmTime` per uppdatering (REQ-CSWU-PERF-010). |
 | Kamerans renderpose i LateUpdate | Inget | Asynkront: senaste pose relativt committad referens. Synkront: bara committad pose/projektion; före PostPresent. |
 | Synklägets väntan på frame/inbox | Inget | Monitor.Wait släpper inboxlåset; ingen SDK-access hålls under väntan. |
 | Frigöra tom outputbuffert | Redan hållet EDIT | Native `EDIT_LOCK`-cleanup behöver inte förvärva låset på nytt efter unlock. |
@@ -414,6 +429,58 @@ Att diskutera med bilderna framför oss:
    innehåller bara värden, aktiveringar och transformer, och inga byggen.
 4. Ska alla outputkategorier använda editaccess? Unity-pumpen gör det i dag.
    CSWUnreal behandlar rena felbuffertar utan SDK-lås.
+5. Hur ska aktiveringen vid framecommit begränsas? Med poolerna
+   (REQ-CSWU-PERF-010) förstör publiceringen inga GameObjects och skapar nästan
+   inga. I flygprofilen över Stensholm committar hosten efter den inledande
+   laddningen 45–48 frames per sekund, och `SetActive` kostar då högst
+   1,8–2,9 ms per commit. Under laddningen köar upp till cirka 100 buffertar
+   framför framebufferten, så att det går 1,4–1,7 s mellan två commits. Varje
+   sådan commit presenterar allt som byggts sedan den förra: vid t≈5 s cirka
+   8 900 förekomster på en gång, med 9–11 ms `SetActive` i uppdateringar på
+   29–33 ms. Framens aktiveringar ska ändå tillämpas tillsammans
+   (REQ-CSWU-SM-046).
+
+   En separat mätning med 8 000 renderare i 1 000 grupper, alltså 9 000
+   GameObjects, jämför sätt att visa och dölja dem i en commit (Built-in RP,
+   D3D11, utvecklingsbygge). `SetActive` per objekt kostar 11,1–11,2 ms för
+   att visa och 6,7–6,9 ms för att dölja, och med de uppskjutna
+   renderaruppdateringarna i de följande uppdateringarna 14,4–14,5 ms extra
+   huvudtrådsarbete. Komponenten `SceneInstanceHandle` står för cirka en
+   femtedel av kostnaden för `SetActive`.
+
+   CSWUnreal registrerar en komponent när `processNewNode` bygger den, och
+   `processActivation` ändrar bara synligheten. Motsvarigheten i Unity är att
+   aktivera GameObject när förekomsten skapas, med renderingen avstängd, och
+   att visa och dölja genom renderarnas tillstånd vid commit. Med
+   `Renderer.forceRenderingOff` kostar commiten då 0,7–0,8 ms åt båda hållen
+   och totalt 2,1–2,7 ms, och med `Renderer.enabled` 2,9–3,3 ms och totalt
+   4,5–7,0 ms. Aktiveringen flyttar till byggvägen och kostar där
+   1,1–1,4 µs per objekt under uppdateringsgränserna. En dold renderare med
+   `forceRenderingOff` kostar lika mycket som en synlig när dess transform
+   ändras, cirka 0,23 µs per renderare, medan en renderare med
+   `enabled = false` inget kostar. Toppnodernas transformer ändras vid
+   commits, så nya förekomster som visas vid samma commit kostar inget extra,
+   men en avaktiverad förekomst vars GameObject förblir aktivt kostar vid
+   varje commit som flyttar den, tills den tas bort. REQ-CSWU-PERF-012 kräver
+   mekanismen, och ägaren löste OD-CSWU-008 i AD-CSWU-006 (2026-11-03):
+   renderartillståndet är `Renderer.forceRenderingOff`, och en förekomst som
+   förblir avaktiverad behåller ett aktivt GameObject tills den tas bort.
+
+   Implementationen följer CSWUnreal med `Renderer.forceRenderingOff`.
+   `UnityScene.Create` aktiverar GameObject med renderingen avstängd,
+   `UnityScene.CommitFrame` ändrar bara renderarflaggorna för förekomsterna och
+   deras ättlingar, och GameObject avaktiveras först när det lämnas tillbaka
+   till sin pool. `UnityScene` räknar fram synligheten
+   (`SceneInstanceHandle.IsVisible`) i stället för Unitys `activeInHierarchy`.
+   Foliage cullar och ritar bara tiles för synliga förekomster, så att ett
+   LOD-byte aldrig ritar båda nivåerna, medan terrängskuggningen bara sätter
+   materialdata när terrängen skapas och inte påverkas. I flygprofilen över
+   Stensholm, med tre omväxlande körningar per variant, sjönk den längsta
+   commiten från 11,1–19,5 ms till 2,5–4,4 ms, den största
+   `GameObject.Activate`-tiden per uppdatering från 7,6–14,4 ms till
+   0,2–0,3 ms och den längsta uppdateringen från 27,0–39,4 ms till
+   19,5–20,9 ms. Huvudtrådsarbetet och GPU-tiden under den stationära
+   flygningen ändrades inte mer än variationen mellan körningarna.
 
 Dokumentet beskriver ingen ny cullingfunktion, ingen ny geometribyggtråd och
 lovar inte en generell bildfrekvensvinst. Profiler-markörerna `CSW-Tick`,
@@ -551,6 +618,16 @@ eller efterföljande Present. Visningsräknarna var fortfarande noll.
 **En ren senare körning upphäver inte tidigare 33- och 512-ms-stopp och
 godkänner inte kontinuerliga 60 visade fps.**
 
+En senare A/B-kontroll i samma låsta session ändrade bara swapchainmodellen;
+spelare, karta, rotation och samtidig extern byggbelastning var desamma.
+Flipmodellen gav återkommande stopp på cirka 0,5 s i `DXGI.WaitOnSwapChain`,
+både med mjukvarugräns 60 fps och okapad, och VSync 1 gav 240–760 ms per bild
+genom hela körningen. BitBlt-modellen gav inga intervall över 25 ms efter
+inladdningen: max 18,3 ms av 1 182 intervall i stabil rotation. Väntan hör
+alltså till flipmodellens presentationsväg under dessa sessionsvillkor, inte
+till CSW-arbetet. Det godkänner fortfarande inte visad bildkadens i en olåst,
+synlig session.
+
 ## 8. SDK-shutdown: inget globalt EDIT över en blockerande join
 
 Ett separat stoppfel fångades efter clear/reload av den riktiga kartan.
@@ -637,7 +714,7 @@ flowchart TD
     class STOP join;
 ```
 
-`CswMapStreamerHost.StopStreaming` stoppar därför laddarna när sessionen är
+`MapStreamerHost.StopStreaming` stoppar därför laddarna när sessionen är
 stängd, i den sista värd som håller CSW-plattformen, och väntar på pågående
 laddningar innan Coordinate- och CSW-plattformarna släpps
 (REQ-CSWU-SM-047). Inget SDK-lås hålls
@@ -658,7 +735,7 @@ behövs tills vidare; se
 
 | Kod | Läs särskilt |
 | --- | --- |
-| [CswMapStreamerHost](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/Csw/CswMapStreamerHost.cs) | `Update`, `LateUpdate`, start och stop. |
+| [MapStreamerHost](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/Csw/MapStreamerHost.cs) | `Update`, `LateUpdate`, start och stop. |
 | [MapManager](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/Csw/MapManager.cs) | `Tick`, `FinishFrame`, `HandleFrame`, `StopSession`. |
 | [Inbox och native session](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/Csw/SceneCommandInbox.cs) | `Receive`, `TryDequeue`, `SubmitFrame`, `Dispose`. |
 | [SceneCommandPump](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/Csw/SceneCommandPump.cs) | `Pump`, `CanDeferPublication`, `CaptureNode`, `Publish`. |

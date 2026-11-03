@@ -11,7 +11,7 @@ The legacy Unity-owned `SceneManager` lane was removed in 5.0; see
 
 | Concrete component | Phase 1 responsibility |
 | --- | --- |
-| `CswMapStreamerHost` | Explicit scene composition, platform lifetime, camera/input and optional module injection |
+| `MapStreamerHost` | Explicit scene composition, platform lifetime, camera/input and optional module injection |
 | `MapManager` / internal session | Native manager/receiver ownership, map lifecycle, input submission and refresh backpressure |
 | `SceneCommandInbox` | Ordered ownership transfer from the native callback, bounded normal ingress and explicit overload failure |
 | `SceneCommandPump` | Edit-locked capture, bounded main-thread realization and correlated frame completion |
@@ -42,15 +42,16 @@ those services are not a claim that corresponding public runtime APIs exist.
 
 ### Phase 1 regression fixtures
 
-`CswSceneCommandTests` exercises ordered ownership, exact occurrence/parent
+`SceneCommandTests` exercises ordered ownership, exact occurrence/parent
 identity, partial-buffer budgets, frame correlation, stale lifetime rejection
-and failure cleanup in EditMode. `CswSceneResourceTests` and
-`CswPresentationModuleTests` require a graphics-enabled PlayMode runner; they
+and failure cleanup in EditMode. `SceneResourceTests` and
+`PresentationModuleTests` require a graphics-enabled PlayMode runner; they
 cover actual native texture mutation/old leases, module reinjection, GPU
-scope counters, and asymmetric rendering/backface/world-normal behavior with
-the existing shaders.
+scope counters, object-pool reuse, cap, prewarming, and allocation-free reuse,
+and asymmetric rendering/backface/world-normal behavior with the existing
+shaders.
 
-`CswNativeMapTests` accepts a published GZD URL through `CSWUNITY_TEST_MAP`.
+`NativeMapTests` accepts a published GZD URL through `CSWUNITY_TEST_MAP`.
 It compares rendered pixels with an actual empty-camera capture, moves and
 rotates the double camera pose, sustains correlated refreshes, leaves and
 re-enters native scope, and clears/reloads before stopping. The combined
@@ -330,6 +331,31 @@ replacement leases are acquired before previous ones are released. An
 actually leased old mesh/material/texture version remains valid until its
 last lease ends. This does not require cached native State/Texture/Image
 wrappers or native queries from Unity modules.
+
+In Phase 1, `UnityScene` realizes occurrences with GameObjects from two capped
+pools: one for occurrences without render resources and one for
+builder-realized occurrences, whose GameObjects keep their mesh filter and mesh
+renderer (REQ-CSWU-PERF-010). A removed occurrence returns its GameObjects
+after its cleanup notifications, with the render resources detached and the
+renderer disabled, and a GameObject is destroyed only when its pool already
+holds `MaximumPooledObjects` free GameObjects. At the end of each update,
+`MapStreamerHost` clones free GameObjects until each pool holds
+`PooledObjectReserve` or `PoolPrewarmTime` is spent, so that frame publication
+seldom creates GameObjects. The node, parent, and state wrappers that capture
+obtains are released under the held edit access with their finalization
+suppressed (REQ-CSWU-SM-048), because a wrapper that the garbage collector
+finalizes takes edit access on the finalizer thread.
+
+As in CSWUnreal, which registers a component when it builds it and only
+changes its visibility at an activation, `UnityScene` activates the GameObject
+of a new occurrence when it creates the occurrence, with
+`Renderer.forceRenderingOff` set, and frame commits show and hide occurrences
+and their descendants only through that flag (REQ-CSWU-PERF-012). A
+GameObject is deactivated when it returns to its pool.
+`SceneInstanceHandle.IsVisible` reports the committed visibility, which
+`UnityScene` derives from the presentation, readiness, and activation of the
+occurrence and its ancestors, and presentation modules use it instead of
+`activeInHierarchy`.
 
 ## Optional shader and feature modules
 

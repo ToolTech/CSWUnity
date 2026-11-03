@@ -19,6 +19,7 @@
  * AMO	261022	Added presentation adapters and transactional GPU resource lifetime handling.	(2.12.327)
  * AMO	261028	Removed the legacy SceneManager source; foliage follows the command-driven presentation only.	(2.12.327)
  * AMO	261030	Removed the unused future job pool.	(2.12.327)
+ * AMO	261103	Used Hi-Z occlusion only for projections with a finite far plane.	(2.12.327)
  */
 
 using GizmoSDK.GizmoBase;
@@ -30,7 +31,6 @@ using System.Linq;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using UnityEngine;
-using UnityEngine.Serialization;
 
 using ProfilerMarker = global::Unity.Profiling.ProfilerMarker;
 using ProfilerCategory = global::Unity.Profiling.ProfilerCategory;
@@ -363,7 +363,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
             for (int i = 0; i < textureCount; i++)
             {
-                //Debug.LogWarning($"graphic format: {foliages[i].MainTexture.graphicsFormat} format: {foliages[i].MainTexture.format}");
                 Graphics.Blit(foliages[i].MainTexture, temporaryRenderTexture);
                 RenderTexture.active = temporaryRenderTexture;
 
@@ -705,8 +704,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             ComputeShader.SetInt(PlacementParameterID.FrameCount, UnityEngine.Time.frameCount);
 
             // Camera switches, resize frames, and unavailable Hi-Z resources safely fall back to
-            // frustum/distance culling instead of using stale depth or hiding foliage.
-            bool useHiZ = Occlusion && HiZDepthPyramid != null && HiZDepthPyramid.IsReadyFor(camera);
+            // frustum/distance culling instead of using stale depth or hiding foliage. So does a
+            // projection without a finite far plane, whose depth the occlusion test cannot linearize.
+            bool useHiZ = Occlusion && HiZDepthPyramid != null && HiZDepthPyramid.IsReadyFor(camera) &&
+                HasFiniteFarPlane(camera.projectionMatrix);
             RenderTexture hiZTexture = useHiZ ? HiZDepthPyramid.HiZTexture : null;
             Vector2Int hiZSize = useHiZ ? HiZDepthPyramid.TextureSize : Vector2Int.one;
             int hiZMaxMipLevel = useHiZ ? HiZDepthPyramid.MaxMipLevel : 0;
@@ -748,6 +749,22 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                 set.FoliageMaterial.SetBuffer(PlacementParameterID.PointBuffer, buffer);
                 ComputeBuffer.CopyCount(buffer, set.InderectBuffer, 0);
             }
+        }
+
+        /// <summary>
+        /// Returns whether a perspective projection has a finite far plane.
+        /// </summary>
+        /// <remarks>
+        /// The occlusion test converts Hi-Z depth to eye depth with <c>_ZBufferParams</c>, which
+        /// Unity derives from finite near and far distances of the projection. With the infinite far
+        /// plane of gzPerspCamera, these parameters give too short distances, and cleared depth lies
+        /// beyond the depth of points at infinity, so no parameters convert both.
+        /// </remarks>
+        internal static bool HasFiniteFarPlane(Matrix4x4 projection)
+        {
+            // A finite far plane gives m22 = -(far + near) / (far - near) < -1. An infinite far
+            // plane gives -1, and gzPerspCamera nudges it to -CameraBridge.InfiniteFarNudge.
+            return projection.m22 < -1f;
         }
 
         private void Draw()

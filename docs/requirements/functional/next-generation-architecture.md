@@ -43,7 +43,7 @@ than silently dropping supported content.
 - **Use cases:** None
 - **Depends on:** REQ-CSWU-ARCH-006
 - **Verification:** EditMode test of stale lifetime rejection before resource
-  creation (intended fixture: `CswSceneCommandTests`)
+  creation (intended fixture: `SceneCommandTests`)
 
 Queued realization work for a deleted, replaced, or recycled scene instance
 shall be cancelled or rejected before resource creation.
@@ -71,7 +71,7 @@ resource-cache use, loaded instances, dynamic-loader activity, and failures.
 - **Use cases:** UC-CSWU-016
 - **Verification:** EditMode failure-cleanup tests plus PlayMode map-failure
   tests checking distinct failure categories and originating command or source
-  identity (intended fixtures: `CswSceneCommandTests`, `CswNativeMapTests`)
+  identity (intended fixtures: `SceneCommandTests`, `NativeMapTests`)
 
 Initialization, configuration, source loading, protocol, realization, resource,
 and shutdown failures shall be distinguishable and preserve their originating

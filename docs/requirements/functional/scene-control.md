@@ -29,7 +29,7 @@ the area. Its Principle and Mechanism requirements are in
 - **Depends on:** REQ-CSWU-SM-039
 - **Verification:** PlayMode test with published GZD maps that sets,
   replaces, and clears the map list and checks the camera pose after each
-  change (intended fixture: `CswNativeMapTests`)
+  change (intended fixture: `NativeMapTests`)
 
 The map service shall support asynchronous set, replace, and clear operations
 for the ordered map list of REQ-CSWU-SM-039. When the first map that
@@ -76,7 +76,7 @@ expose it as well.
   removes maps by submitting changed map lists, and proves that a map with
   another coordinate system and a duplicate map URL are rejected with their
   reasons while the other maps stay active (intended fixture:
-  `CswNativeMapTests`)
+  `NativeMapTests`)
 
 The map service shall keep several maps active as one map list, each with its
 own state as REQ-CSWU-MAPCTRL-002 requires. A map that SceneManager rejects,
@@ -187,7 +187,7 @@ rotation.
 - **Use cases:** UC-CSWU-162
 - **Verification:** PlayMode test with a published GZD map that moves and
   rotates the camera and checks the submitted camera state (intended fixture:
-  `CswNativeMapTests`)
+  `NativeMapTests`)
 
 CSWUnity shall submit the camera's Global 3D Position, orientation, projection,
 viewport, LOD factor, and render time to CSW SceneManager in the active Map
@@ -214,7 +214,7 @@ Position and requested `GeoPosition` representation from a Unity object.
 - **Use cases:** UC-CSWU-001, UC-CSWU-162
 - **Depends on:** REQ-CSWU-SM-044
 - **Verification:** EditMode test of the default settings of the host and of
-  `MapManager` (intended fixture: `CswSceneCommandTests`)
+  `MapManager` (intended fixture: `SceneCommandTests`)
 
 By default, CSWUnity shall present the camera synchronized, as
 REQ-CSWU-SM-044 specifies. Unsynchronized presentation shall be used only when
@@ -278,7 +278,7 @@ an unmanaged pointer as the public identity.
 - **Use cases:** None
 - **Verification:** EditMode test of ordered `New`, `Update`, and `Delete`
   changes with occurrence and parent identity (intended fixture:
-  `CswSceneCommandTests`)
+  `SceneCommandTests`)
 
 CSW SceneManager shall emit typed `New`, `Update`, and `Delete` changes with
 stable instance and parent identities.
@@ -303,7 +303,7 @@ without requiring geometry recreation.
 - **Use cases:** None
 - **Verification:** Graphics-enabled PlayMode test of shared resources with
   independent transforms and activation (intended fixture:
-  `CswSceneResourceTests`)
+  `SceneResourceTests`)
 
 Referenced or instanced assets shall preserve shared resource identity while
 allowing independent transforms, hierarchy positions, and activation state.
@@ -328,7 +328,7 @@ resources.
 - **Milestone:** M1
 - **Use cases:** None
 - **Verification:** EditMode test of frame correlation and partial-buffer
-  application (intended fixture: `CswSceneCommandTests`)
+  application (intended fixture: `SceneCommandTests`)
 
 Frame buffers shall include correlated start and end boundaries. CSWUnity
 shall not publish a partially committed frame to dependent modules.
@@ -340,7 +340,7 @@ shall not publish a partially committed frame to dependent modules.
 - **Milestone:** M1
 - **Use cases:** None
 - **Verification:** EditMode test of parent-before-child creation and
-  child-before-parent deletion (intended fixture: `CswSceneCommandTests`)
+  child-before-parent deletion (intended fixture: `SceneCommandTests`)
 
 Scene updates shall be applicable in deterministic dependency order, including
 parent-before-child creation and child-before-parent deletion where required.

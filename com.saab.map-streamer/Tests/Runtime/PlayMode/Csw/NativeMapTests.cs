@@ -6,7 +6,7 @@
 // Defence Secrecy:		NOT CLASSIFIED
 // Export Control:		NOT EXPORT CONTROLLED
 //
-// File			: CswNativeMapTests.cs
+// File			: NativeMapTests.cs
 // Description	: Injected real-map rendering, flight, scope and reload acceptance
 // Product		: Gizmo3D 2.12.326
 //
@@ -19,6 +19,9 @@
 // AMO	261026	Verified synchronized Omni/frustum rendering, runtime switches, projection cleanup and timeout faults.	(2.12.327)
 // AMO	261028	Removed legacy-lane checks and covered Start with the component MapUrl.	(2.12.327)
 // AMO	261030	Verified pipelined synchronization lockstep, the host timeout setting and the last host's loader stop.	(2.12.327)
+// AMO	261103	Verified scope Off through committed visibility and renderer state on the real map.	(2.12.327)
+// AMO	261103	Verified committed far plane modes, zoom-scaled LOD factors and release of the infinite projection on the real map.	(2.12.327)
+// AMO	261103	Renamed from CswNativeMapTests into the Csw test namespace.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -36,13 +39,13 @@ using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 using Object = UnityEngine.Object;
 
-namespace Saab.Foundation.Unity.MapStreamer.Tests
+namespace Saab.Foundation.Unity.MapStreamer.Tests.Csw
 {
-	public sealed class CswNativeMapTests
+	public sealed class NativeMapTests
 	{
 		private GameObject _hostObject;
 		private GameObject _cameraObject;
-		private CswMapStreamerHost _host;
+		private MapStreamerHost _host;
 		private Camera _camera;
 		private Material _template;
 		private RenderTexture _target;
@@ -78,7 +81,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			_camera.targetTexture = _target;
 			Capture("empty");
 			_hostObject = new GameObject("Acceptance host");
-			_host = _hostObject.AddComponent<CswMapStreamerHost>();
+			_host = _hostObject.AddComponent<MapStreamerHost>();
 			_host.enabled = false;
 			_host.ViewCamera = _camera;
 			_host.ReadConfiguration = false;
@@ -87,8 +90,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			_template = new Material(Shader.Find("Standard"));
 			var terrain = _hostObject.AddComponent<TerrainNodeBuilder>();
 			var assets = _hostObject.AddComponent<AssetNodeBuilder>();
-			CswSceneResourceTests.Configure(terrain, _template);
-			CswSceneResourceTests.Configure(assets, _template);
+			SceneResourceTests.Configure(terrain, _template);
+			SceneResourceTests.Configure(assets, _template);
 			_host.Builders = new GeometryBuilderBase[] { terrain, assets };
 		}
 
@@ -117,7 +120,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 				_host?.StopStreaming();
 				if (_camera)
 					_camera.targetTexture = null;
-				_host = _hostObject.GetComponent<CswMapStreamerHost>();
+				_host = _hostObject.GetComponent<MapStreamerHost>();
 				_camera = _cameraObject.GetComponent<Camera>();
 				yield return UnityEngine.SceneManagement.SceneManager.UnloadSceneAsync(_exampleScene);
 				_exampleScene = default;
@@ -160,7 +163,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			var root = scene.Instances.First(handle =>
 				handle.Key.Node != IntPtr.Zero && handle.ParentKey.Equals(SceneInstanceKey.Root));
 			var rootId = root.gameObject.GetInstanceID();
-			Assert.That(root.gameObject.activeInHierarchy, Is.True);
+			Assert.That(root.IsVisible, Is.True);
 			Assert.That(scene.Coordinates.IsConfigured, Is.True);
 			Assert.That(_camera.transform.position, Is.EqualTo(Vector3.zero));
 			var initialPose = _host.Camera.GlobalPosition;
@@ -223,11 +226,15 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			var outside = initialPose + (GizmoSDK.GizmoBase.Vec3D)up * 100000000;
 			scene.Coordinates.ToGeodetic(outside);
 			_host.Camera.SetPose(outside, initialRotation);
-			yield return WaitFor(() => !root.gameObject.activeInHierarchy, "native root scope Off");
+			yield return WaitFor(() => !root.IsVisible, "native root scope Off");
 			Assert.That(root.gameObject.GetInstanceID(), Is.EqualTo(rootId));
 			Assert.That(root.IsLocallyActive, Is.False);
+			Assert.That(root.gameObject.activeInHierarchy, Is.True,
+				"A hidden occurrence keeps its GameObject active (REQ-CSWU-PERF-012).");
+			Assert.That(root.GetComponentsInChildren<MeshRenderer>().All(renderer => renderer.forceRenderingOff),
+				Is.True, "Scope Off must stop rendering of the whole subtree.");
 			_host.Camera.SetPose(initialPose, initialRotation);
-			yield return WaitFor(() => root.gameObject.activeInHierarchy &&
+			yield return WaitFor(() => root.IsVisible &&
 				ActiveRenderers().Any(), "native root re-entry");
 			Assert.That(root.gameObject.GetInstanceID(), Is.EqualTo(rootId));
 			Assert.That(_camera.transform.position, Is.EqualTo(Vector3.zero));
@@ -278,7 +285,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 				try
 				{
 					_host = scene.GetRootGameObjects()
-						.SelectMany(root => root.GetComponentsInChildren<CswMapStreamerHost>(true)).Single();
+						.SelectMany(root => root.GetComponentsInChildren<MapStreamerHost>(true)).Single();
 					Assert.That(_host.Manager, Is.Null, "Scene-load callbacks must be able to configure the host before Start.");
 					_host.ReadConfiguration = false;
 					_host.FlightInput = false;
@@ -389,24 +396,32 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			_host.Manager.MaximumCommandsPerTick = 1;
 			_host.Manager.BuildBudget = TimeSpan.FromTicks(1);
 			_host.Settings.SynchronizeFrames = true;
-			foreach (var omni in new[] { false, true, false })
+			_host.Settings.LodFactor = 1;
+			_host.Settings.LodReferenceFieldOfView = 60;
+			foreach (var (omni, infinite) in new[] { (false, false), (true, true), (false, true) })
 			{
 				_host.Settings.OmniView = omni;
+				_host.Settings.InfiniteFarPlane = infinite;
 				var completed = _host.Manager.CompletedFrames;
 				_host.Camera.Move(new Vector3(5, 0, 0));
 				_host.Camera.Rotate(45, 0);
 				_camera.fieldOfView = omni ? 75 : 60;
-				yield return WaitFor(() => _host.Manager.CompletedFrames >= completed + 2,
-					$"synchronized omni={omni}");
+				// Settings reach the camera in the next update, so the first refresh sampling them commits one update later.
+				yield return WaitFor(() => _host.Manager.CompletedFrames >= completed + 3,
+					$"synchronized omni={omni} infinite={infinite}");
 				Assert.That(_host.Manager.SynchronizeFrames, Is.True);
 				Assert.That(_host.Manager.OmniView, Is.EqualTo(omni));
 				Assert.That(_host.Camera.SynchronizeFrames, Is.True);
 				var frame = _host.Scene.CommittedFrame;
+				Assert.That(frame.InfiniteFar, Is.EqualTo(infinite),
+					"The committed refresh must carry the host's far plane mode.");
+				Assert.That(frame.LodFactor, Is.EqualTo(
+					CameraBridge.EffectiveLodFactor(1, _camera.fieldOfView, 60)).Within(0.00001),
+					"The submitted LOD factor must follow zoom against the reference field of view.");
 				Assert.That(_camera.transform.position, Is.EqualTo(Vector3.zero));
 				Assert.That(Quaternion.Angle(_camera.transform.rotation,
 					_host.Coordinates.Axes.CameraRotation(frame.Hpr)), Is.LessThan(0.05));
-				var expected = Matrix4x4.Perspective(frame.VerticalFieldOfView, frame.Aspect,
-					frame.NearDistance, frame.FarDistance);
+				var expected = frame.Projection;
 				_host.Camera.Rotate(15, 0);
 				_camera.transform.SetPositionAndRotation(new Vector3(100, 200, 300), Quaternion.identity);
 				_camera.projectionMatrix = Matrix4x4.Perspective(120, 2, 1, 10000);
@@ -433,6 +448,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			yield return WaitFor(() => !_host.Camera.SynchronizeFrames, "return to asynchronous presentation");
 			_host.Camera.PresentPose();
 			Assert.That(Quaternion.Angle(_camera.transform.rotation, _host.Camera.Rotation), Is.LessThan(0.05));
+			Assert.That(_camera.projectionMatrix.m22, Is.EqualTo(-CameraBridge.InfiniteFarNudge),
+				"Live presentation must keep the selected infinite far plane.");
 			_host.Settings.SynchronizeFrames = true;
 			var frames = _host.Manager.CompletedFrames;
 			yield return WaitFor(() => _host.Manager.CompletedFrames >= frames + 2,
@@ -446,10 +463,11 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			_host.StopStreaming();
 			_camera.fieldOfView = 95;
 			_camera.Render();
-			Assert.That(_camera.projectionMatrix[1, 1],
-				Is.EqualTo(Matrix4x4.Perspective(95, _camera.aspect,
-					_camera.nearClipPlane, _camera.farClipPlane)[1, 1]).Within(0.00001),
+			var released = Matrix4x4.Perspective(95, _camera.aspect, _camera.nearClipPlane, _camera.farClipPlane);
+			Assert.That(_camera.projectionMatrix[1, 1], Is.EqualTo(released[1, 1]).Within(0.00001),
 				"Stopping must return projection ownership to the borrowed camera.");
+			Assert.That(_camera.projectionMatrix[2, 2], Is.EqualTo(released[2, 2]).Within(0.00001),
+				"Stopping must also release the infinite far plane.");
 		}
 
 		[UnityTest]
@@ -545,9 +563,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 
 		private IEnumerable<SceneInstanceHandle> ActiveRenderers()
 		{
-			return _host.Scene.Instances.Where(handle => handle.gameObject.activeInHierarchy &&
+			return _host.Scene.Instances.Where(handle => handle.IsVisible &&
 				handle.TryGetComponent<MeshFilter>(out var mesh) && mesh.sharedMesh &&
-				handle.TryGetComponent<MeshRenderer>(out var renderer) && renderer.enabled);
+				handle.TryGetComponent<MeshRenderer>(out var renderer) && renderer.enabled &&
+				!renderer.forceRenderingOff);
 		}
 
 		private IEnumerator WaitFor(Func<bool> ready, string operation)

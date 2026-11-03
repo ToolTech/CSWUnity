@@ -36,6 +36,15 @@ CSW Map Streamer name, while existing public package identifiers and serialized
 references remain unchanged until a separately planned compatibility
 migration.
 
+In code, the folder and the namespace carry the CSW name. Code that uses the
+CSW SceneManager is in the `Csw` folder and the
+`Saab.Foundation.Unity.MapStreamer.Csw` namespace, and its tests are in the
+`Csw` test folders and the `Saab.Foundation.Unity.MapStreamer.Tests.Csw`
+namespace. Their file and type names do not repeat `Csw`, for example
+`Csw/MapStreamerHost.cs`. GizmoSDK-to-Unity builders and managers that do not
+use the CSW SceneManager stay one level up, and the optional presentation
+modules stay in `Saab.Foundation.Unity.MapStreamer.Modules`.
+
 The repository contains:
 
 - the reusable `com.saab.map-streamer` Unity package;

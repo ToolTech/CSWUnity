@@ -33,6 +33,7 @@
 // AMO	180607	Created file        (2.9.1)
 // AMO	261028	Removed legacy SceneManager camera and map URL wiring.	(2.12.327)
 // AMO	261030	Removed an unused tracer field.	(2.12.327)
+// AMO	261103	Removed the never-called Android asset binding and disabled debug station code.	(2.12.327)
 //
 //******************************************************************************
 
@@ -52,8 +53,6 @@ namespace Saab.Unity.Initializer
 {
     public class Initializer : MonoBehaviour
     {
-        //private DebugCommandStation station=null;
-
         private PerformanceTracer tracer;
 
 #if UNITY_ANDROID
@@ -61,31 +60,6 @@ namespace Saab.Unity.Initializer
         private AndroidJavaObject multicastLock;
 
 #endif //UNITY_ANDROID
-
-        void SetupJavaBindings()
-        {
-#if UNITY_ANDROID
-
-            AndroidJavaClass playerClass = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
-
-            if (playerClass == null)
-                return;
-
-            AndroidJavaObject activity = playerClass.GetStatic<AndroidJavaObject>("currentActivity");
-
-            if (activity == null)
-                return;
-
-            AndroidJavaObject assetManager = activity.Call<AndroidJavaObject>("getAssets");
-
-            if (assetManager == null)
-                return;
-
-            Message.Send("GizmoSDK", MessageLevel.DEBUG, $"assetManager {assetManager}");
-
-            SerializeAdapter.SetAssetManagerHandle(System.IntPtr.Zero, assetManager.GetRawObject());
-#endif //UNITY_ANDROID
-        }
 
         void EnableMulticastState()
         {
@@ -103,20 +77,8 @@ namespace Saab.Unity.Initializer
 
             Message.Send(Message.GIZMOSDK, MessageLevel.DEBUG, "MultiCast Lock acquired");
 
-            //station = new DebugCommandStation("udp::45456?nic=${wlan0}&blocking=no");
-
-            //Thread thread = new Thread(new ThreadStart(WorkThreadFunction));
-            //thread.Start();
-
 #endif //UNITY_ANDROID
         }
-
-        //private void WorkThreadFunction()
-        //{
-        //    while (station != null && station.Exec())
-        //        System.Threading.Thread.Sleep(10);
-        //}
-                
 
         private void Awake()
         {
@@ -151,16 +113,6 @@ namespace Saab.Unity.Initializer
 
             // Enable multicast state listener
             EnableMulticastState();
-                        
-
-#region -------- Test Related stuff in init --------------------
-
-            //SetupJavaBindings();
-
-            //test();
-
-#endregion
-
         }
 
         private void Message_OnMessage(string sender, MessageLevel level, string message)
@@ -238,9 +190,6 @@ namespace Saab.Unity.Initializer
 #if SHOW_MEMORY
             if (_counter % 30 == 0)
             {
-                //System.GC.Collect();
-                //System.GC.WaitForPendingFinalizers();
-
                 GizmoSDK.GizmoBase.Monitor.AddValue("mem", MemoryControl.GetAllocMem());
 
                 GizmoSDK.GizmoBase.Monitor.AddValue("internal", MemoryControl.GetAllocMem(0, 0, false, true));

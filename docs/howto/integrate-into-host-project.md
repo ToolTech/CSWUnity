@@ -4,12 +4,12 @@
 
 ## Goal
 
-Compose the command-driven `CswMapStreamerHost` in a host-owned scene, using the
+Compose the command-driven `MapStreamerHost` in a host-owned scene, using the
 existing geometry builders and optional rendering modules. The native
 `CSW.SceneManager` owns map traversal, loading, camera-relative transforms and
 scope activation; Unity realizes its ordered output.
 
-`CswMapStreamerHost` is the package's only streaming lane. The former
+`MapStreamerHost` is the package's only streaming lane. The former
 Unity-owned `SceneManager` component, its camera controllers and node utilities
 have been removed. Scenes that still reference them show missing scripts and
 must be recomposed with this host.
@@ -52,7 +52,7 @@ realization-profile or project-validator workflows.
 
 ## Compose the host
 
-Add `Saab.Foundation.Unity.MapStreamer.Csw.CswMapStreamerHost` to a host-owned
+Add `Saab.Foundation.Unity.MapStreamer.Csw.MapStreamerHost` to a host-owned
 GameObject and assign the following references explicitly:
 
 | Assignment | Contract |
@@ -92,7 +92,7 @@ second controller that moves `ViewCamera` or another writer of those globals.
 
 The example project and package still use the `com.saab.map-streamer` directory
 and package identifier. Open `Assets\Scenes\ExampleScene.unity` and enter Play
-mode; the scene's `CswMapStreamerHost` starts streaming in `Start`.
+mode; the scene's `MapStreamerHost` starts streaming in `Start`.
 
 The saved scene sets **Map Url** to the local Stensholm map and disables
 **Read Configuration**. On other machines, set **Map Url** to an accessible GZD
@@ -243,7 +243,9 @@ before `LateUpdate` therefore shows the last completed frame, not newer input.
 Use a standard perspective camera and one camera owner; custom/orthographic/XR
 projection contracts are not supplied by this adapter. Disabling synchronization,
 clearing/replacing the map or stopping the host releases the temporary projection
-override. Desired input is retained for the next snapshot.
+override; with `InfiniteFarPlane`, live presentation applies the infinite
+projection again until the setting is cleared or the host stops. Desired input
+is retained for the next snapshot.
 
 The guarantee concerns **all ordered updates through the matching `EndFrame`**,
 not completion of every asynchronous disk/network load. This prevents rendering
@@ -251,6 +253,39 @@ a newer frustum against an older activation frame; it is not a promise of
 fully resident terrain or continuous 60 fps. Synchronization adds one update of
 camera latency. Choose the latency/work tradeoff explicitly. See the
 [graphical loop and lock discussion](../design/command-loop-and-locks.md).
+
+### Match the camera frustum and level of detail
+
+The Unity camera defines the frustum that the host submits to SceneManager:
+its field of view, aspect, and near and far clip planes. The host never writes
+them, so change them on the camera. Three more `Settings` fields can change at
+runtime:
+
+| Setting | Effect |
+| --- | --- |
+| `InfiniteFarPlane` | Default **false**. Submits the infinite far plane of `gzPerspCamera` with the near and far distances of the camera, and renders and culls with the same projection through the projection and culling matrices of the camera, so nothing beyond the far clip plane is clipped or culled. The `farClipPlane` of the camera stays finite. |
+| `LodFactor` | Default **1**, like CSWUnreal. The level-of-detail factor of each refresh; a higher factor loads more detail. A value that is not positive and finite is treated as 1. |
+| `LodReferenceFieldOfView` | Default **0**, which submits `LodFactor` unscaled, like CSWUnreal. A vertical field of view F between 0 and 180 degrees multiplies `LodFactor` by the zoom tan(F/2)/tan(V/2) for the vertical field of view V of the camera. |
+
+Without `OmniView`, SceneManager traverses and selects levels of detail only
+within the submitted frustum. Unity renders and culls with the same
+projection, so the culling of SceneManager and Unity agrees. With
+`SynchronizeFrames`, Unity also renders from the pose of the completed refresh;
+asynchronous presentation renders the camera as currently requested, which can
+lead the last submitted refresh while the camera moves or zooms. With
+`OmniView`, the rendered view may differ from the submitted frustum, and
+`LodReferenceFieldOfView` makes the level of detail follow the zoom of the
+camera. With `InfiniteFarPlane`, the pre-cull and begin-camera-render hooks of
+synchronized presentation also reapply the presented pose and the infinite
+projection before the selected camera renders.
+
+Effects that derive depth from the far clip plane of the camera, such as
+shadows, fog, the skybox, and deferred lighting, still use the finite far
+distance with `InfiniteFarPlane`. Shaders that linearize depth with
+`_ZBufferParams` get too short distances with `InfiniteFarPlane`, so the
+foliage module then culls without Hi-Z occlusion. A higher effective
+level-of-detail factor also produces more SceneManager output; with a small
+`MaximumCommandsPerTick`, the bounded inbox can fill and fault the session.
 
 ### Keep frame pacing host-owned
 
@@ -284,6 +319,11 @@ higher-refresh display. It is an explicit host configuration, not a package
 default. The measured flip-model combination of VSync off and a software
 60-fps limit can wait in `DXGI.WaitOnSwapChain` even when the CSW work fits the
 frame budget.
+
+A locked Windows session does not validate display cadence. In a locked
+session, the same flip-model player periodically waited about 0.5 s with VSync
+off, capped or uncapped, and VSync 1 took 240–760 ms per frame; the BitBlt
+model had no frame over 25 ms after loading.
 
 An external window-capture callback is not itself a displayed-frame counter.
 Validate any capture-based observer against a known monotonic image marker,
@@ -367,7 +407,7 @@ stops the loaders. The next session starts the loaders again. Code outside the
 host that holds its own CSW platform reference has no loading until a host
 starts a new session.
 
-`CswNativeMapTests.RepeatedRealMapLifetimesDrainPendingOutputBeforeReloadAndRestart`
+`NativeMapTests.RepeatedRealMapLifetimesDrainPendingOutputBeforeReloadAndRestart`
 exercises eight map lifetimes with visible map pixels, a one-command capture
 slice that leaves native output pending, alternating clear/reload and host
 stop/start, forced finalization, and zero retained scene/resource counts.

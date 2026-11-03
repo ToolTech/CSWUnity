@@ -17,13 +17,13 @@
 // AMO	261022	Added double global camera snapshots and camera-relative frame publication.	(2.12.327)
 // AMO	261023	Presented live rotation and double-precision translation across deferred native reference rebases.	(2.12.327)
 // AMO	261026	Added committed-frame pose and projection presentation with reversible synchronization.	(2.12.327)
+// AMO	261103	Matched gzPerspCamera's finite and infinite far plane projection and culling, scaled the LOD factor by zoom and kept host projection settings.	(2.12.327)
 //
 //*****************************************************************************
 
 using System;
 using GizmoSDK.Coordinate;
 using GizmoSDK.GizmoBase;
-using Saab.Unity.Extensions;
 using UnityEngine;
 using Camera = UnityEngine.Camera;
 using Quaternion = UnityEngine.Quaternion;
@@ -46,6 +46,11 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		public uint Width { get; }
 		public uint Height { get; }
 		public float LodFactor { get; }
+		/// <summary>Selects gzPerspCamera's infinite far plane; FarDistance is still submitted.</summary>
+		public bool InfiniteFar { get; }
+		/// <summary>gzPerspCamera's projection for this frustum, in Unity's camera convention.</summary>
+		public Matrix4x4 Projection => CameraBridge.NativeProjection(
+			VerticalFieldOfView, Aspect, NearDistance, FarDistance, InfiniteFar);
 
 		public CameraRelativeFrame(
 			Vec3D globalPosition,
@@ -58,7 +63,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 			uint width,
 			uint height,
 			float lodFactor = 1,
-			uint refreshId = 0)
+			uint refreshId = 0,
+			bool infiniteFar = false)
 		{
 			if (!Finite(globalPosition.x) || !Finite(globalPosition.y) || !Finite(globalPosition.z) ||
 				!Finite(hpr.x) || !Finite(hpr.y) || !Finite(hpr.z) || !Finite(renderTime) ||
@@ -79,13 +85,14 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 			Width = width;
 			Height = height;
 			LodFactor = lodFactor;
+			InfiniteFar = infiniteFar;
 		}
 
 		internal CameraRelativeFrame WithNativePose(uint refreshId, double time, Vec3D position, Vec3 hpr)
 		{
 			return new CameraRelativeFrame(
 				position, hpr, time, VerticalFieldOfView, Aspect,
-				NearDistance, FarDistance, Width, Height, LodFactor, refreshId);
+				NearDistance, FarDistance, Width, Height, LodFactor, refreshId, InfiniteFar);
 		}
 
 		private static bool Finite(double value)
@@ -95,9 +102,15 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 	}
 
 	/// <summary>Presents a live double global pose or its synchronized committed camera frame.</summary>
-	/// <remarks>Use on the Unity main thread. The camera and coordinate context are borrowed.</remarks>
+	/// <remarks>
+	/// Use on the Unity main thread. The camera and coordinate context are borrowed.
+	/// The camera's field of view, aspect, near and far planes define the submitted frustum and are never written.
+	/// </remarks>
 	public sealed class CameraBridge
 	{
+		/// <summary>Depth nudge of gzPerspCamera's infinite far plane projection.</summary>
+		public const float InfiniteFarNudge = 0.995f;
+
 		private readonly Camera _camera;
 		private readonly SceneCoordinateContext _coordinates;
 		private Quaternion _rotation = Quaternion.identity;
@@ -110,6 +123,11 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		public Vec3D GlobalPosition { get; private set; }
 		public bool HasPose { get; private set; }
 		public Quaternion Rotation => _rotation;
+		/// <summary>Submits and presents gzPerspCamera's infinite far plane; the camera's far plane stays finite.</summary>
+		public bool InfiniteFarPlane { get; set; }
+		/// <summary>Vertical field of view in degrees at which a sampled LOD factor applies unscaled.</summary>
+		/// <remarks>A value outside (0, 180) disables zoom scaling.</remarks>
+		public float LodReferenceFieldOfView { get; set; }
 		/// <summary>Presents only the committed pose/projection; desired input remains independently writable.</summary>
 		public bool SynchronizeFrames
 		{
@@ -193,15 +211,46 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		}
 
 		/// <summary>Copies the current pose and projection without moving the Unity camera.</summary>
+		/// <remarks>The frame's LOD factor is lodFactor scaled by zoom against LodReferenceFieldOfView.</remarks>
 		public CameraRelativeFrame Sample(double time, float lodFactor = 1)
 		{
 			if (!HasPose)
 				throw new InvalidOperationException("The camera has no global pose.");
+			var fieldOfView = _camera.fieldOfView;
 			return new CameraRelativeFrame(
 				GlobalPosition, _coordinates.Axes.CameraHpr(_rotation), time,
-				_camera.fieldOfView, _camera.aspect,
+				fieldOfView, _camera.aspect,
 				_camera.nearClipPlane, _camera.farClipPlane,
-				(uint)Math.Max(1, _camera.pixelWidth), (uint)Math.Max(1, _camera.pixelHeight), lodFactor);
+				(uint)Math.Max(1, _camera.pixelWidth), (uint)Math.Max(1, _camera.pixelHeight),
+				EffectiveLodFactor(lodFactor, fieldOfView, LodReferenceFieldOfView), infiniteFar: InfiniteFarPlane);
+		}
+
+		/// <summary>Returns gzPerspCamera's projection for a vertical field of view in degrees.</summary>
+		/// <remarks>
+		/// The finite projection equals Matrix4x4.Perspective. The infinite projection maps near to
+		/// -InfiniteFarNudge and infinity toward +InfiniteFarNudge, so nothing beyond near is clipped or culled.
+		/// </remarks>
+		public static Matrix4x4 NativeProjection(
+			float verticalFieldOfView, float aspect, float nearDistance, float farDistance, bool infiniteFar)
+		{
+			var projection = Matrix4x4.Perspective(verticalFieldOfView, aspect, nearDistance, farDistance);
+			if (infiniteFar)
+			{
+				projection.m22 = -InfiniteFarNudge;
+				projection.m23 = -2 * nearDistance * InfiniteFarNudge;
+			}
+			return projection;
+		}
+
+		/// <summary>Returns GizmoSDK's effective LOD factor, lodFactor times the zoom of a reference field of view.</summary>
+		/// <remarks>Zoom is tan(reference/2)/tan(fov/2); a reference outside (0, 180) degrees returns lodFactor.</remarks>
+		public static float EffectiveLodFactor(float lodFactor, float verticalFieldOfView, float referenceFieldOfView)
+		{
+			if (!(referenceFieldOfView > 0 && referenceFieldOfView < 180))
+				return lodFactor;
+			const double halfAngle = Math.PI / 360;
+			return (float)(lodFactor * Math.Tan(referenceFieldOfView * halfAngle) /
+				Math.Tan(verticalFieldOfView * halfAngle));
 		}
 
 		internal void PresentPose()
@@ -212,29 +261,41 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 					return;
 				_camera.transform.SetPositionAndRotation(Vector3.zero,
 					_coordinates.Axes.CameraRotation(_committedFrame.Hpr));
-				_camera.projectionMatrix = Matrix4x4.Perspective(
-					_committedFrame.VerticalFieldOfView, _committedFrame.Aspect,
-					_committedFrame.NearDistance, _committedFrame.FarDistance);
-				_projectionOverridden = true;
+				OverrideProjection(_committedFrame.Projection);
 				return;
 			}
-			if (!HasPose)
-				return;
-			if (_hasReference)
+			if (HasPose && _hasReference)
 				_camera.transform.SetPositionAndRotation(
 					_coordinates.Axes.ToUnityPosition(GlobalPosition, _referencePosition), _rotation);
-			else
+			else if (HasPose)
 				_camera.transform.rotation = _rotation;
+			if (InfiniteFarPlane)
+				OverrideProjection(NativeProjection(_camera.fieldOfView, _camera.aspect,
+					_camera.nearClipPlane, _camera.farClipPlane, true));
+			else
+				ReleaseProjectionOverride();
+		}
+
+		/// <summary>Renders and culls with one projection at the camera's current pose.</summary>
+		private void OverrideProjection(Matrix4x4 projection)
+		{
+			_camera.projectionMatrix = projection;
+			_camera.cullingMatrix = projection * _camera.worldToCameraMatrix;
+			_projectionOverridden = true;
 		}
 
 		private void ReleaseProjectionOverride()
 		{
 			if (_projectionOverridden && _camera)
+			{
 				_camera.ResetProjectionMatrix();
+				_camera.ResetCullingMatrix();
+			}
 			_projectionOverridden = false;
 		}
 
-		/// <summary>Rebases presentation with the committed scene, projection and shader origin.</summary>
+		/// <summary>Rebases presentation with the committed scene and shader origin.</summary>
+		/// <remarks>Synchronized presentation also shows the committed frame's projection.</remarks>
 		public void Commit(CameraRelativeFrame frame)
 		{
 			_referencePosition = frame.GlobalPosition;
@@ -245,9 +306,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 			else
 				_camera.transform.SetPositionAndRotation(
 					Vector3.zero, _coordinates.Axes.CameraRotation(frame.Hpr));
-			_camera.fieldOfView = frame.VerticalFieldOfView;
-			_camera.nearClipPlane = frame.NearDistance;
-			_camera.farClipPlane = frame.FarDistance;
 
 			const double tiling = 5000;
 			Shader.SetGlobalVector("_WorldOffset", new Vector3(

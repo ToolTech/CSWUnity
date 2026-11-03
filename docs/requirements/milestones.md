@@ -58,31 +58,36 @@ milestones yet. They are `Unassigned` and are mentioned here only as context.
     REQ-CSWU-SM-029, REQ-CSWU-SM-030, REQ-CSWU-SM-035, REQ-CSWU-SM-036,
     REQ-CSWU-SM-037, REQ-CSWU-SM-038, REQ-CSWU-SM-039, REQ-CSWU-SM-040,
     REQ-CSWU-SM-042, REQ-CSWU-SM-043, REQ-CSWU-SM-044, REQ-CSWU-SM-046,
-    REQ-CSWU-SM-047
+    REQ-CSWU-SM-047, REQ-CSWU-SM-048, REQ-CSWU-SM-049, REQ-CSWU-SM-050
   - REQ-CSWU-MM-001
 - **Use cases:** UC-CSWU-001, UC-CSWU-007
 - **Candidates (not in scope):** UC-CSWU-016
 - **Exit criteria:**
   - A published GZD map loads through the command lane and becomes visible in a
-    host scene without a sample scene (intended fixture: `CswNativeMapTests`).
+    host scene without a sample scene (intended fixture: `NativeMapTests`).
   - A list of several published GZD maps is set, replaced, and cleared in one
     session, and a map that SceneManager rejects leaves the other maps
-    presented (intended fixture: `CswNativeMapTests`).
+    presented (intended fixture: `NativeMapTests`).
   - Synchronized presentation renders only camera views that SceneManager has
     processed, pipelined so that each Unity update commits the refresh that
     the previous update submitted, and unsynchronized presentation renders the
     requested camera pose in every Unity frame (intended fixtures:
-    `CswSceneCommandTests`, `CswNativeMapTests`).
+    `SceneCommandTests`, `NativeMapTests`).
+  - A camera renders and culls with the frustum that it submits to
+    SceneManager, with a finite and an infinite far plane, and the submitted
+    level-of-detail factor follows the zoom of the camera when the host sets
+    a reference field of view (intended fixtures: `SceneCommandTests`,
+    `PresentationModuleTests`, `NativeMapTests`).
   - Refreshes continue while the camera is stationary, and with omni
     traversal, neither a level-of-detail transition nor a camera turn makes a
     hole visible in either camera synchronization mode (intended fixtures:
-    `CswSceneCommandTests`, `CswNativeMapTests`).
+    `SceneCommandTests`, `NativeMapTests`).
   - Ordered `New`, `Update`, `Delete`, and activation application,
     partial-buffer budgets, whole-frame processing in one Unity update, frame
     correlation, stale lifetime rejection, and failure cleanup are verified
-    (intended fixture: `CswSceneCommandTests`).
+    (intended fixture: `SceneCommandTests`).
   - Texture leases, resource sharing, and module reinjection are verified
-    (intended fixtures: `CswSceneResourceTests`, `CswPresentationModuleTests`).
+    (intended fixtures: `SceneResourceTests`, `PresentationModuleTests`).
   - Startup failure produces the `Failed` state and a structured diagnostic, and
     explicit shutdown leaves no SceneManager callback, worker, Unity object, or
     GizmoSDK platform reference owned by the stopped runtime, and the last host
@@ -105,7 +110,7 @@ milestones yet. They are `Unassigned` and are mentioned here only as context.
 - **Requirements:**
   - REQ-CSWU-PERF-001, REQ-CSWU-PERF-002, REQ-CSWU-PERF-003, REQ-CSWU-PERF-004,
     REQ-CSWU-PERF-005, REQ-CSWU-PERF-006, REQ-CSWU-PERF-007, REQ-CSWU-PERF-008,
-    REQ-CSWU-PERF-009
+    REQ-CSWU-PERF-009, REQ-CSWU-PERF-010, REQ-CSWU-PERF-012
   - REQ-CSWU-RENDER-002, REQ-CSWU-RENDER-006, REQ-CSWU-RENDER-007,
     REQ-CSWU-RENDER-010, REQ-CSWU-RENDER-011, REQ-CSWU-RENDER-012,
     REQ-CSWU-RENDER-013, REQ-CSWU-RENDER-016, REQ-CSWU-RENDER-019,

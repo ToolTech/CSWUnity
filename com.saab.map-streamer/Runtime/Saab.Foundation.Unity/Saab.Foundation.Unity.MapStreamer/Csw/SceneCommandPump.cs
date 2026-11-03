@@ -19,6 +19,7 @@
 // AMO	261023	Added separate native-capture and Unity-publication profiler scopes.	(2.12.327)
 // AMO	261026	Stopped synchronous draining at its exact matching frame fence.	(2.12.327)
 // AMO	261030	Consumed started frames through their EndFrame and exempted frame transforms and activations from the command limit.	(2.12.327)
+// AMO	261103	Released captured node, parent and state wrappers under the held edit access and suppressed their finalizers.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -265,7 +266,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 			}
 			finally
 			{
-				node?.ReleaseAlreadyLocked();
+				ReleaseLocked(node);
 			}
 		}
 
@@ -344,10 +345,27 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 			}
 			finally
 			{
-				state?.ReleaseAlreadyLocked();
-				parent?.ReleaseAlreadyLocked();
-				node?.ReleaseAlreadyLocked();
+				ReleaseLocked(state);
+				ReleaseLocked(parent);
+				ReleaseLocked(node);
 			}
+		}
+
+		// The finalizers of node and state wrappers wait for edit access, so the wrappers are released under the held access.
+		internal static void ReleaseLocked(NodeActionProvider wrapper)
+		{
+			if (wrapper == null)
+				return;
+			wrapper.ReleaseAlreadyLocked();
+			GC.SuppressFinalize(wrapper);
+		}
+
+		internal static void ReleaseLocked(State wrapper)
+		{
+			if (wrapper == null)
+				return;
+			wrapper.ReleaseAlreadyLocked();
+			GC.SuppressFinalize(wrapper);
 		}
 
 		private void Publish(SceneChange change)

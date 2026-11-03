@@ -242,6 +242,9 @@ MonoBehaviour:
     OmniView: 1
     SynchronizeFrames: 0
     FrameWaitTimeout: 5
+    InfiniteFarPlane: 0
+    LodFactor: 1
+    LodReferenceFieldOfView: 0
   MaximumCommandsPerTick: 128
   InitialAltitude: 500
   FlightInput: 1

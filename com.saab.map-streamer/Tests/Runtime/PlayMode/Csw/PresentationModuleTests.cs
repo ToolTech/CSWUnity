@@ -6,7 +6,7 @@
 // Defence Secrecy:		NOT CLASSIFIED
 // Export Control:		NOT EXPORT CONTROLLED
 //
-// File			: CswPresentationModuleTests.cs
+// File			: PresentationModuleTests.cs
 // Description	: Copied presentation injection and GPU scope regressions
 // Product		: Gizmo3D 2.12.326
 //
@@ -16,6 +16,9 @@
 //
 // AMO	261022	Command-lane module lifecycle and GPU tests		(2.12.327)
 // AMO	261028	Used scene presentation delegates after legacy SceneManager removal.	(2.12.327)
+// AMO	261103	Covered foliage on active but hidden scene occurrences.	(2.12.327)
+// AMO	261103	Rendered and culled beyond the camera's finite far plane only with gzPerspCamera's infinite projection.	(2.12.327)
+// AMO	261103	Renamed from CswPresentationModuleTests into the Csw test namespace.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -34,9 +37,9 @@ using UnityEngine.Rendering;
 using Object = UnityEngine.Object;
 using Quaternion = UnityEngine.Quaternion;
 
-namespace Saab.Foundation.Unity.MapStreamer.Tests
+namespace Saab.Foundation.Unity.MapStreamer.Tests.Csw
 {
-	public sealed class CswPresentationModuleTests
+	public sealed class PresentationModuleTests
 	{
 		private readonly List<Object> _objects = new List<Object>();
 		private Camera _camera;
@@ -136,8 +139,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			Assert.That(mapping.IsValid(), Is.False);
 		}
 
-		[Test]
-		public void HiddenTerrainRegistersCopiedGpuDataAndScopeOffClearsIndirectCount()
+		[TestCase(false)]
+		[TestCase(true)]
+		public void HiddenTerrainRegistersCopiedGpuDataAndScopeOffClearsIndirectCount(bool occurrence)
 		{
 			var compute = PlacementShader();
 			var moduleObject = Own(new GameObject("Copied foliage module"));
@@ -184,6 +188,15 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			terrain.transform.localPosition = new Vector3(1, -2, 3);
 			terrain.transform.localRotation = Quaternion.Euler(7, -13, 19);
 			terrain.AddComponent<MeshFilter>().sharedMesh = Plane();
+			// A scene occurrence keeps its GameObject active while hidden, so foliage must follow its committed visibility.
+			var handle = occurrence ? terrain.AddComponent<SceneInstanceHandle>() : null;
+			void Show(bool visible)
+			{
+				if (occurrence)
+					handle.IsVisible = visible;
+				else
+					scope.SetActive(visible);
+			}
 			var lodOff = Own(new GameObject("Locally Off LOD child"));
 			lodOff.transform.SetParent(terrain.transform, false);
 			lodOff.SetActive(false);
@@ -206,8 +219,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 				}, Vector3.zero, nativeLocal.inverse * eun, Vector3.zero);
 			_camera.transform.rotation = Quaternion.LookRotation(
 				terrain.transform.TransformPoint(new Vector3(2, 0, 2)), Vector3.up);
-			scope.SetActive(false);
+			Show(false);
 			source.AddTerrain(terrain, data);
+			Assert.That(terrain.activeInHierarchy, Is.EqualTo(occurrence));
 			Assert.That(feature.FoliageFeature.FoliageCount, Is.EqualTo(1));
 			Assert.That(feature.FoliageFeature.HasActiveNodes, Is.False);
 			var item = Field<List<FeatureData>>(feature.FoliageFeature, "_items")[0];
@@ -221,7 +235,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			item.PixelToObject.GetData(pixels);
 			Assert.That(Vector4.Distance(pixels[5], new Vector4(1, 0, 1, 1)), Is.LessThan(0.001f));
 
-			scope.SetActive(true);
+			Show(true);
 			source.PostPresent();
 			Assert.That(Field<Camera>(module, "_cullingCamera"), Is.SameAs(_camera));
 			var visible = FirstUInt(feature.InderectBuffer);
@@ -235,14 +249,14 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			Assert.That(_camera.transform.position, Is.EqualTo(Vector3.zero));
 			feature.CulledBuffer.SetCounterValue(7);
 			feature.InderectBuffer.SetData(new uint[] { 7, 1, 0, 0 });
-			scope.SetActive(false);
+			Show(false);
 			Invoke(module, "UpdateCulling", _camera);
 			Assert.That(FirstUInt(feature.InderectBuffer), Is.Zero);
 			Assert.That(FirstUInt(item.TerrainPointCount), Is.EqualTo(count));
 			Assert.That(item.TerrainPoints.IsValid(), Is.True);
 			Assert.That(item.PixelToObject.IsValid(), Is.True);
 			Assert.That(feature.FoliageFeature.FoliageCount, Is.EqualTo(1));
-			scope.SetActive(true);
+			Show(true);
 			Assert.That(lodOff.activeSelf, Is.False);
 			Invoke(module, "UpdateCulling", _camera);
 			Assert.That(FirstUInt(feature.InderectBuffer), Is.EqualTo(visible));
@@ -263,7 +277,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			var host = Own(new GameObject("Rendered raw hierarchy"));
 			var builder = host.AddComponent<AssetNodeBuilder>();
 			var template = Own(new Material(Shader.Find(shader)));
-			CswSceneResourceTests.Configure(builder, template);
+			SceneResourceTests.Configure(builder, template);
 			var target = Own(new RenderTexture(128, 128, 24, RenderTextureFormat.ARGB32));
 			var normalTarget = Own(new RenderTexture(128, 128, 0, RenderTextureFormat.ARGBFloat));
 			Assert.That(target.Create(), Is.True);
@@ -371,6 +385,57 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 				target.Release();
 				normalTarget.Release();
 			}
+		}
+
+		[Test]
+		public void InfiniteFarPlaneRendersAndCullsBeyondTheFiniteCameraFarPlane()
+		{
+			var shader = Shader.Find("Unlit/Color");
+			Assert.That(shader, Is.Not.Null);
+			var target = Own(new RenderTexture(64, 64, 24, RenderTextureFormat.ARGB32));
+			Assert.That(target.Create(), Is.True);
+			_camera.targetTexture = target;
+			_camera.renderingPath = RenderingPath.Forward;
+			_camera.clearFlags = CameraClearFlags.SolidColor;
+			_camera.backgroundColor = Color.black;
+			_camera.fieldOfView = 60;
+			var far = _camera.farClipPlane;
+			var cube = Own(GameObject.CreatePrimitive(PrimitiveType.Cube));
+			cube.GetComponent<MeshRenderer>().sharedMaterial = Own(new Material(shader) { color = Color.white });
+			cube.transform.position = new Vector3(0, 0, 4 * far);
+			cube.transform.localScale = Vector3.one * 2 * far;
+			try
+			{
+				using (var coordinates = new SceneCoordinateContext())
+				{
+					var bridge = new CameraBridge(_camera, coordinates);
+					bridge.PresentPose();
+					Assert.That(Lit(target), Is.Zero, "A finite far plane must cull geometry beyond far.");
+					bridge.InfiniteFarPlane = true;
+					bridge.PresentPose();
+					Assert.That(Lit(target), Is.GreaterThan(256),
+						"gzPerspCamera's infinite far plane must render beyond the camera's finite far plane.");
+					Assert.That(_camera.farClipPlane, Is.EqualTo(far));
+					bridge.ResetPose();
+					Assert.That(Lit(target), Is.Zero, "Releasing the pose must restore the camera's own projection.");
+					_camera.transform.rotation = Quaternion.Euler(0, 180, 0);
+					cube.transform.position = new Vector3(0, 0, -far / 2);
+					cube.transform.localScale = Vector3.one * far / 4;
+					Assert.That(Lit(target), Is.GreaterThan(256),
+						"Releasing the pose must also return culling to the moving camera.");
+				}
+			}
+			finally
+			{
+				_camera.targetTexture = null;
+				target.Release();
+			}
+		}
+
+		private int Lit(RenderTexture target)
+		{
+			_camera.Render();
+			return Read(target).Count(pixel => Different(pixel, Color.black));
 		}
 
 		private Color[] Read(RenderTexture target)

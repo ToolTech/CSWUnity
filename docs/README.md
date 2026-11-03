@@ -28,7 +28,7 @@ runtime dependency of CSWUnity.
 
 ## Architecture status
 
-- Streaming runs through the command-driven `CswMapStreamerHost`. The C# CSW
+- Streaming runs through the command-driven `MapStreamerHost`. The C# CSW
   SceneManager owns map loading, traversal and LOD selection, and CSWUnity
   realizes its ordered commands with the retained builder, pooling and optional
   shader-module patterns.
