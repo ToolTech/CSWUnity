@@ -209,6 +209,6 @@ Metrics include:
 
 ## Related documentation
 
-- [External object requirements](../requirements/object-integration.md)
+- [External object requirements](../requirements/architecture/object-integration.md)
 - [Synthetic world architecture](synthetic-world.md)
 - [Rendering architecture](rendering.md)

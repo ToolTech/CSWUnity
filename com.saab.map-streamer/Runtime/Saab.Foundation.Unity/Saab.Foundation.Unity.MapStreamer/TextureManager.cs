@@ -32,6 +32,7 @@
 //
 // ZJP	240902	Created file                                        (2.12.179)
 // AMO	261022	Added revision-aware scene texture cache keys while preserving legacy entry points.	(2.12.327)
+// AMO	261030	Removed the legacy IntPtr-only cache entry points.	(2.12.327)
 //
 //******************************************************************************
 
@@ -107,11 +108,6 @@ namespace Saab.Foundation.Unity.MapStreamer
                 _textureCache.Count,
                 _activeReferences);
 
-        public bool TryAdd(IntPtr key, Texture2D value, TextureImageInfo info)
-        {
-            return TryAdd(key, 0, 0, true, value, info);
-        }
-
         internal bool TryAdd(IntPtr source, ulong revision, uint unit, bool mipMaps, Texture2D value, TextureImageInfo info)
         {
             var key = (source, revision, unit, mipMaps);
@@ -125,11 +121,6 @@ namespace Saab.Foundation.Unity.MapStreamer
 
             // resource already existed, no operation performed
             return false;
-        }
-
-        public bool TryGet(IntPtr key, out Texture value, out TextureImageInfo info)
-        {
-            return TryGet(key, 0, 0, true, out value, out info);
         }
 
         internal bool TryGet(IntPtr source, ulong revision, uint unit, bool mipMaps, out Texture value, out TextureImageInfo info)

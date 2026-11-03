@@ -68,6 +68,6 @@ which sends ordered commands that CSWUnity realizes as Unity objects.
 
 ## Related documentation
 
-- [Streaming Map input requirements](../requirements/streaming-map-input.md)
+- [Streaming Map input requirements](../requirements/functional/streaming-map-input.md)
 - [Streaming Map pipeline design](../design/streaming-map-pipeline.md)
 - [Integrate CSWUnity into a host project](integrate-into-host-project.md)

@@ -209,6 +209,6 @@ implemented and validated CSWUnity feature.
 
 ## Related documentation
 
-- [Synthetic world requirements](../requirements/synthetic-world.md)
+- [Synthetic world requirements](../requirements/architecture/synthetic-world.md)
 - [External object integration](object-integration.md)
 - [Rendering architecture](rendering.md)

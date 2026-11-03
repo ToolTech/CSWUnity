@@ -63,7 +63,7 @@ GameObject and assign the following references explicitly:
 | `Foliage`, `TerrainShading`, `Diagnostics` | Optional existing components that receive the host's presentation/provider. |
 | `MapUrl` | The map to stream. When empty, `SceneManager/MapUrl` in `config.xml` is used. |
 | `ReadConfiguration` | Applies the other `config.xml` overrides, currently `SceneManager/DynamicLoaders`. |
-| `Settings` | Native traversal, frame synchronization, build budget, dynamic loaders and intersection mask. |
+| `Settings` | Native traversal, frame synchronization and its wait timeout, build budget, dynamic loaders and intersection mask. |
 
 The host resolves the map URL each time it starts: a non-blank argument to
 `StartStreaming(url)`, otherwise `MapUrl`, otherwise `SceneManager/MapUrl` from
@@ -73,10 +73,12 @@ configuration; clear it to use `config.xml`. The configured URL is read even whe
 with an error naming both. Credentials remain host-owned and must not be
 committed with scene configuration.
 
-`MaximumCommandsPerTick` and `Settings.MaxBuildTime` control main-thread
-publication work. Keep the existing builders' intersection masks and module
-assets appropriate for the map. Optional foliage and terrain shading are not
-required to start streaming.
+`MaximumCommandsPerTick` and `Settings.MaxBuildTime` limit main-thread
+publication work per Unity update. The limits apply only outside frames, so
+they never split a frame, and the transforms and activations of a frame do not
+count toward `MaximumCommandsPerTick`. Keep the existing builders'
+intersection masks and module assets appropriate for the map. Optional foliage
+and terrain shading are not required to start streaming.
 
 ### Keep one camera owner
 
@@ -190,7 +192,7 @@ Both options are available in the host's `Settings` and can change at runtime.
 | Setting | Effect |
 | --- | --- |
 | `OmniView` | Selects native SceneManager traversal in all directions instead of camera-frustum traversal. LOD selection, loading and activation remain native responsibilities. It does not disable Unity renderer culling. |
-| `SynchronizeFrames` | Completes the matching native camera frame before ordinary Unity rendering, then presents that frame's committed position, rotation and perspective projection rather than a newer desired pose. |
+| `SynchronizeFrames` | Before ordinary Unity rendering, completes the refresh that the previous update submitted, then submits the refresh for the current pose. Presents the completed frame's position, rotation and perspective projection, one update behind the desired pose. |
 
 `OmniView` uses the same `SceneCommandSetOmniTraverse` control as CSWUnreal.
 With frustum traversal, native loads and activates only the map inside the
@@ -204,10 +206,15 @@ start-up) and does not guarantee that all map data is resident. Clear
 
 With synchronization enabled, input still updates the bridge's desired pose
 without reading the SDK graph. All command pumping and camera sampling move to
-`LateUpdate`, after normal `Update` input. If an asynchronous refresh was already
-outstanding, it is completed first; the newly sampled camera batch is then sent
-and consumed through its own matching `EndFrame`. Only one refresh is outstanding
-at a time. The pump stops at that fence rather than consuming later updates.
+`LateUpdate`, after normal `Update` input. Synchronization is pipelined like the
+synchronous variant of CSWUnreal: each update first consumes the outstanding
+refresh, which an earlier update submitted, through its matching `EndFrame`,
+and then submits the refresh for the newly sampled camera. SceneManager
+processes that refresh while Unity renders, so the presented camera is one
+update behind the desired pose. When no refresh is outstanding, for example in
+the first update, only the new refresh is submitted. Only one refresh is
+outstanding at a time. The pump stops at that fence rather than consuming later
+updates.
 
 Synchronization repeats the normal bounded capture slices within the same
 Unity frame, so total work can exceed `MaximumCommandsPerTick` and
@@ -217,8 +224,11 @@ monitor and holds **no SDK graph lock**; arrival/version checks prevent a missed
 notification. Do not call synchronized `MapManager.Tick` while already holding
 SDK graph access.
 
-`host.Manager.FrameWaitTimeout` defaults to five seconds and is configurable
-through the manager API. An expired deadline, stopped worker or invalid frame
+`Settings.FrameWaitTimeout` bounds the wait in each synchronized update. It is
+in seconds, defaults to five and can change at runtime. The host applies it to
+`host.Manager.FrameWaitTimeout` in every update, so change the setting rather
+than the manager property. A value that is not positive and finite faults the
+next synchronized update. An expired deadline, stopped worker or invalid frame
 faults the session, reports the error and clears its presentation; it does not
 accept an incomplete frame as success. The deadline is checked between
 operations: it cannot preempt an individual mesh/texture build or lifecycle
@@ -238,8 +248,9 @@ override. Desired input is retained for the next snapshot.
 The guarantee concerns **all ordered updates through the matching `EndFrame`**,
 not completion of every asynchronous disk/network load. This prevents rendering
 a newer frustum against an older activation frame; it is not a promise of
-fully resident terrain or continuous 60 fps. Choose the latency/work tradeoff
-explicitly. See the [graphical loop and lock discussion](../design/command-loop-and-locks.md).
+fully resident terrain or continuous 60 fps. Synchronization adds one update of
+camera latency. Choose the latency/work tradeoff explicitly. See the
+[graphical loop and lock discussion](../design/command-loop-and-locks.md).
 
 ### Keep frame pacing host-owned
 
@@ -348,6 +359,14 @@ sequence. Cleanup attempts independent releases and reports aggregate failures.
 Callers should not separately release the host's session or borrowed callback
 manager/receiver wrappers.
 
+After this teardown, the last host that holds the CSW platform stops the
+process-wide dynamic loaders and waits for their loads in progress before it
+releases the Coordinate and CSW platforms, because `CSW.Platform.Uninitialize`
+in the current CSW packages unregisters the database managers before Gizmo3D
+stops the loaders. The next session starts the loaders again. Code outside the
+host that holds its own CSW platform reference has no loading until a host
+starts a new session.
+
 `CswNativeMapTests.RepeatedRealMapLifetimesDrainPendingOutputBeforeReloadAndRestart`
 exercises eight map lifetimes with visible map pixels, a one-command capture
 slice that leaves native output pending, alternating clear/reload and host
@@ -386,6 +405,6 @@ validators or broader platform support as implemented APIs.
 ## Related documentation
 
 - [Stage NuGet dependencies](stage-nuget-dependencies.md)
-- [Next-generation architecture requirements](../requirements/next-generation-architecture.md)
+- [Next-generation architecture requirements](../requirements/architecture/next-generation-architecture.md)
 - [Next-generation architecture design](../design/next-generation-architecture.md)
 - [Streaming Map pipeline](../design/streaming-map-pipeline.md)

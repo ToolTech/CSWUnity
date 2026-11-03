@@ -235,7 +235,7 @@ silently discarded.
 
 ## Related documentation
 
-- [Rendering requirements](../requirements/rendering.md)
+- [Rendering requirements](../requirements/architecture/rendering.md)
 - [Synthetic world architecture](synthetic-world.md)
 - [External object integration](object-integration.md)
 - [Scene control and threaded realization](scene-control-and-threading.md)

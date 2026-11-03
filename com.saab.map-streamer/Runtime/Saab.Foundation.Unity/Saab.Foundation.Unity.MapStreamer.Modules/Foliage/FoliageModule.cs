@@ -18,6 +18,7 @@
  *
  * AMO	261022	Added presentation adapters and transactional GPU resource lifetime handling.	(2.12.327)
  * AMO	261028	Removed the legacy SceneManager source; foliage follows the command-driven presentation only.	(2.12.327)
+ * AMO	261030	Removed the unused future job pool.	(2.12.327)
  */
 
 using GizmoSDK.GizmoBase;
@@ -123,7 +124,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
         private UnityEngine.Camera _cullingCamera;
         private int _lastCullingFrame = -1;
 
-        private Queue<FoliageJob> _futurePool = new Queue<FoliageJob>();
         private Dictionary<SettingsFeatureType, SettingsFeature> _settingsCache = new Dictionary<SettingsFeatureType, SettingsFeature>();
         private bool _subscribed;
 
@@ -404,12 +404,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             {
                 set.FoliageFeature?.RemoveFoliage(go);
             }
-        }
-
-        struct FoliageJob
-        {
-            public GameObject gameObject { get; set; }
-            public int FrameCount { get; set; }
         }
 
         private void SceneManager_OnNewTerrain(GameObject go, bool isAsset)

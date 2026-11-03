@@ -32,6 +32,7 @@
 //
 // AMO	180607	Created file        (2.9.1)
 // AMO	261028	Removed legacy SceneManager camera and map URL wiring.	(2.12.327)
+// AMO	261030	Removed an unused tracer field.	(2.12.327)
 //
 //******************************************************************************
 
@@ -198,8 +199,6 @@ namespace Saab.Unity.Initializer
         }
 
         private int _counter = 0;
-
-        private PerformanceTracer _tracer;
 
         private double _frameDurationTime = 0;
 

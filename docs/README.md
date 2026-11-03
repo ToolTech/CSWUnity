@@ -53,6 +53,7 @@ runtime dependency of CSWUnity.
 
 ## Documentation areas
 
-- [Requirements](requirements/README.md)
+- [Requirements](requirements/README.md), structured according to the
+  [requirements standard](requirements/standard.md)
 - [Design](design/README.md)
 - [How-to guides](howto/README.md)

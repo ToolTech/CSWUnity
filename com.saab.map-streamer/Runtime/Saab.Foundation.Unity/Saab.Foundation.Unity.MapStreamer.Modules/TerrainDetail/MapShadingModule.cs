@@ -18,66 +18,18 @@
  *
  * AMO	261022	Added borrowed presentation adapters and explicit module resource teardown.	(2.12.327)
  * AMO	261028	Removed the legacy SceneManager source; shading follows the command-driven presentation only.	(2.12.327)
+ * AMO	261030	Removed the unused TerrainData normal generator and its cache.	(2.12.327)
  */
 
 using UnityEngine;
 using Saab.Utility.GfxCaps;
 using System.Linq;
 using System.Collections.Generic;
-using System;
 using Saab.Foundation.Unity.MapStreamer.Utils;
 using Saab.Foundation.Unity.MapStreamer.Csw;
 
 namespace Saab.Foundation.Unity.MapStreamer.Modules
 {
-    public struct TerrainData : IDisposable
-    {
-        public Material Material;
-        public ComputeBuffer NormalBuffer;
-        public GameObject Object;
-
-        public void GenerateNormal(Mesh mesh, ComputeShader normalComputeShader)
-        {
-            // Extract vertex positions and indices from the mesh
-            Vector3[] vertices = mesh.vertices;
-            int[] triangles = mesh.triangles;
-
-            // Create and initialize compute buffers
-            var vertexBuffer = new ComputeBuffer(vertices.Length, sizeof(float) * 3);
-            var indexBuffer = new ComputeBuffer(triangles.Length / 3, sizeof(int) * 3);
-            NormalBuffer = new ComputeBuffer(vertices.Length, sizeof(float) * 3);
-
-            vertexBuffer.SetData(vertices);
-            indexBuffer.SetData(triangles);
-
-            // Set compute shader parameters
-            normalComputeShader.SetBuffer(0, "vertexPositions", vertexBuffer);
-            normalComputeShader.SetBuffer(0, "triangleIndices", indexBuffer);
-            normalComputeShader.SetBuffer(0, "vertexNormals", NormalBuffer);
-            normalComputeShader.SetInt("numVertices", vertices.Length);
-            normalComputeShader.SetInt("triangleIndicesLength", triangles.Length);
-
-            // Dispatch the compute shader
-            int threadGroups = Mathf.CeilToInt(vertices.Length / 64.0f);
-            normalComputeShader.Dispatch(0, threadGroups, 1, 1);
-
-            vertexBuffer.Release();
-            indexBuffer.Release();
-        }
-
-        public TerrainData(Material material, GameObject go)
-        {
-            Object = go;
-            Material = material;
-            NormalBuffer = null;
-        }
-
-        public void Dispose()
-        {
-            NormalBuffer?.Release();
-        }
-    }
-
     public class MapShadingModule : MonoBehaviour
     {
         public IScenePresentation Presentation { get; private set; }
@@ -144,8 +96,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
         private Texture2DArray _textureArray;
         private Texture2DArray _normalMapArray;
 
-        private readonly Dictionary<GameObject, TerrainData> _terrainData = new Dictionary<GameObject, TerrainData>();
-
         private void Awake()
         {
             _awoken = true;
@@ -169,8 +119,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
         private static class MaterialParameterID
         {
-            public static readonly int NormalBuffer = Shader.PropertyToID("_NormalBuffer");
-            public static readonly int FeatureMap = Shader.PropertyToID("_FeatureMap");
             public static readonly int Textures = Shader.PropertyToID("_Textures");
             public static readonly int NormalMaps = Shader.PropertyToID("_NormalMaps");
         }

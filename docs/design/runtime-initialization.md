@@ -39,6 +39,17 @@ has no single scene object that discovers other components through
 The exact command class names may evolve with the managed API. Their ordering
 and completion semantics are part of the contract.
 
+For the C# SceneManager session, the Accepted
+[REQ-CSWU-SM-011](../requirements/architecture/csw-scenemanager-integration.md#req-cswu-sm-011-session-startup-order)
+governs steps 3 to 7 where it differs from this sequence. CSWUnity holds the
+CSW platform reference and then the Coordinate platform reference, enables the
+geometry capabilities of
+[REQ-CSWU-SM-012](../requirements/architecture/csw-scenemanager-integration.md#req-cswu-sm-012-geometry-capabilities)
+before it adds the receiver, and queues `Initialize` and `SetLoaders` before it
+calls `Run`. Camera configuration is not part of startup. CSWUnity submits the
+camera pose with each refresh, and the camera and streaming settings before the
+first refresh and whenever they change (REQ-CSWU-SM-020 to REQ-CSWU-SM-022).
+
 ## Receiver callback
 
 The receiver callback:
@@ -92,6 +103,19 @@ argument, then the host's serialized `MapUrl`, then `SceneManager/MapUrl` in
 Timeout or release failure produces a structured shutdown failure and remains
 observable to the host.
 
+For the C# SceneManager session, the Accepted
+[REQ-CSWU-SM-047](../requirements/architecture/csw-scenemanager-integration.md#req-cswu-sm-047-session-shutdown-order)
+governs the steps that involve SceneManager, its buffers, the Unity
+realization, the dynamic loaders, and the platform references where it
+differs from this sequence. CSWUnity stops accepting buffers, shuts
+SceneManager down without edit access before it detaches the receiver, and
+does not call `RemoveCommandReceiver`. It disposes SceneManager and releases
+the queued buffers without applying them before it releases the Unity
+realization. The last host that holds the CSW platform then stops the GizmoSDK
+dynamic loaders without edit access and waits for the loads in progress, and
+the host releases the Coordinate platform reference before the CSW platform
+reference.
+
 ## Platform-specific setup
 
 Android registry, network interface, multicast, and Java binding behavior is
@@ -101,5 +125,7 @@ assemblies.
 
 ## Related requirements
 
-- [Runtime initialization requirements](../requirements/runtime-initialization.md)
-- [Next-generation architecture requirements](../requirements/next-generation-architecture.md)
+- [Runtime initialization requirements](../requirements/architecture/runtime-initialization.md)
+- [CSW SceneManager integration requirements](../requirements/architecture/csw-scenemanager-integration.md)
+- [CSWUnreal SceneManager reference](cswunreal-scenemanager-reference.md)
+- [Next-generation architecture requirements](../requirements/architecture/next-generation-architecture.md)

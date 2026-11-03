@@ -241,6 +241,7 @@ MonoBehaviour:
     IntersectMask: -1
     OmniView: 1
     SynchronizeFrames: 0
+    FrameWaitTimeout: 5
   MaximumCommandsPerTick: 128
   InitialAltitude: 500
   FlightInput: 1

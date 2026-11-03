@@ -413,8 +413,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
             var manager = new TextureManager();
             var texture = CreateR8Texture();
             var key = new IntPtr(42);
-            Assert.That(manager.TryAdd(key, texture, null), Is.True);
-            Assert.That(manager.TryGet(key, out _, out _), Is.True);
+            Assert.That(manager.TryAdd(key, 0, 0, true, texture, null), Is.True);
+            Assert.That(manager.TryGet(key, 0, 0, true, out _, out _), Is.True);
 
             var diagnostics = manager.Diagnostics;
             Assert.That(diagnostics.ActiveTextures, Is.EqualTo(1));
@@ -452,16 +452,16 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
             var manager = new TextureManager();
             var texture = CreateR8Texture();
             var key = new IntPtr(42);
-            Assert.That(manager.TryAdd(key, texture, null), Is.True);
-            Assert.That(manager.TryGet(key, out var cached, out _), Is.True);
+            Assert.That(manager.TryAdd(key, 0, 0, true, texture, null), Is.True);
+            Assert.That(manager.TryGet(key, 0, 0, true, out var cached, out _), Is.True);
             Assert.That(cached, Is.SameAs(texture));
 
             Assert.That(manager.Free(texture), Is.True);
-            Assert.That(manager.TryGet(key, out cached, out _), Is.True);
+            Assert.That(manager.TryGet(key, 0, 0, true, out cached, out _), Is.True);
             Assert.That(cached, Is.SameAs(texture));
             Assert.That(manager.Free(texture), Is.True);
             Assert.That(manager.Free(texture), Is.True);
-            Assert.That(manager.TryGet(key, out _, out _), Is.False);
+            Assert.That(manager.TryGet(key, 0, 0, true, out _, out _), Is.False);
         }
 
         [Test]

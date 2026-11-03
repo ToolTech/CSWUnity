@@ -18,6 +18,7 @@
 // AMO	261023	Repeated real-map queued-output and platform lifetimes	(2.12.327)
 // AMO	261026	Verified synchronized Omni/frustum rendering, runtime switches, projection cleanup and timeout faults.	(2.12.327)
 // AMO	261028	Removed legacy-lane checks and covered Start with the component MapUrl.	(2.12.327)
+// AMO	261030	Verified pipelined synchronization lockstep, the host timeout setting and the last host's loader stop.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -327,6 +328,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			{
 				yield return WaitFor(() => _host.Manager.CompletedFrames >= 3 &&
 					_host.Scene.MeshCount > 0 && ActiveRenderers().Any(), $"lifecycle {cycle} realization");
+				Assert.That(GizmoSDK.Gizmo3D.DynamicLoaderManager.IsManagerRunning(0), Is.True,
+					"Each session's SetLoaders must run the dynamic loaders.");
 				Assert.That(Capture($"lifecycle-{cycle}"), Is.GreaterThan(64));
 				var scene = _host.Scene;
 				var generation = scene.Generation;
@@ -347,6 +350,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 					_host.StopStreaming();
 					Assert.That(_host.Manager, Is.Null);
 					Assert.That(_host.Scene, Is.Null);
+					Assert.That(GizmoSDK.Gizmo3D.DynamicLoaderManager.IsManagerRunning(0), Is.False,
+						"The last host must stop the dynamic loaders before releasing its platforms.");
 				}
 				Assert.That(scene.InstanceCount, Is.Zero);
 				Assert.That(scene.MeshCount, Is.Zero);
@@ -391,8 +396,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 				_host.Camera.Move(new Vector3(5, 0, 0));
 				_host.Camera.Rotate(45, 0);
 				_camera.fieldOfView = omni ? 75 : 60;
-				yield return WaitFor(() => _host.Manager.CompletedFrames >= completed + 2 &&
-					!_host.Manager.RefreshOutstanding, $"synchronized omni={omni}");
+				yield return WaitFor(() => _host.Manager.CompletedFrames >= completed + 2,
+					$"synchronized omni={omni}");
 				Assert.That(_host.Manager.SynchronizeFrames, Is.True);
 				Assert.That(_host.Manager.OmniView, Is.EqualTo(omni));
 				Assert.That(_host.Camera.SynchronizeFrames, Is.True);
@@ -414,14 +419,24 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 				Assert.That(_camera.transform.position, Is.EqualTo(Vector3.zero));
 				Assert.That(GizmoSDK.Gizmo3D.NodeLock.IsLockedByMe(), Is.False);
 			}
+			var outstanding = _host.Manager.OutstandingRefresh;
+			var consumed = _host.Manager.CompletedFrames;
+			Assert.That(outstanding, Is.Not.Zero,
+				"A synchronized update must leave its submitted refresh outstanding while Unity renders.");
+			yield return null;
+			Assert.That(_host.Manager.CompletedFrames, Is.EqualTo(consumed + 1));
+			Assert.That(_host.Scene.CommittedFrame.RefreshId, Is.EqualTo(outstanding),
+				"Each synchronized update must commit the refresh submitted by the previous update.");
+			Assert.That(_host.Manager.OutstandingRefresh, Is.Not.Zero.And.Not.EqualTo(outstanding),
+				"Each synchronized update must submit the next refresh after consuming the previous one.");
 			_host.Settings.SynchronizeFrames = false;
 			yield return WaitFor(() => !_host.Camera.SynchronizeFrames, "return to asynchronous presentation");
 			_host.Camera.PresentPose();
 			Assert.That(Quaternion.Angle(_camera.transform.rotation, _host.Camera.Rotation), Is.LessThan(0.05));
 			_host.Settings.SynchronizeFrames = true;
 			var frames = _host.Manager.CompletedFrames;
-			yield return WaitFor(() => _host.Manager.CompletedFrames >= frames + 2 &&
-				!_host.Manager.RefreshOutstanding, "synchronized mode re-entry");
+			yield return WaitFor(() => _host.Manager.CompletedFrames >= frames + 2,
+				"synchronized mode re-entry");
 			_host.ClearMap();
 			Assert.That(_host.Scene.HasCommittedFrame, Is.False);
 			_host.OpenMap(url);
@@ -446,6 +461,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			StartHost(url);
 			yield return WaitFor(() => _host.Manager.CompletedFrames >= 3 &&
 				ActiveRenderers().Any(), "timeout baseline");
+			_host.Settings.FrameWaitTimeout = 2.5;
+			yield return null;
+			Assert.That(_host.Manager.FrameWaitTimeout, Is.EqualTo(TimeSpan.FromSeconds(2.5)),
+				"The host must apply the timeout setting every update.");
 			_host.Manager.SynchronizeFrames = true;
 			GizmoSDK.Gizmo3D.NodeLock.WaitLockEdit();
 			try
@@ -455,14 +474,12 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			}
 			finally { GizmoSDK.Gizmo3D.NodeLock.UnLock(); }
 			Assert.That(_host.Manager.State, Is.EqualTo(MapManagerState.Running));
+			// Back-to-back Ticks leave the native worker no time to finish the refresh submitted by the previous Tick.
 			_host.Manager.FrameWaitTimeout = TimeSpan.FromTicks(1);
-			_host.Settings.SynchronizeFrames = true;
 			LogAssert.Expect(LogType.Exception,
 				new System.Text.RegularExpressions.Regex("TimeoutException: SceneManager frame"));
-			var deadline = UnityEngine.Time.realtimeSinceStartupAsDouble + 10;
-			while (_host.Manager.State != MapManagerState.Faulted &&
-				UnityEngine.Time.realtimeSinceStartupAsDouble < deadline)
-				yield return null;
+			for (var i = 0; i < 100 && _host.Manager.State != MapManagerState.Faulted; i++)
+				_host.Manager.Tick(_host.Camera.Sample(GizmoSDK.GizmoBase.Time.SystemSeconds));
 			Assert.That(_host.Manager.State, Is.EqualTo(MapManagerState.Faulted));
 			Assert.That(_host.Manager.Error, Does.Contain("did not complete"));
 			Assert.That(_host.Manager.PendingBuffers, Is.Zero);

@@ -156,5 +156,5 @@ API.
   measurable limits, and a documented lease model.
 - Current terrain and foliage modules depend on specific shader properties and
   event timing; adapters or revised module contracts are required.
-- Legacy crossboard and standalone culling components should not define the
-  target architecture unless a supported feature still depends on them.
+- Legacy crossboard and standalone culling components were removed in 5.0
+  because no supported feature depended on them.

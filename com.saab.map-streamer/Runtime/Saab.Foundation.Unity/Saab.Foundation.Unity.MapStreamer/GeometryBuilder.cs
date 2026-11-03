@@ -34,6 +34,7 @@
 // AMO  230113  Added Feature Maps from texture 1                   (2.12.43)
 // AMO	261022	Added command-driven material construction from copied scene State data.	(2.12.327)
 // AMO	261028	Removed legacy node building; kept the command-driven builder contract with traversal and pool feature flags.	(2.12.327)
+// AMO	261103	Used the fallback material for placeholder textures so uniform color is rendered.	(2.12.350)
 //
 //******************************************************************************
 
@@ -107,9 +108,16 @@ namespace Saab.Foundation.Unity.MapStreamer
 
         internal int SceneLayer => _layer;
 
+        internal bool UsesFallbackMaterial(StateBuildOutput state)
+        {
+            return _forceFallbackMaterial || !state.Texture || state.IsPlaceholderTexture;
+        }
+
         internal Material CreateSceneMaterial(StateBuildOutput state, Color uniformColor)
         {
-            var template = !_forceFallbackMaterial && state.Texture
+            // the scene shaders ignore uniform color, so placeholder textures use the fallback material
+            var useStateTexture = !UsesFallbackMaterial(state);
+            var template = useStateTexture
                 ? _material
                 : _fallbackMaterial;
             if (!template)
@@ -117,7 +125,7 @@ namespace Saab.Foundation.Unity.MapStreamer
                     $"Builder '{name}' has no material for the command-driven scene.");
 
             var material = Instantiate(template);
-            if (!_forceFallbackMaterial && state.Texture)
+            if (useStateTexture)
             {
                 material.mainTexture = state.Texture;
                 if (state.Feature && material.HasProperty("_FeatureMap"))

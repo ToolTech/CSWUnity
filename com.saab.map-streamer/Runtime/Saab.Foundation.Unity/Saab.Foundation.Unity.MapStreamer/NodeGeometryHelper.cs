@@ -33,6 +33,7 @@
 // ZJP	200625	Created file                                        (2.10.6)
 // ZJP	261009	Use GeometryExport to write directly to Unity mesh data (2.12.345)
 // AMO	261028	Recorded mesh builds in the shared build diagnostics after removing the legacy SceneManager.	(2.12.327)
+// AMO	261103	Added uniform vertex color lookup for fallback materials.	(2.12.350)
 //
 //******************************************************************************
 
@@ -116,6 +117,29 @@ namespace Saab.Foundation.Unity.MapStreamer
                 return _positionNormalUvDescriptors;
 
             return _positionNormalDescriptors;
+        }
+
+        /// <summary>
+        /// Returns the vertex color when every vertex of a readable mesh has the same color
+        /// </summary>
+        public static bool TryGetUniformVertexColor(Mesh mesh, out Color color)
+        {
+            color = Color.white;
+            if (!mesh || !mesh.isReadable || !mesh.HasVertexAttribute(VertexAttribute.Color))
+                return false;
+
+            var colors = mesh.colors;
+            if (colors.Length == 0)
+                return false;
+
+            for (var i = 1; i < colors.Length; ++i)
+            {
+                if (colors[i] != colors[0])
+                    return false;
+            }
+
+            color = colors[0];
+            return true;
         }
 
         public static bool Build(Geometry geom, out Mesh output, out Color uniformColor)

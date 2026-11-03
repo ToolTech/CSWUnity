@@ -111,7 +111,7 @@ A release validates a complete pipeline:
 
 ## Related documentation
 
-- [Streaming Map input requirements](../requirements/streaming-map-input.md)
-- [Coordinate nomenclature and mapping](../requirements/coordinate-nomenclature.md)
+- [Streaming Map input requirements](../requirements/functional/streaming-map-input.md)
+- [Coordinate nomenclature and mapping](../requirements/generic/coordinate-nomenclature.md)
 - [Next-generation architecture](next-generation-architecture.md)
 - [Load a MapGen GZD map](../howto/load-mapgen-map.md)

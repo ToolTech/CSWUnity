@@ -18,6 +18,7 @@
  *
  * AMO	261022	Added shared placement ownership and copied presentation inputs.	(2.12.327)
  * AMO	261028	Removed the legacy NodeHandle placement overload and its map-based basis.	(2.12.327)
+ * AMO	261030	Removed the unused GetClipToWorld helper.	(2.12.327)
  */
 
 using UnityEngine;
@@ -370,15 +371,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             node.TerrainPoints.SetCounterValue(0);
             _placement.Dispatch(_kernelPlacement, threadsX < 1 ? 1 : threadsX, threadsY < 1 ? 1 : threadsY, 1);
             ComputeBuffer.CopyCount(node.TerrainPoints, node.TerrainPointCount, 0);
-        }
-
-        public Matrix4x4 GetClipToWorld(Camera camera)
-        {
-            var p = GL.GetGPUProjectionMatrix(camera.projectionMatrix, false);// Unity flips its 'Y' vector depending on if its in VR, Editor view or game view etc... (facepalm)
-            p[2, 3] = p[3, 2] = 0.0f;
-            p[3, 3] = 1.0f;
-            //_worldToClip = (p * camera.worldToCameraMatrix) * Matrix4x4.TRS(new Vector3(0, 0, -p[2, 2]), UnityEngine.Quaternion.identity, Vector3.one);
-            return Matrix4x4.Inverse(p * camera.worldToCameraMatrix) * Matrix4x4.TRS(new Vector3(0, 0, -p[2, 2]), UnityEngine.Quaternion.identity, Vector3.one);
         }
 
         private static class PlacementParameterID

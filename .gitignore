@@ -88,6 +88,7 @@ StyleCopReport.xml
 !com.saab.map-streamer/Tests/Fixtures/*.meta
 !com.saab.map-streamer/Tests/Runtime/CswSceneCommandTests.cs.meta
 !com.saab.map-streamer/Tests/Runtime/CswMapStreamerHostTests.cs.meta
+!com.saab.map-streamer/Tests/Runtime/GeometryBuilderMaterialTests.cs.meta
 !com.saab.map-streamer/Tests/Runtime/PlayMode/CswNativeMapTests.cs.meta
 !com.saab.map-streamer/Tests/Runtime/PlayMode/CswSceneResourceTests.cs.meta
 !com.saab.map-streamer/Tests/Runtime/PlayMode/CswPresentationModuleTests.cs.meta

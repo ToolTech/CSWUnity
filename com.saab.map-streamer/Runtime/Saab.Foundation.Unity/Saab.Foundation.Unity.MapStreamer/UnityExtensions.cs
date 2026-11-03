@@ -31,6 +31,7 @@
 // Who	Date	Description
 //
 // AMO	180607	Created file        (2.9.1)
+// AMO	261030	Removed unused Z-flip and quaternion conversions.	(2.12.327)
 //
 //******************************************************************************
 
@@ -50,23 +51,10 @@ namespace Saab.Unity.Extensions
         {
             return new Vec3D(vec.x, vec.y, vec.z);
         }
-        public static Vec3D FlipZ(this Vec3D vec)
-        {
-            return new Vec3D(vec.x, vec.y, -vec.z);
-        }
 
         public static Vec3 ToVec3(this Vector3 vec)
         {
             return new Vec3(vec.x, vec.y, vec.z);
-        }
-        public static Vec3 FlipZ(this Vec3 vec)
-        {
-            return new Vec3(vec.x, vec.y, -vec.z);
-        }
-
-        public static GizmoSDK.GizmoBase.Quaternion ToQuaternion(this UnityEngine.Quaternion quat)
-        {
-            return new GizmoSDK.GizmoBase.Quaternion(quat.w,quat.x, quat.y, quat.z);
         }
 
         public static Matrix4 ToMatrix4(this Matrix4x4 matrix)
@@ -95,32 +83,6 @@ namespace Saab.Unity.Extensions
             };
         }
 
-        public static Matrix4 ToZFlippedMatrix4(this Matrix4x4 matrix)
-        {
-            return new Matrix4
-            {
-                v11 = matrix.m00,
-                v12 = matrix.m01,
-                v13 = -matrix.m02,
-                v14 = matrix.m03,
-
-                v21 = matrix.m10,
-                v22 = matrix.m11,
-                v23 = -matrix.m12,
-                v24 = matrix.m13,
-
-                v31 = -matrix.m20,
-                v32 = -matrix.m21,
-                v33 = matrix.m22,
-                v34 = -matrix.m23,
-
-                v41 = matrix.m30,
-                v42 = matrix.m31,
-                v43 = -matrix.m32,
-                v44 = matrix.m33,
-            };
-        }
-
         #endregion
 
 
@@ -134,23 +96,6 @@ namespace Saab.Unity.Extensions
         public static Vector3 ToVector3(this Vec3 vec)
         {
             return new Vector3(vec.x, vec.y, vec.z);
-        }
-        public static Vector3 ToVector3FlipZ(this Vec3D vec)
-        {
-            return new Vector3((float)vec.x, (float)vec.y, (float)-vec.z);
-        }
-        public static Vector3 ToVector3FlipZ(this Vec3 vec)
-        {
-            return new Vector3(vec.x, vec.y, -vec.z);
-        }
-        public static Vector3 FlipZ(this Vector3 vec)
-        {
-            return new Vector3(vec.x, vec.y, -vec.z);
-        }
-
-        public static UnityEngine.Quaternion ToQuaternion(this GizmoSDK.GizmoBase.Quaternion quat)
-        {
-            return new UnityEngine.Quaternion(quat.x, quat.y, quat.z, quat.w);
         }
 
         public static Matrix4x4 ToMatrix4x4(this Matrix4 matrix)

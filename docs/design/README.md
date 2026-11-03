@@ -13,6 +13,7 @@ This directory contains the functional design of CSWUnity features.
 - [Rendering](rendering.md)
 - [Streaming Map pipeline](streaming-map-pipeline.md)
 - [Runtime initialization](runtime-initialization.md)
+- [CSWUnreal SceneManager reference](cswunreal-scenemanager-reference.md)
 
 ## Authoring designs
 

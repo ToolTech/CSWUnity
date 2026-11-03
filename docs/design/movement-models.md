@@ -263,6 +263,6 @@ Their last implementation is available at commit
 
 ## Related documentation
 
-- [Camera and movement use cases](../requirements/camera-use-cases.md)
-- [Movement requirements](../requirements/movement-models.md)
+- [Camera and movement use cases](../requirements/use-cases/camera.md)
+- [Movement requirements](../requirements/architecture/movement-models.md)
 - [Scene control and threaded realization](scene-control-and-threading.md)

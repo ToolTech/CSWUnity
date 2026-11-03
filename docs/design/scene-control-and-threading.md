@@ -68,13 +68,14 @@ or thread-affinity rules.
 
 The map service translates typed operations into CSW SceneManager commands:
 
-- set the complete map set;
-- add a map;
-- replace a map;
-- remove one map;
-- clear all maps;
+- set, replace, and clear the map list;
 - configure loader and LOD behavior; and
 - inspect source status and map metadata.
+
+A host adds or removes a map by submitting a changed map list to the running
+session (REQ-CSWU-SM-039, REQ-CSWU-MAPCTRL-004). A map that SceneManager
+rejects is reported as a warning, and the other maps stay presented
+(REQ-CSWU-SM-040).
 
 The service tracks operations by correlation identity rather than assuming
 that command submission means completion.
@@ -104,7 +105,7 @@ for:
 - atomic Local 3D Frame rebasing.
 
 The terminology and conversion stages follow
-[Coordinate nomenclature and mapping](../requirements/coordinate-nomenclature.md).
+[Coordinate nomenclature and mapping](../requirements/generic/coordinate-nomenclature.md).
 Global 3D Position and Local Origin Offset remain double precision.
 Origin subtraction occurs before conversion to single-precision Local 3D
 Position. The Unity mapping then names whether its result is a Transform Local
@@ -356,6 +357,6 @@ implementation and performance profile.
 
 ## Related documentation
 
-- [Scene control requirements](../requirements/scene-control.md)
+- [Scene control requirements](../requirements/functional/scene-control.md)
 - [Next-generation architecture](next-generation-architecture.md)
 - [Removed legacy architecture](current-architecture.md)

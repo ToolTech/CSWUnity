@@ -20,6 +20,8 @@
 // AMO	261026	Covered Omni input, notification handoff, fence-bounded draining and synchronized camera projection.	(2.12.327)
 // AMO	261028	Covered CSWUnreal-compatible Omni defaults.	(2.12.327)
 // AMO	261028	Removed the legacy NodeHandle check.	(2.12.327)
+// AMO	261030	Covered whole frames that exceed both per-update limits.	(2.12.327)
+// AMO	261030	Covered the synchronized frame wait timeout default and setting conversion.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -177,14 +179,14 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 				new SceneCommandUpdateNode(root, 1, null, 0, null,
 					Matrix4x4.Translate(new Vector3(10, 20, 30)).ToMatrix4()),
 				new SceneCommandActivation(child, 2, Activation.OFF),
-				new SceneCommandActivation(root, 1, Activation.ON),
-				new SceneCommandEndFrame(42));
+				new SceneCommandActivation(root, 1, Activation.ON));
 
-			Assert.That(_pump.Pump(2, TimeSpan.FromSeconds(1)), Is.EqualTo(2));
+			Assert.That(_pump.Pump(2, TimeSpan.FromSeconds(1)), Is.EqualTo(4));
 			Assert.That(rootHandle.transform.localPosition, Is.EqualTo(Vector3.zero));
 			Assert.That(rootHandle.gameObject.activeSelf, Is.False);
 			Assert.That(childHandle.IsLocallyActive, Is.True);
 			Assert.That(_scene.HasCommittedFrame, Is.False);
+			Enqueue(new SceneCommandEndFrame(42));
 			Pump();
 			Assert.That(rootHandle.transform.localPosition, Is.EqualTo(new Vector3(10, 20, 30)));
 			Assert.That(rootHandle.gameObject.activeSelf, Is.True);
@@ -428,11 +430,18 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 		{
 			Assert.That(SceneManagerSettings.Default.OmniView, Is.True);
 			Assert.That(SceneManagerSettings.Default.SynchronizeFrames, Is.False);
+			Assert.That(SceneManagerSettings.Default.FrameWaitTimeout, Is.EqualTo(5));
+			Assert.That(CswMapStreamerHost.ToFrameWaitTimeout(SceneManagerSettings.Default.FrameWaitTimeout),
+				Is.EqualTo(TimeSpan.FromSeconds(5)));
+			Assert.That(CswMapStreamerHost.ToFrameWaitTimeout(1e-9), Is.EqualTo(TimeSpan.FromTicks(1)));
+			foreach (var invalid in new[] { 0, -1, double.NaN, double.PositiveInfinity })
+				Assert.That(CswMapStreamerHost.ToFrameWaitTimeout(invalid), Is.EqualTo(TimeSpan.Zero),
+					"An invalid timeout setting must fault synchronized updates instead of waiting unbounded.");
 			using (var manager = new MapManager(_scene, Array.Empty<GeometryBuilderBase>()))
 			{
 				Assert.That(manager.OmniView, Is.True);
 				Assert.That(manager.SynchronizeFrames, Is.False);
-				Assert.That(manager.FrameWaitTimeout, Is.GreaterThan(TimeSpan.Zero));
+				Assert.That(manager.FrameWaitTimeout, Is.EqualTo(TimeSpan.FromSeconds(5)));
 			}
 		}
 
@@ -518,6 +527,71 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			Assert.That(_pump.LastLockAttempts, Is.EqualTo(1));
 			Assert.That(commits, Is.EqualTo(1));
 			Assert.That(Handle(root, 1).transform.localPosition, Is.EqualTo(new Vector3(10, 20, 30)));
+			Assert.That(_pump.PendingBuffers, Is.Zero);
+			Assert.That(NodeLock.IsLockedByMe(), Is.False);
+		}
+
+		[Test]
+		public void FrameExceedingBothLimitsIsConsumedWholeWhileOutputOutsideFramesRespectsThem()
+		{
+			var root = Group("Map");
+			var first = Group("First tile");
+			var second = Group("Second tile");
+			var third = Group("Third tile");
+			var fourth = Group("Fourth tile");
+			var fifth = Group("Fifth tile");
+			var sixth = Group("Sixth tile");
+			Enqueue(new SceneCommandNewNode(root, 1, null, 0, null),
+				new SceneCommandActivation(root, 1, Activation.INIT),
+				new SceneCommandNewNode(first, 2, root, 1, null),
+				new SceneCommandNewNode(second, 3, root, 1, null));
+			Pump();
+			_pump.ExpectFrame(42, Frame(default));
+			Enqueue(new SceneCommandStartFrame(42, 100, default),
+				new SceneCommandUpdateNode(root, 1, null, 0, null,
+					Matrix4x4.Translate(new Vector3(10, 20, 30)).ToMatrix4()),
+				new SceneCommandActivation(first, 2, Activation.OFF),
+				new SceneCommandActivation(second, 3, Activation.OFF),
+				new SceneCommandActivation(root, 1, Activation.ON),
+				new SceneCommandEndFrame(42));
+			Enqueue(new SceneCommandNewNode(third, 4, null, 0, null));
+			Enqueue(new SceneCommandNewNode(fourth, 5, null, 0, null));
+			Enqueue(new SceneCommandStartFrame(43, 101, default),
+				new SceneCommandUpdateNode(root, 1, null, 0, null,
+					Matrix4x4.Translate(new Vector3(40, 50, 60)).ToMatrix4()),
+				new SceneCommandActivation(first, 2, Activation.ON),
+				new SceneCommandActivation(second, 3, Activation.ON),
+				new SceneCommandEndFrame(43));
+			Enqueue(new SceneCommandNewNode(fifth, 6, null, 0, null));
+			Enqueue(new SceneCommandNewNode(sixth, 7, null, 0, null));
+
+			Assert.That(_pump.Pump(1, TimeSpan.Zero), Is.EqualTo(6));
+			Assert.That(_pump.LastLockAttempts, Is.EqualTo(1));
+			Assert.That(_scene.CommittedFrame.RefreshId, Is.EqualTo(42));
+			Assert.That(Handle(root, 1).transform.localPosition, Is.EqualTo(new Vector3(10, 20, 30)));
+			Assert.That(Handle(root, 1).gameObject.activeSelf, Is.True);
+			Assert.That(Handle(first, 2).gameObject.activeSelf, Is.False);
+			Assert.That(_scene.TryGetInstance(Key(third, 4), out _), Is.False);
+			Assert.That(_pump.PendingBuffers, Is.EqualTo(5));
+
+			Assert.That(_pump.Pump(1, TimeSpan.FromSeconds(10)), Is.EqualTo(1));
+			Assert.That(_scene.TryGetInstance(Key(third, 4), out _), Is.True);
+			Assert.That(_scene.TryGetInstance(Key(fourth, 5), out _), Is.False);
+			Assert.That(_pump.Pump(int.MaxValue, TimeSpan.Zero), Is.EqualTo(1));
+			Assert.That(_scene.TryGetInstance(Key(fourth, 5), out _), Is.True);
+			Assert.That(_scene.CommittedFrame.RefreshId, Is.EqualTo(42));
+			Assert.That(_pump.PendingBuffers, Is.EqualTo(3));
+
+			_pump.ExpectFrame(43, Frame(default));
+			Assert.That(_pump.Pump(3, TimeSpan.FromSeconds(10)), Is.EqualTo(6),
+				"The transforms and activations of a frame must not count toward the command limit.");
+			Assert.That(_scene.CommittedFrame.RefreshId, Is.EqualTo(43));
+			Assert.That(Handle(root, 1).transform.localPosition, Is.EqualTo(new Vector3(40, 50, 60)));
+			Assert.That(Handle(first, 2).gameObject.activeSelf, Is.True);
+			Assert.That(_scene.TryGetInstance(Key(fifth, 6), out _), Is.True);
+			Assert.That(_scene.TryGetInstance(Key(sixth, 7), out _), Is.False);
+			Pump();
+			Assert.That(_scene.TryGetInstance(Key(sixth, 7), out _), Is.True);
 			Assert.That(_pump.PendingBuffers, Is.Zero);
 			Assert.That(NodeLock.IsLockedByMe(), Is.False);
 		}
@@ -840,9 +914,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 					new SceneCommandUpdateNode(first, 1, null, 0, null,
 						Matrix4x4.Translate(firstOffset - shift).ToMatrix4()),
 					new SceneCommandUpdateNode(second, 2, null, 0, null,
-						Matrix4x4.Translate(secondOffset - shift).ToMatrix4()),
-					new SceneCommandEndFrame(43));
+						Matrix4x4.Translate(secondOffset - shift).ToMatrix4()));
 				Assert.That(_pump.Pump(3, TimeSpan.FromSeconds(1)), Is.EqualTo(3));
+				Enqueue(new SceneCommandEndFrame(43));
 				var committedWorldOffset = Shader.GetGlobalVector("_WorldOffset");
 				WithForeignGraphLock(() =>
 				{
@@ -968,13 +1042,13 @@ namespace Saab.Foundation.Unity.MapStreamer.Tests
 			Enqueue(
 				new SceneCommandStartFrame(44, 0, default),
 				new SceneCommandNewNode(child, 2, root, 1, null),
-				new SceneCommandActivation(child, 2, Activation.OFF),
-				new SceneCommandEndFrame(44));
-			_pump.Pump(2, TimeSpan.FromSeconds(1));
+				new SceneCommandActivation(child, 2, Activation.OFF));
+			Assert.That(_pump.Pump(1, TimeSpan.Zero), Is.EqualTo(3));
 			var branch = Handle(child, 2);
 			Assert.That(branch.IsReady, Is.True);
 			Assert.That(branch.IsPresented, Is.False);
 			Assert.That(branch.gameObject.activeInHierarchy, Is.False);
+			Enqueue(new SceneCommandEndFrame(44));
 			Pump();
 			Assert.That(branch.IsPresented, Is.True);
 			Assert.That(branch.IsLocallyActive, Is.False);

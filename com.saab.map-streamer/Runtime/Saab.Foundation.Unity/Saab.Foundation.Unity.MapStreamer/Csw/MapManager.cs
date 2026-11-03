@@ -19,6 +19,7 @@
 // AMO	261023	Instrumented command-lane Tick independently of Unity frame-pacing waits.	(2.12.327)
 // AMO	261026	Added Omni control and bounded frame completion without SDK access during notification waits.	(2.12.327)
 // AMO	261028	Defaulted Omni traversal to on for CSWUnreal coverage parity.	(2.12.327)
+// AMO	261030	Pipelined frame synchronization like CSWUnreal: each Tick consumes the previous refresh before submitting the next.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -63,6 +64,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		public string Error { get; private set; }
 		public int PendingBuffers => _pump?.PendingBuffers ?? 0;
 		public bool RefreshOutstanding => _refreshRequest != 0;
+		internal uint OutstandingRefresh => _refreshRequest;
 		public ulong CompletedFrames { get; private set; }
 		internal bool IsDisposed => _disposed;
 		internal bool NativeCommandsPending => _session?.HasPendingCommands ?? false;
@@ -71,9 +73,10 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		public TimeSpan BuildBudget { get; set; } = TimeSpan.FromMilliseconds(4);
 		/// <summary>Traverses in all directions by default, like CSWUnreal; Unity's renderer retains its own culling.</summary>
 		public bool OmniView { get; set; } = true;
-		/// <summary>Finishes the submitted camera frame in this Tick instead of deferring its output.</summary>
+		/// <summary>Consumes the refresh submitted by an earlier Tick through its EndFrame before submitting the next.</summary>
+		/// <remarks>Native processing overlaps rendering, so the committed camera lags the requested camera by one Tick.</remarks>
 		public bool SynchronizeFrames { get; set; }
-		/// <summary>Bounds frame synchronization; expiration faults the session, never accepts a partial frame.</summary>
+		/// <summary>Bounds each synchronized Tick's wait; expiration faults the session, never accepts a partial frame.</summary>
 		public TimeSpan FrameWaitTimeout { get; set; } = TimeSpan.FromSeconds(5);
 		/// <summary>Raised after the borrowed scene's coordinate context changes.</summary>
 		public event Action CoordinateContextChanged;
@@ -120,7 +123,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		/// <summary>Consumes output and submits at most one outstanding refresh for the supplied camera.</summary>
 		/// <remarks>
 		/// The optional camera argument is a value snapshot, not a live camera reference.
-		/// Synchronization repeats bounded capture slices through the matching fence;
+		/// Synchronization first repeats bounded capture slices through the fence of the refresh submitted
+		/// by an earlier Tick and only then submits the next refresh;
 		/// callers must release SDK graph access before requesting it.
 		/// </remarks>
 		public void Tick(CameraRelativeFrame? latestCamera = null)
@@ -128,12 +132,12 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 			_scene.RequireMainThread();
 			if (_session == null || State == MapManagerState.Faulted)
 				return;
-			if (SynchronizeFrames && latestCamera.HasValue && GizmoSDK.Gizmo3D.NodeLock.IsLockedByMe())
+			if (SynchronizeFrames && GizmoSDK.Gizmo3D.NodeLock.IsLockedByMe())
 				throw new InvalidOperationException("Frame synchronization requires the caller to release SDK graph access.");
 			using var sample = _tickMarker.Auto();
 			try
 			{
-				var synchronize = SynchronizeFrames && latestCamera.HasValue;
+				var synchronize = SynchronizeFrames;
 				var timeout = FrameWaitTimeout;
 				if (synchronize && (timeout <= TimeSpan.Zero ||
 					timeout.TotalMilliseconds > int.MaxValue))
@@ -153,8 +157,6 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 					var camera = latestCamera.Value;
 					_refreshRequest = _session.SubmitFrame(camera, OmniView);
 					_pump.ExpectFrame(_refreshRequest, camera);
-					if (synchronize)
-						FinishFrame(_refreshRequest, timer, timeout);
 				}
 			}
 			catch (Exception exception)

@@ -18,6 +18,7 @@
 // AMO	261023	Captured bounded frame slices with non-waiting buffer access and unlocked publication.	(2.12.327)
 // AMO	261023	Added separate native-capture and Unity-publication profiler scopes.	(2.12.327)
 // AMO	261026	Stopped synchronous draining at its exact matching frame fence.	(2.12.327)
+// AMO	261030	Consumed started frames through their EndFrame and exempted frame transforms and activations from the command limit.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -121,7 +122,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 			LastLockAttempts = 0;
 			var timer = Stopwatch.StartNew();
 			var processed = 0;
-			while (processed < maximumCommands && (processed == 0 || timer.Elapsed < budget))
+			var counted = 0;
+			// The limits apply only outside frames, so a started frame is consumed through its EndFrame as in CSWUnreal.
+			while (_inFrame || (counted < maximumCommands && (counted == 0 || timer.Elapsed < budget)))
 			{
 				if (_current == null && !_inbox.TryDequeue(out _current))
 					break;
@@ -155,7 +158,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 								_current = null;
 							}
 							if ((change != null && !CanDeferPublication(change.Kind, capturingFrame)) ||
-								processed + _capturedChanges.Count >= maximumCommands || timer.Elapsed >= budget)
+								(!capturingFrame && (counted + _capturedChanges.Count >= maximumCommands ||
+								timer.Elapsed >= budget)))
 								break;
 						}
 						while (_current != null);
@@ -167,6 +171,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 
 					foreach (var change in _capturedChanges)
 					{
+						if (CountsTowardLimit(change.Kind, _inFrame))
+							counted++;
 						Publish(change);
 						processed++;
 						if (stopAfterRefresh != 0 && change.Kind == SceneChangeKind.EndFrame &&
@@ -192,6 +198,12 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 			// Hierarchy/resources and frame completion must publish before dependent captures.
 			return kind == SceneChangeKind.None || kind == SceneChangeKind.StartFrame ||
 				(inFrame && (kind == SceneChangeKind.Transform || kind == SceneChangeKind.Activation));
+		}
+
+		private static bool CountsTowardLimit(SceneChangeKind kind, bool inFrame)
+		{
+			// The transforms and activations of a frame do not count toward the command limit.
+			return !inFrame || (kind != SceneChangeKind.Transform && kind != SceneChangeKind.Activation);
 		}
 
 		private SceneChange Capture(SceneCommand command)

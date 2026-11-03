@@ -31,6 +31,7 @@
 // Who	Date	Description
 //
 // AMO	191205	Created file                                        (2.10.1)
+// AMO	261030	Removed unused legacy grass and tree settings and HasCapability.	(2.12.327)
 //
 //******************************************************************************
 
@@ -51,20 +52,6 @@ namespace Saab.Utility.GfxCaps
         UseTerrainDetailTextures    = 1 << 5,
 
         DefaultCaps                 = 0x0
-    }
-
-    public struct RenderSettings
-    {
-        public int DrawDistance;
-        public float Density;
-        public bool Shadows;
-
-        public RenderSettings(int drawDistance, float density, bool shadows = false)
-        {
-            DrawDistance = drawDistance;
-            Density = density;
-            Shadows = shadows;
-        }
     }
 
     // TODO: replace with a better solution in the future
@@ -100,28 +87,6 @@ namespace Saab.Utility.GfxCaps
         public static Capability CurrentCaps = KeyDatabase.GetDefaultUserKey("GfxCaps/CurrentCaps", Capability.DefaultCaps);
         public static bool FoliageOcclusion = KeyDatabase.GetDefaultUserKey("GfxCaps/Foliage/Occlusion", true);
 
-        public static RenderSettings GetGrassSettings
-        {
-            get
-            {
-                var renderSettings = new RenderSettings(300, 0.1f);
-                renderSettings.DrawDistance = KeyDatabase.GetDefaultUserKey("GfxCaps/Grass/DrawDistance", renderSettings.DrawDistance);
-                renderSettings.Density = KeyDatabase.GetDefaultUserKey("GfxCaps/Grass/Density", renderSettings.Density);
-                return renderSettings;
-            }
-        }
-
-        public static RenderSettings GetTreeSettings
-        {
-            get
-            {
-                var renderSettings = new RenderSettings(5000, 20);
-                renderSettings.DrawDistance = KeyDatabase.GetDefaultUserKey("GfxCaps/Tree/DrawDistance", renderSettings.DrawDistance);
-                renderSettings.Density = KeyDatabase.GetDefaultUserKey("GfxCaps/Tree/Density", renderSettings.Density);
-                return renderSettings;
-            }
-        }
-
         public static SettingsFeature GetFoliageSettings(SettingsFeatureType type)
         {
             var renderSettings = new SettingsFeature(1.0f, 1.0f, false);
@@ -150,11 +115,6 @@ namespace Saab.Utility.GfxCaps
                     break;
             }
             return renderSettings;
-        }
-
-        public static bool HasCapability(Capability caps)
-        {
-            return (caps & CurrentCaps) != 0;
         }
     }
 }

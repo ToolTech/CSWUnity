@@ -16,6 +16,7 @@
 //
 // AMO	261022	Added revisioned render snapshots and shared leases that retain replaced resources until final release.	(2.12.327)
 // AMO	261023	Removed the full-scene state-affinity lookup in favor of indexed source users.	(2.12.327)
+// AMO	261103	Used uniform vertex color in fallback material keys and colors.	(2.12.350)
 //
 //*****************************************************************************
 
@@ -377,10 +378,16 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		{
 			var meshResource = _meshes[geometry];
 			var stateResource = state == IntPtr.Zero ? null : _states[state];
-			var key = (state, stateResource?.Revision ?? 0, builder.GetInstanceID(), meshResource.Color);
+			var stateData = stateResource?.Data ?? default;
+			var color = meshResource.Color;
+			// the fallback shader ignores vertex colors, so an untextured uniform vertex color becomes the material color
+			if (builder.UsesFallbackMaterial(stateData) &&
+				GeometryHelper.TryGetUniformVertexColor(meshResource.Mesh, out var vertexColor))
+				color *= vertexColor;
+			var key = (state, stateResource?.Revision ?? 0, builder.GetInstanceID(), color);
 			if (!_materials.TryGetValue(key, out var materialResource))
 			{
-				var material = builder.CreateSceneMaterial(stateResource?.Data ?? default, meshResource.Color);
+				var material = builder.CreateSceneMaterial(stateData, color);
 				materialResource = new SceneMaterialResource
 				{
 					Key = key,

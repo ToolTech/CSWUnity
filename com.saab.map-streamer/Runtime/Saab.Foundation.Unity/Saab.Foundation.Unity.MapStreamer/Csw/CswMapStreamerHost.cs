@@ -18,6 +18,8 @@
 // AMO	261023	Presented the latest camera pose before post-presentation callbacks.	(2.12.327)
 // AMO	261026	Applied native traversal settings and optional LateUpdate frame synchronization before rendering.	(2.12.327)
 // AMO	261028	Removed the legacy lane; the host starts in Start and prefers its MapUrl over config.xml.	(2.12.327)
+// AMO	261030	Stopped dynamic loaders before the last host releases its platforms, so DB managers outlive in-flight loads.	(2.12.327)
+// AMO	261030	Applied the synchronized frame wait timeout setting every update.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -59,6 +61,9 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		public float FlightSpeed = 100;
 		[Min(0)]
 		public float TurnSpeed = 60;
+
+		// CSW platform references held by hosts; the last holder stops the process-wide loaders.
+		private static int _platformHosts;
 
 		private bool _cswInitialized;
 		private bool _coordinateInitialized;
@@ -113,6 +118,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 				_cswInitialized = CSW.Platform.Initialize();
 				if (!_cswInitialized)
 					throw new InvalidOperationException("CSW.Platform initialization failed.");
+				_platformHosts++;
 				_coordinateInitialized = GizmoSDK.Coordinate.Platform.Initialize();
 				if (!_coordinateInitialized)
 					throw new InvalidOperationException("Coordinate platform initialization failed.");
@@ -147,7 +153,8 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 					MaximumCommandsPerTick = Math.Max(1, MaximumCommandsPerTick),
 					BuildBudget = TimeSpan.FromSeconds(Math.Max(0.0001, Settings.MaxBuildTime)),
 					OmniView = Settings.OmniView,
-					SynchronizeFrames = Settings.SynchronizeFrames
+					SynchronizeFrames = Settings.SynchronizeFrames,
+					FrameWaitTimeout = ToFrameWaitTimeout(Settings.FrameWaitTimeout)
 				};
 				Manager.CoordinateContextChanged += InitializeCamera;
 				Manager.OpenMap(url);
@@ -190,6 +197,15 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 			return KeyDatabase.GetDefaultUserKey("SceneManager/MapUrl", "");
 		}
 
+		/// <summary>Converts the timeout setting in seconds; values that are not positive and finite become zero.</summary>
+		/// <remarks>A zero timeout faults the next synchronized Tick once instead of throwing every update.</remarks>
+		internal static TimeSpan ToFrameWaitTimeout(double seconds)
+		{
+			return seconds > 0 && seconds <= int.MaxValue / 1000.0
+				? TimeSpan.FromTicks(Math.Max(1L, (long)(seconds * TimeSpan.TicksPerSecond)))
+				: TimeSpan.Zero;
+		}
+
 		/// <summary>Replaces the current map session and resets the stored global camera pose.</summary>
 		public void OpenMap(string url)
 		{
@@ -212,6 +228,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 				return;
 			Manager.OmniView = Settings.OmniView;
 			Manager.SynchronizeFrames = Settings.SynchronizeFrames;
+			Manager.FrameWaitTimeout = ToFrameWaitTimeout(Settings.FrameWaitTimeout);
 			Camera.SynchronizeFrames = Settings.SynchronizeFrames;
 			if (FlightInput && Camera.HasPose)
 				UpdateFlightInput();
@@ -260,6 +277,11 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 		}
 
 		/// <summary>Stops native work and releases owned session resources before platform teardown.</summary>
+		/// <remarks>
+		/// The last host holding a CSW platform reference stops the process-wide dynamic loaders and waits for
+		/// in-flight loads before releasing, because CSW.Platform unregisters the DB managers before Gizmo3D stops
+		/// the loaders. Platform initialization or the next session's SetLoaders command starts them again.
+		/// </remarks>
 		public void StopStreaming()
 		{
 			if (_stopping)
@@ -297,6 +319,11 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 				Camera = null;
 				cleanup.Attempt(() =>
 				{
+					if (_cswInitialized && Manager == null && _platformHosts == 1)
+						GizmoSDK.Gizmo3D.DynamicLoaderManager.StopManager(true, 0, true);
+				});
+				cleanup.Attempt(() =>
+				{
 					if (_coordinateInitialized && Coordinates == null)
 					{
 						if (!GizmoSDK.Coordinate.Platform.Uninitialize())
@@ -311,6 +338,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Csw
 						if (!CSW.Platform.Uninitialize())
 							throw new InvalidOperationException("CSW platform shutdown failed.");
 						_cswInitialized = false;
+						_platformHosts--;
 					}
 				});
 				cleanup.Complete("Map streamer host cleanup failed.");

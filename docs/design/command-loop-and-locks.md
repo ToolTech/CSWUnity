@@ -4,8 +4,8 @@
 arbetskopian, inklusive ändringen till inputbatch och `TryLockEdit(0)`.
 Kamerans senaste renderpose presenteras som standard varje Unity-frame i den
 committade scenreferensen. Valbart synkläge presenterar i stället bara den
-fullbordade native-framens pose och projektion. Detta är inte ett
-förslag om en ny geometribyggtråd.
+fullbordade native-framens pose och projektion, en uppdatering efter den
+önskade posen. Detta är inte ett förslag om en ny geometribyggtråd.
 
 Två saker måste hållas isär:
 
@@ -50,7 +50,7 @@ flowchart LR
         direction TB
         U0["Update<br/>input och kamerasnapshot"]
         U1["Pump<br/>poll av ägd outputbuffert"]
-        U2["TryLockEdit(0)<br/>capture av begränsad slice"]
+        U2["TryLockEdit(0)<br/>capture av en slice<br/>en frame delas inte"]
         U3["Unlock i finally<br/>sedan publicering"]
         U4["Matchad EndFrame<br/>commit av scen och kamerareferens"]
         U5["En inputbuffert<br/>Omni + Position + Settings + LOD + Refresh"]
@@ -104,12 +104,12 @@ också viktig för det fortlöpande utbytet av laddarresultat.
 flowchart TD
     T0["UpdateFlightInput om aktiverad<br/>Camera.Sample om pose finns"]
     T1["MapManager.Tick<br/>kontrollera session, tråd och generation"]
-    B{"Kommandobudget och<br/>tidsbudget kvar?"}
+    B{"Påbörjad frame, eller<br/>kommando- och tidsbudget kvar?"}
     Q{"Aktuell buffert eller<br/>TryDequeue från inbox?"}
     L{"buffer.TryLockEdit(0)<br/>lyckas direkt?"}
     SKIP["Behåll buffert och läsposition<br/>avsluta Pump utan SDK-väntan"]
     C["GetCommand + Capture<br/>kopiera värden / bygg resurser<br/>Dispose command under EDIT"]
-    MORE{"Fler oberoende framevärden<br/>och budget kvar?"}
+    MORE{"Fler oberoende framevärden?<br/>Utanför en frame även budget kvar?"}
     CLOSE["Om bufferten är tom:<br/>Dispose medan EDIT hålls"]
     UNLOCK["Släpp SDK-låset i finally"]
     PUB["Publicera fångade ändringar<br/>utan SDK-lås"]
@@ -151,27 +151,45 @@ barriär. Transform/Activation inom en frame kan däremot fångas tillsammans,
 eftersom deras synliga ändringar ändå väntar på framecommit. Utanför en frame
 publiceras dessa direkt mellan kommandona.
 
-**Budgeten är inte en hård tidsgräns.** Ett påbörjat mesh-/texturbygge avbryts
-inte när budgeten går ut. Den kontrolleras mellan kommandon, och atomisk
-framecommit kan också kosta mer än den återstående budgeten.
+**Budgeten delar aldrig en frame.** Kommando- och tidsgränsen kontrolleras
+bara utanför en frame, alltså före ett kommando utanför en frame och före en
+`StartFrame`. När `StartFrame` är fångad konsumeras framen till och med
+matchande `EndFrame` utan att gränserna kontrolleras, som i CSWUnreal
+(REQ-CSWU-SM-046). Framen fortsätter i en senare uppdatering bara om dess
+`EndFrame` ännu inte har kommit, eller om `TryLockEdit(0)` misslyckas efter
+ett barriärkommando eller en buffertgräns inne i framen. Framens transformer
+och aktiveringar räknas inte mot kommandogränsen; `StartFrame`, `EndFrame`
+och alla kommandon utanför frames räknas. Framens tid räknas mot
+tidsbudgeten, så efter en stor frame väntar nästa kommando till nästa
+uppdatering.
 
-## 4. Samma buffert över flera Unity-frames
+**Budgeten är inte en hård tidsgräns.** Ett påbörjat mesh-/texturbygge avbryts
+inte när budgeten går ut. Den kontrolleras mellan kommandon utanför frames, och
+en hel frame med sin atomiska framecommit kan kosta mer än den återstående
+budgeten.
+
+## 4. Buffertar över flera Unity-frames
+
+En buffert utanför en frame, till exempel laddarnas nya noder, kan delas av
+budgeten över flera Unity-frames. En framebuffert delas inte: native
+`refreshScene` köar varje frame som en enda buffert utan barriärkommandon, så
+pumpen fångar hela framen i en slice. Framebufferten kan däremot få vänta, när
+budgeten tog slut före dess `StartFrame` eller när `TryLockEdit(0)` misslyckas.
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant U as Unity huvudtråd
-    participant B as Ägd outputbuffert
+    participant B as Ägda outputbuffertar
     participant N as CSW-worker
     Note over U,N: En refresh är outstanding tills matchad EndFrame konsumerats
-    U->>B: Tick A: TryLockEdit(0) lyckas
-    B-->>U: StartFrame och några transformvärden
-    U->>B: Släpp EDIT efter capture-slicen
-    Note over U: Publicera staging, ingen framecommit ännu
-    U->>B: Tick B: TryLockEdit(0) misslyckas
+    U->>B: Tick A: TryLockEdit(0) på en laddarbuffert lyckas
+    B-->>U: New, Update och Delete, en barriär per slice, tills budgeten tar slut
+    Note over U: Budgeten kontrolleras före StartFrame, framebufferten väntar
+    U->>B: Tick B: TryLockEdit(0) på framebufferten misslyckas
     Note over U: Ingen SDK-väntan, behåll läspositionen
     U->>B: Tick C: TryLockEdit(0) lyckas
-    B-->>U: Återstående aktiveringar och EndFrame
+    B-->>U: StartFrame, alla transformer och aktiveringar, EndFrame
     U->>B: Dispose tom buffert under EDIT, sedan unlock
     U->>U: Publicera matchad frame atomiskt
     Note over U: RefreshOutstanding nollställs
@@ -224,10 +242,11 @@ De två valen är oberoende:
 | Inställning | `false` | `true` |
 | --- | --- | --- |
 | `OmniView` | Native traversal använder kamerans frustum. | Native traversal och LOD-val åt alla håll, som CSWUnreals Omni-val. Unity gör fortfarande sin egen renderculling. |
-| `SynchronizeFrames` | Budgeterad pump i Update; senaste önskade pose kan ligga före native-framen. | Pump och snapshot i LateUpdate; matchad frame fullbordas och dess pose/projektion presenteras. |
+| `SynchronizeFrames` | Budgeterad pump i Update; senaste önskade pose kan ligga före native-framen. | Pump och snapshot i LateUpdate; föregående uppdaterings refresh fullbordas till sin `EndFrame`, sedan skickas refresh för snapshoten. Den fullbordade framens pose/projektion presenteras, en uppdatering efter den önskade posen. |
 
 Båda ligger i värdens `Settings` och kan ändras i runtime. `OmniView` är
 **true som standard**, som i CSWUnreal; `SynchronizeFrames` är false.
+Standardvalet för synkläget är fortfarande öppet i REQ-CSWU-POS-003.
 
 Med frustumtraversal laddar och aktiverar native bara kartan inom
 SceneManager-kamerans frustum. Mätt på Stensholm före borttagningen av
@@ -252,22 +271,20 @@ ersätter inte synkronisering.
 flowchart TD
     INPUT["Update<br/>uppdatera önskad pose, pumpa inte scenen"]
     SAMPLE["LateUpdate<br/>snapshot efter normal Update-input"]
-    OLD{"Äldre refresh outstanding?"}
-    DRAIN["Fullborda den äldre framen först<br/>samma låsfria väntemekanism"]
-    SEND["Omni + Position + Settings + LOD + Refresh<br/>en färdig batch och en trigger"]
-    PUMP["Pumpa nästa begränsade slice<br/>TryLockEdit(0), capture, unlock, publicera"]
-    FENCE{"Matchad EndFrame fullbordad?"}
-    WAIT["Ingen framdrift: invänta inboxaktivitet<br/>monitorn släpps, inget SDK-lås hålls<br/>upptaget graflås provas igen efter högst 1 ms"]
-    COMMIT["Scen, ROI, aktiveringar och kamerareferens<br/>committas tillsammans"]
-    PRESENT["Presentera committad pose och projektion<br/>PostPresent, sedan Unity-rendering"]
-    FAIL["Deadline eller fel<br/>rapportera, stoppa sessionen och töm scenen"]
-    INPUT --> SAMPLE --> OLD
-    OLD -->|Ja| DRAIN --> SEND
-    OLD -->|Nej| SEND
-    SEND --> PUMP --> FENCE
-    FENCE -->|Nej| WAIT --> PUMP
-    FENCE -->|Ja| COMMIT --> PRESENT
-    DRAIN -.->|Timeout eller fel| FAIL
+    PUMP["Pumpa nästa slice, frame odelad<br/>TryLockEdit(0), capture, unlock, publicera"]
+    OLD{"Föregående uppdaterings refresh<br/>fortfarande outstanding?"}
+    PROGRESS{"Gav slicen framdrift?"}
+    WAIT["Invänta inboxaktivitet<br/>monitorn släpps, inget SDK-lås hålls<br/>upptaget graflås provas igen efter högst 1 ms"]
+    SEND["Omni + Position + Settings + LOD + Refresh<br/>för snapshoten: en färdig batch och en trigger"]
+    PRESENT["Presentera senast committade pose och projektion<br/>PostPresent, sedan Unity-rendering"]
+    NATIVE["Native traverserar den nya refreshen<br/>medan Unity renderar"]
+    FAIL["Timeout eller fel<br/>rapportera, stoppa sessionen och töm scenen"]
+    INPUT --> SAMPLE --> PUMP --> OLD
+    OLD -->|Ja| PROGRESS
+    PROGRESS -->|Ja| PUMP
+    PROGRESS -->|Nej| WAIT --> PUMP
+    OLD -->|Nej| SEND --> PRESENT
+    SEND -.-> NATIVE
     PUMP -.->|Timeout eller fel| FAIL
     classDef edit fill:#ffe8e8,stroke:#c62828,color:#111;
     classDef queue fill:#e6efff,stroke:#2563eb,color:#111;
@@ -275,18 +292,34 @@ flowchart TD
     classDef pending fill:#fff4cc,stroke:#a16207,color:#111;
     class PUMP edit;
     class SEND queue;
-    class COMMIT,PRESENT publish;
-    class OLD,DRAIN,FENCE,WAIT,FAIL pending;
+    class PRESENT publish;
+    class OLD,PROGRESS,WAIT,NATIVE,FAIL pending;
 ```
 
-Slicarnas låsgränser är oförändrade, men flera slicar körs i **samma**
+Synkläget är pipelinat som den bortkommenterade synkrona varianten i
+CSWUnreal (REQ-CSWU-SM-046, AD-CSWU-005). Varje uppdatering fullbordar först
+den refresh som föregående uppdatering skickade, till och med dess `EndFrame`,
+och skickar sedan refresh för sin egen snapshot. När pumpen konsumerar den
+matchade `EndFrame` committas scen, ROI, aktiveringar och kamerareferens
+tillsammans. Native traverserar den nya refreshen medan Unity renderar, och
+Unity presenterar den fullbordade framens pose och projektion, alltså en
+uppdatering efter den önskade posen. Finns ingen outstanding refresh, till
+exempel i första uppdateringen, skickas bara nästa refresh.
+
+Slicarnas låsgränser är oförändrade, och som i standardläget delar budgeten
+aldrig en frame, men flera slicar kan köras i **samma**
 Unity-frame. Den vanliga totalbudgeten får alltså överskridas. Ingen ny
 refresh skickas innan den äldre är fullbordad. Pumpen stannar vid målets
 `EndFrame`, även om senare kommandon redan finns i bufferten.
-`FrameWaitTimeout` på managern är fem sekunder som standard. Deadline kontrolleras
-mellan operationer; ett enskilt bygge och livscykelcleanup kan inte avbrytas mitt
-i arbetet. En timeout rapporteras som fel och tömmer presentationen, inte som
-en framgångsrik partiell frame.
+
+`FrameWaitTimeout` begränsar väntan i varje uppdatering och är fem sekunder
+som standard. Värdens `Settings.FrameWaitTimeout` anges i sekunder och kan
+ändras i runtime; ett värde som inte är positivt och ändligt ger fel i nästa
+synkade uppdatering. Deadline kontrolleras mellan operationer; ett enskilt
+bygge och livscykelcleanup kan inte avbrytas mitt i arbetet. En timeout
+rapporteras som fel, stoppar sessionen och tömmer presentationen, inte som en
+framgångsrik partiell frame. CSWUnreal fortsätter i stället utan ny refresh
+när dess väntan på tio sekunder går ut.
 
 Kameran står i noll relativt den committade globala referensen och använder
 just den framens rotation och perspektivprojektion. Ny input lagras separat.
@@ -298,8 +331,8 @@ kartbyte och stopp släpper projektionens tillfälliga override.
 
 Detta löser skillnaden mellan renderfrustum och den frame vars aktiveringar
 har publicerats. **EndFrame betyder inte att alla asynkrona kartladdningar är
-klara.** Synkläget kan ge extra latens eller bildtidssteg; det är ingen
-60-fps-garanti. Se även [integrationsguidens inställningar](../howto/integrate-into-host-project.md#choose-native-coverage-and-frame-synchronization-independently).
+klara.** Synkläget ger en uppdaterings extra latens och kan ge
+bildtidssteg; det är ingen 60-fps-garanti. Se även [integrationsguidens inställningar](../howto/integrate-into-host-project.md#choose-native-coverage-and-frame-synchronization-independently).
 
 ## 5. Geometri: används samma builders och factories?
 
@@ -377,6 +410,8 @@ Att diskutera med bilderna framför oss:
    builders och deras livscykel?
 3. Hur mycket arbete ska en slice innehålla innan andra SDK-trådar släpps fram?
    Kommandobudget, tidsbudget och kostnaden för ett enskilt bygge är olika saker.
+   Inne i en frame gäller ingen gräns (REQ-CSWU-SM-046), men en native frame
+   innehåller bara värden, aktiveringar och transformer, och inga byggen.
 4. Ska alla outputkategorier använda editaccess? Unity-pumpen gör det i dag.
    CSWUnreal behandlar rena felbuffertar utan SDK-lås.
 
@@ -575,12 +610,56 @@ kölås, CSW-kommandonas referensräkning och Unitys DXGI-presentationsväntan.
 Den separata [shutdown-säkra beroendekohorten](../howto/stage-nuget-dependencies.md#shutdown-safe-sdk-handoff)
 måste användas för att få denna SDK-korrigering.
 
+### Laddarna stoppas innan plattformen släpps
+
+Ett annat stoppfel syntes när budgetgränserna slutade dela frames, eftersom
+fler laddningar då pågick när PlayMode-testerna stoppade värden.
+`CSW.Platform.Uninitialize` avregistrerar databashanterarna med
+`DbManager.Uninitialize` innan Gizmo3D:s shutdown stoppar laddarna. En laddare
+som fortfarande var inne i `gzDbManager::loadDB` arbetade då mot
+avregistrerade databashanterare och allokerade tiotals GB, och processen
+avslutades med `std::bad_alloc` (0xC0000409). CSWUnreal drabbas inte, eftersom
+`gzShutDownGizmo` stoppar laddarna innan databashanterarna avregistreras.
+
+```mermaid
+flowchart TD
+    DISPOSE["Manager.Dispose<br/>native Shutdown och ägd cleanup"]
+    SCENE["Släpp Unity-realiseringen<br/>och koordinatkontexten"]
+    LAST{"Sista värd som håller<br/>CSW-plattformen?"}
+    STOP["DynamicLoaderManager.StopManager<br/>vänta på pågående laddningar<br/>utan SDK-lås"]
+    COORD["Släpp Coordinate-plattformen"]
+    CSW["CSW.Platform.Uninitialize<br/>DbManager, sedan Gizmo3D"]
+    DISPOSE --> SCENE --> LAST
+    LAST -->|Ja| STOP --> COORD
+    LAST -->|Nej| COORD
+    COORD --> CSW
+    classDef join fill:#fff4cc,stroke:#a16207,color:#111;
+    class STOP join;
+```
+
+`CswMapStreamerHost.StopStreaming` stoppar därför laddarna när sessionen är
+stängd, i den sista värd som håller CSW-plattformen, och väntar på pågående
+laddningar innan Coordinate- och CSW-plattformarna släpps
+(REQ-CSWU-SM-047). Inget SDK-lås hålls
+under väntan, eftersom laddarna tar editlåset när de kopplar in sina noder.
+Varje ny session startar laddarna igen med `SetLoaders` före `AddNewMap`.
+
+Laddarhanteraren är processgemensam. En annan ägare av CSW-plattformen än
+värden har därför ingen laddning förrän en värd startar en ny session. Värden
+räknar bara värdarnas plattformsreferenser, och ett misslyckat
+`CSW.Platform.Uninitialize` ändrar inte räkningen. Arbetskopian av CSW
+stoppar nu laddarna och väntar på dem i `CSW.Platform.Uninitialize` före
+`DbManager.Uninitialize`, som GizmoSDK:s shutdown gör. Ändringen är inte
+committad och finns inte i de paket som CSWUnity använder, så värdens stopp
+behövs tills vidare; se
+[ägarpunkterna i CSWUnreal-referensen](cswunreal-scenemanager-reference.md#owner-attention).
+
 ## Källor i denna arbetskopia
 
 | Kod | Läs särskilt |
 | --- | --- |
 | [CswMapStreamerHost](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/Csw/CswMapStreamerHost.cs) | `Update`, `LateUpdate`, start och stop. |
-| [MapManager](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/Csw/MapManager.cs) | `Tick`, `HandleFrame`, `StopSession`. |
+| [MapManager](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/Csw/MapManager.cs) | `Tick`, `FinishFrame`, `HandleFrame`, `StopSession`. |
 | [Inbox och native session](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/Csw/SceneCommandInbox.cs) | `Receive`, `TryDequeue`, `SubmitFrame`, `Dispose`. |
 | [SceneCommandPump](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/Csw/SceneCommandPump.cs) | `Pump`, `CanDeferPublication`, `CaptureNode`, `Publish`. |
 | [SceneResources](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/Csw/SceneResources.cs) | `Capture`, `Publish`, `Acquire` och leasefrigöring. |

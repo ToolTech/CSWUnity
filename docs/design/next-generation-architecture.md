@@ -505,8 +505,8 @@ unrepeatable statement that the system is "fast".
 
 ## Related documentation
 
-- [Next-generation architecture requirements](../requirements/next-generation-architecture.md)
-- [Scene control requirements](../requirements/scene-control.md)
+- [Next-generation architecture requirements](../requirements/architecture/next-generation-architecture.md)
+- [Scene control requirements](../requirements/functional/scene-control.md)
 - [Scene control and threaded realization](scene-control-and-threading.md)
 - [Synthetic world](synthetic-world.md)
 - [External object integration](object-integration.md)

@@ -33,6 +33,7 @@
 // ZJP	200625	Created file                                        (2.10.6)
 // AMO	261022	Added revision-aware copied texture metadata for command-driven scenes.	(2.12.327)
 // AMO	261028	Recorded texture builds in the shared build diagnostics after removing the legacy SceneManager.	(2.12.327)
+// AMO	261103	Marked white placeholder textures for states without an active texture.	(2.12.350)
 //
 //******************************************************************************
 
@@ -58,6 +59,7 @@ namespace Saab.Foundation.Unity.MapStreamer
     public struct StateBuildOutput
     {
         public Texture2D Texture;
+        public bool IsPlaceholderTexture;
         public Texture2D Feature;
         public Texture2D SurfaceHeight;
 
@@ -109,6 +111,8 @@ namespace Saab.Foundation.Unity.MapStreamer
                 return false;
 
             output.Texture = texture;
+            output.IsPlaceholderTexture =
+                !state.HasTexture(0) || state.GetMode(StateMode.TEXTURE) != StateModeActivation.ON;
 
             if (ReadTextureFromState(
                     state,
