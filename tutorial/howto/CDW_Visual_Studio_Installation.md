@@ -37,12 +37,3 @@ This installs the dependencies required to build the GizmoSDK solution and work 
 1. Open Visual Studio.
 2. Sign in using a Microsoft or GitHub account if required.
 3. Complete any authentication steps.
-
-## 2.4 Solution Used for the Map Streamer Build
-
-After cloning the CSWUnity repository, the solution used for the GizmoSDK build is:
-
-`CSWUnity/vs17/Install_Gizmo/Install_Gizmo.sln`
-
-The complete clone and build process is described in the
-[Map Streamer demo guide](CDW_map_streamer_DEMO.md).
