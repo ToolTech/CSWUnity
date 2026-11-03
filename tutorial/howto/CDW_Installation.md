@@ -96,3 +96,7 @@ file and approved dependency set.
 New projects may prefer Unity `6000.3.21f1 LTS`, provided compatibility with
 the required CSWUnity, GizmoSDK, rendering, and package dependencies has been
 verified. Do not upgrade an existing project solely on the basis of this guide.
+
+<p align="right">
+<a href="CDW_Visual_Studio_Installation.md" >CDW_Visual_Studio_Installation ➡️</a>
+</p>
