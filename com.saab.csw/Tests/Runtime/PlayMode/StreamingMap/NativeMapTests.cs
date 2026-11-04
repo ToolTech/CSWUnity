@@ -476,6 +476,7 @@ namespace CSW.Unity.Tests
 			};
 			var allocated = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame");
 			var hook = _controlObject.AddComponent<PresentedFrameHook>();
+			hook.Display = Application.isBatchMode ? null : _target;
 			var moving = true;
 			var probeFrame = -10;
 			var probes = new List<(double lockWait, double collect, bool released)>();
