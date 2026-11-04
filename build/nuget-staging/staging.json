@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "profile": "phase-1-windows-x64",
-  "outputDirectory": "../../artifacts/unity-packages/com.saab.map-streamer.dependencies",
+  "outputDirectory": "../../artifacts/unity-packages/com.saab.csw.dependencies",
   "workDirectory": "../../artifacts/nuget-staging",
   "unityPackage": {
-    "name": "com.saab.map-streamer.dependencies",
+    "name": "com.saab.csw.dependencies",
     "version": "0.1.0",
     "displayName": "CSWUnity NuGet Dependencies",
     "description": "Generated managed and native dependencies for CSWUnity.",

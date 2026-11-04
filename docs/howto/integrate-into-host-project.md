@@ -4,12 +4,12 @@
 
 ## Goal
 
-Compose the command-driven `MapStreamerHost` in a host-owned scene, using the
+Compose the command-driven `MapControl` in a host-owned scene, using the
 existing geometry builders and optional rendering modules. The native
 `CSW.SceneManager` owns map traversal, loading, camera-relative transforms and
 scope activation; Unity realizes its ordered output.
 
-`MapStreamerHost` is the package's only streaming lane. The former
+`MapControl` is the package's only streaming lane. The former
 Unity-owned `SceneManager` component, its camera controllers and node utilities
 have been removed. Scenes that still reference them show missing scripts and
 must be recomposed with this host.
@@ -37,8 +37,8 @@ package-from-disk operation to install the generated dependency package and the
 core package:
 
 ```text
-artifacts\unity-packages\com.saab.map-streamer.dependencies\package.json
-com.saab.map-streamer\package.json
+artifacts\unity-packages\com.saab.csw.dependencies\package.json
+com.saab.csw\package.json
 ```
 
 Both paths are relative to the CSWUnity checkout. Keep those package locations
@@ -52,7 +52,7 @@ realization-profile or project-validator workflows.
 
 ## Compose the host
 
-Add `Saab.Foundation.Unity.MapStreamer.Csw.MapStreamerHost` to a host-owned
+Add `CSW.Unity.MapControl` to a host-owned
 GameObject and assign the following references explicitly:
 
 | Assignment | Contract |
@@ -83,16 +83,17 @@ and terrain shading are not required to start streaming.
 ### Keep one camera owner
 
 While streaming, the host presents `ViewCamera`'s position and rotation every
-frame, and also its projection when frames are synchronized. Its `CameraBridge`
+frame, and also its projection when frames are synchronized. Its `CSW.Unity.Camera`
 is the only package writer of the `_WorldOffset` and `_LocalToEUN` shader
 globals. The host does not discover or disable other components: do not add a
 second controller that moves `ViewCamera` or another writer of those globals.
 
 ### Run ExampleScene
 
-The example project and package still use the `com.saab.map-streamer` directory
-and package identifier. Open `Assets\Scenes\ExampleScene.unity` and enter Play
-mode; the scene's `MapStreamerHost` starts streaming in `Start`.
+The package is `com.saab.csw`; the example project still uses the
+`projects\com.saab.map-streamer` directory. Open
+`Assets\Scenes\ExampleScene.unity` and enter Play mode; the scene's
+`MapControl` starts streaming in `Start`.
 
 The saved scene sets **Map Url** to the local Stensholm map and disables
 **Read Configuration**. On other machines, set **Map Url** to an accessible GZD
@@ -124,24 +125,25 @@ map origin again, or move the presentation root to compensate for camera travel.
 ## Start and control the camera
 
 The host starts streaming in `Start`. Unity calls `Start` after every `Awake`
-in the loaded scene, including the `Initializer` that selects `config.xml`, and
+in the loaded scene, including the `PlatformComponent` that starts `CSW.Unity.Platform` and selects
+`config.xml`, and
 after `UnityEngine.SceneManagement.SceneManager.sceneLoaded` callbacks, so these
 can still assign references or `MapUrl`. A startup failure is logged and
 disables the component. Disabling the component stops streaming; enabling it
 again starts a new session with the current settings.
 
-To start with a URL known only at runtime, call `host.StartStreaming(mapUrl)` on
+To start with a URL known only at runtime, call `control.StartStreaming(mapUrl)` on
 the Unity main thread before the host's `Start`, for example from a
 `sceneLoaded` callback; `Start` then keeps that session. Calling
 `StartStreaming` while a session is running throws. To defer startup, save the
 component disabled and enable it when the application is ready.
 
-Observe `host.Manager.State`, `Error` and `CompletedFrames`, and the manager's
-`Failed`/`FrameCommitted` events. `Running` means a completed native frame has
+Observe the control's `State`, `LoadedMapUrl`, `Error` and `CompletedFrames`,
+and its `Failed`/`FrameCommitted` events. `Running` means a completed native frame has
 been consumed, not that every possible map tile is already loaded. Startup
 failures and command errors are surfaced; there is no silent fallback.
 
-`CameraBridge` stores a global double-precision native position and submits
+`CSW.Unity.Camera` stores a global double-precision native position and submits
 that pose to SceneManager. The scene's native ROI transforms, terrain metadata,
 projection and shader origin remain anchored to the matching committed frame.
 Do not drive travel by accumulating a large Unity camera position.
@@ -149,7 +151,7 @@ Do not drive travel by accumulating a large Unity camera position.
 By default, the host presents the bridge's **latest position and rotation** in `LateUpdate`,
 before `PostPresent`, even while a refresh is outstanding. The Unity camera
 uses a transient offset from the committed global reference:
-`Axes.ToUnityPosition(liveGlobalPosition, committedGlobalPosition)`.
+`Conversion.ToUnityPosition(liveGlobalPosition - committedGlobalPosition)`.
 Double coordinates are subtracted before conversion to float. Its world
 position is zero when the live and committed positions coincide; it need not
 be zero during flight or when an older native frame commits.
@@ -162,14 +164,17 @@ Do not add another ROI-top correction or floating-origin shift. Before the
 first reference arrives, only live rotation is applied; map replacement and
 clear discard the previous reference.
 
-The built-in `FlightInput` supplies basic WASD flight, Space/Left Control
-vertical movement, Shift speed boost and arrow-key rotation. For host-owned
-controls, set `FlightInput = false` and use the bridge on the main thread:
+The separate `CSW.Unity.FlightInput` component supplies basic WASD flight,
+Space/Left Control vertical movement, Shift speed boost and arrow-key rotation
+by moving `MapControl.Camera`; `ExampleScene` adds it next to `MapControl`.
+It is an interim input until the `CSW.Input` and `CSW.MotionModel`
+realizations replace it. For host-owned controls, omit or disable
+`FlightInput` and use the bridge on the main thread:
 
-- `host.Camera.SetPose(globalPosition, unityRotation)` accepts a `Vec3D` in the
+- `control.Camera.SetPose(globalPosition, unityRotation)` accepts a `Vec3D` in the
   configured native scene coordinate system and a Unity-basis `Quaternion`.
 - `SetGeodeticPose(position, unityRotation)` uses a `LatPos` after
-  `host.Coordinates.IsConfigured`; angles are radians and altitude is metres.
+  `control.Coordinates.IsConfigured`; angles are radians and altitude is metres.
 - `Move(cameraLocalMetres)` and `Rotate(headingDegrees, pitchDegrees)` update
   the bridge's pose rather than translating the Unity camera.
 
@@ -221,13 +226,12 @@ Unity frame, so total work can exceed `MaximumCommandsPerTick` and
 `Settings.MaxBuildTime`. An unavailable SDK lock is still probed with
 `TryLockEdit(0)`. Between attempts the inbox condition wait releases its local
 monitor and holds **no SDK graph lock**; arrival/version checks prevent a missed
-notification. Do not call synchronized `MapManager.Tick` while already holding
-SDK graph access.
+notification. Do not hold SDK graph access while the control's
+synchronized update runs.
 
 `Settings.FrameWaitTimeout` bounds the wait in each synchronized update. It is
-in seconds, defaults to five and can change at runtime. The host applies it to
-`host.Manager.FrameWaitTimeout` in every update, so change the setting rather
-than the manager property. A value that is not positive and finite faults the
+in seconds, defaults to five and can change at runtime. The control applies it to
+its internal session in every update, so change the setting at runtime. A value that is not positive and finite faults the
 next synchronized update. An expired deadline, stopped worker or invalid frame
 faults the session, reports the error and clears its presentation; it does not
 accept an incomplete frame as success. The deadline is checked between
@@ -380,14 +384,14 @@ see [Command loop and locks](../design/command-loop-and-locks.md) (Swedish).
 
 ## Change maps and stop
 
-Use `host.OpenMap(nextUrl)` to replace the current map, or `host.ClearMap()` to
+Use `control.OpenMap(nextUrl)` to replace the current map, or `control.ClearMap()` to
 remove it before opening another. Clearing stops and disposes the old native
 session; opening creates a fresh session. Both reset the camera pose. A
 generation counter alone is not used as a substitute for stopping/draining the
 old producer. The current host opens one map at a time; the generic multi-map
 configuration workflow remains deferred.
 
-Call `host.StopStreaming()` before disposing host-owned scene dependencies.
+Call `control.StopStreaming()` before disposing host-owned scene dependencies.
 Repeated stop is supported. The host also stops when it is disabled or
 destroyed.
 
@@ -399,12 +403,13 @@ sequence. Cleanup attempts independent releases and reports aggregate failures.
 Callers should not separately release the host's session or borrowed callback
 manager/receiver wrappers.
 
-After this teardown, the last host that holds the CSW platform stops the
-process-wide dynamic loaders and waits for their loads in progress before it
-releases the Coordinate and CSW platforms, because `CSW.Platform.Uninitialize`
+After this teardown, the host disposes its `CSW.Unity.Platform` reference. When
+the last reference is disposed, the platform stops the process-wide dynamic
+loaders and waits for their loads in progress before it releases the
+Coordinate and CSW platforms, because `CSW.Platform.Uninitialize`
 in the current CSW packages unregisters the database managers before Gizmo3D
-stops the loaders. The next session starts the loaders again. Code outside the
-host that holds its own CSW platform reference has no loading until a host
+stops the loaders. The next session starts the loaders again. Code that
+holds its own `CSW.Platform` reference outside `CSW.Unity.Platform` has no loading until a host
 starts a new session.
 
 `NativeMapTests.RepeatedRealMapLifetimesDrainPendingOutputBeforeReloadAndRestart`

@@ -9,7 +9,7 @@ new generic behavior.
 ## Scope
 
 This document covers the CSWUnity realization of the generic CSW API levels,
-SceneManager mechanism, MapManager, Camera and View model, and Object and Event
+SceneManager mechanism, MapControl, Camera and View model, and Object and Event
 APIs. The generic requirements that it realizes are hosted in
 [Generic CSW Baseline](../generic/requirements.md). This document holds the
 Principle, Mechanism, and Class requirements of the area. Its Behavior
@@ -110,18 +110,38 @@ execution context that permits those operations.
 
 ## Other common capabilities
 
-### REQ-CSWU-MM-001: MapManager realization
+### REQ-CSWU-MM-001: CSW.Unity.MapControl realization
 
 - **Status:** Pending
 - **Kind:** Class
 - **Milestone:** M1
 - **Use cases:** None
-- **Depends on:** REQ-CSW-MM-001, REQ-CSW-MM-002
+- **Depends on:** REQ-CSW-MM-001, REQ-CSW-MM-002, REQ-CSW-API-016
 - **Verification:** API review plus test of whole-map operations and metadata
 
-CSWUnity shall realize the generic whole-map MapManager operations and
-metadata, including URL-based map parts, while keeping Unity scene objects out
-of the generic MapManager API.
+CSWUnity shall realize the generic `CSW.MapControl` of REQ-CSW-API-016 as
+`CSW.Unity.MapControl`, with its whole-map operations and metadata, including
+URL-based map parts, while keeping Unity scene objects out of the generic
+`CSW.MapControl` API. `CSW.Unity.MapControl` succeeds the current
+`MapManager` class of the Phase 1 runtime and takes over the streaming session
+of `MapStreamerHost`, which is removed: it borrows the view camera of
+REQ-CSWU-PKG-015, the target parent, the factories of REQ-CSWU-PKG-016, and
+the presentation modules; it owns the session, the command pump, and the Unity
+scene that it creates; it requests its platform references from
+`CSW.Unity.Platform` of REQ-CSWU-PKG-013 instead of initializing a platform.
+It is a component that runs at most one session at a time, provides start,
+open map, clear map, and an idempotent stop, stops when it is disabled or
+destroyed, is called on the Unity main thread, and drives its updates from
+Unity callbacks. It keeps the same script GUID as `MapStreamerHost`, so saved
+scenes keep their component, and keeps its session in the internal class
+`MapSession` of `CSW.Unity.StreamingMap`. It exposes the state of the current
+map (stopped, loading, running, or faulted), the URL of the loaded map, the
+error that faulted it, and the number of completed frames, and it raises
+events on the Unity main thread for each committed frame and for each failure.
+Moving the camera from user input is not part of `CSW.Unity.MapControl`: the
+separate component `CSW.Unity.FlightInput` moves `MapControl.Camera` from the
+keyboard until the realizations of `CSW.Input` (REQ-CSW-API-014) and
+`CSW.MotionModel` (REQ-CSW-API-015) replace it.
 
 ### REQ-CSWU-OE-001: Object and Event realization
 

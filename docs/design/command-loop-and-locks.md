@@ -103,7 +103,7 @@ också viktig för det fortlöpande utbytet av laddarresultat.
 ```mermaid
 flowchart TD
     T0["UpdateFlightInput om aktiverad<br/>Camera.Sample om pose finns"]
-    T1["MapManager.Tick<br/>kontrollera session, tråd och generation"]
+    T1["MapSession.Tick<br/>kontrollera session, tråd och generation"]
     B{"Påbörjad frame, eller<br/>kommando- och tidsbudget kvar?"}
     Q{"Aktuell buffert eller<br/>TryDequeue från inbox?"}
     L{"buffer.TryLockEdit(0)<br/>lyckas direkt?"}
@@ -207,14 +207,14 @@ renderpose.
 ### Renderpose och ROI-referens
 
 ROI-transformer, terrängmetadata och shaderorigo ligger kvar i samma committade
-native referens. `CameraBridge.PresentPose` sätter kamerans tillfälliga
-Unity-position till `Axes.ToUnityPosition(liveGlobalPosition, committedGlobalPosition)`.
+native referens. `Camera.Present` sätter kamerans tillfälliga
+Unity-position till `Conversion.ToUnityPosition(liveGlobalPosition - committedGlobalPosition)`.
 Double-positionerna subtraheras **före** floatkonverteringen. Kameran står
 alltså i noll när de två positionerna är lika, inte under all löpande flygning.
 
 ```mermaid
 flowchart LR
-    INPUT["Senaste double-position L<br/>och senaste rotation"] --> LIVE["LateUpdate: PresentPose<br/>kameraposition B gånger L minus R"]
+    INPUT["Senaste double-position L<br/>och senaste rotation"] --> LIVE["LateUpdate: Present<br/>kameraposition B gånger L minus R"]
     OLD["Committad referens R"] --> LIVE
     OLD --> SCENE["ROI-transformer, terräng<br/>och shaderorigo i R"]
     LIVE --> VIEW["En konsekvent renderad vy"]
@@ -229,7 +229,7 @@ Kameraoffseten är vyekvivalent med en gemensam korrektion på alla ROI-toppar,
 men ändrar inte varje lövs transform eller terrängens texturreferens.
 Vid nästa native commit byts ROI-transformer och kamerareferens tillsammans;
 rörelsen får inte läggas till en gång till. Ingen SDK-graf läses och inget
-SDK-lås tas av `PresentPose`. Kartbyte nollställer den gamla kamerareferensen.
+SDK-lås tas av `Present`. Kartbyte nollställer den gamla kamerareferensen.
 
 Ägandet av bufferten håller kommandoreferenser vid liv. Det gör inte levande
 SDK-noder låsfria att läsa. Nativevärden fångas fortfarande under korrekt
@@ -362,7 +362,7 @@ flowchart LR
     end
     subgraph CURRENT["Nuvarande command-lane"]
         direction TB
-        C0["Samma builderkomponenter<br/>CanBuild väljer builder"]
+        C0["CSW.Unity.Factory per GizmoSDK-typ<br/>GeometryFactory: CanBuild väljer builder"]
         C1["SceneResources.Capture<br/>GeometryHelper + StateHelper<br/>synkront under SDK EDIT"]
         C2["UnityScene.Create / Update<br/>resursleases och hierarki"]
         C3["builder.CreateSceneMaterial<br/>materialmall, fallback, texturer, färg"]
@@ -375,7 +375,7 @@ flowchart LR
     class C2,C3,C4 publish;
 ```
 
-- **Återanvänds:** builderval via `CanBuild`, intersectionmask, featuretyp,
+- **Återanvänds:** builderval via `CanBuild`, nu i `CSW.Unity.GeometryFactory`, intersectionmask, featuretyp,
   lager, material- och fallbackmallar samt de gemensamma exporthjälparna.
 - **Borttagna med legacy-lanet:** gamla `Build(...)`,
   `CreateStateNodeResources`, `CreateMaterialFromState`, `InitPoolObject`,
@@ -408,9 +408,9 @@ binds innan gamla resurser pensioneras och poolning tar bort indexmedlemskapet.
 | Pollning av managed inbox | Inget eget SDK-lås | Kort lokalt inboxlås; släpps före SDK-låsförsöket. |
 | Iterera och fånga output | EDIT via `TryLockEdit(0)` | Ingen väntetid; ingen låsning över Unity-framegränsen. |
 | Synkront resursbygge i Capture | EDIT | Mesh-export, MeshData/meshbygge och state-/texturarbete kan göra låshållningen lång. |
-| Släppa wrappers från capture | Redan hållet EDIT | Nod-, parent- och state-wrappers släpps med `ReleaseAlreadyLocked` och `GC.SuppressFinalize` före unlock, också när capture faller. En wrapper som GC finaliserar tar EDIT på finalizertråden och stoppar den så länge en annan tråd håller EDIT (REQ-CSWU-SM-048). |
+| Släppa wrappers från capture | Redan hållet EDIT | Nod-, parent- och state-wrappers släpps med `ReleaseAlreadyLocked` och `GC.SuppressFinalize` före unlock, också när capture faller. En wrapper som GC finaliserar tar EDIT på finalizertråden och stoppar den så länge en annan tråd håller EDIT (REQ-CSWU-SM-048). `NativeMapTests.FastFullMotionKeepsTheMapClosedSmoothAndFinalizerFree` håller EDIT på huvudtråden varje sekund under snabb flygning och kör GC och finalizers på en annan tråd; de ska bli klara inom 2 s, och en avsiktlig läcka av 64 wrappers ska fastna. |
 | Hierarki, bindning, materialinstans och framecommit | Inget | Sker efter capture-slicens unlock. |
-| Poolade GameObjects och prewarm | Inget | Publiceringen återanvänder GameObjects ur poolerna. `MapStreamerHost.Update` fyller poolerna i slutet av uppdateringen, högst `PoolPrewarmTime` per uppdatering (REQ-CSWU-PERF-010). |
+| Poolade GameObjects och prewarm | Inget | Publiceringen återanvänder GameObjects ur poolerna. `MapControl.Update` fyller poolerna i slutet av uppdateringen, högst `PoolPrewarmTime` per uppdatering (REQ-CSWU-PERF-010). |
 | Kamerans renderpose i LateUpdate | Inget | Asynkront: senaste pose relativt committad referens. Synkront: bara committad pose/projektion; före PostPresent. |
 | Synklägets väntan på frame/inbox | Inget | Monitor.Wait släpper inboxlåset; ingen SDK-access hålls under väntan. |
 | Frigöra tom outputbuffert | Redan hållet EDIT | Native `EDIT_LOCK`-cleanup behöver inte förvärva låset på nytt efter unlock. |
@@ -714,7 +714,7 @@ flowchart TD
     class STOP join;
 ```
 
-`MapStreamerHost.StopStreaming` stoppar därför laddarna när sessionen är
+`MapControl.StopStreaming` stoppar därför laddarna när sessionen är
 stängd, i den sista värd som håller CSW-plattformen, och väntar på pågående
 laddningar innan Coordinate- och CSW-plattformarna släpps
 (REQ-CSWU-SM-047). Inget SDK-lås hålls
@@ -735,13 +735,13 @@ behövs tills vidare; se
 
 | Kod | Läs särskilt |
 | --- | --- |
-| [MapStreamerHost](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/Csw/MapStreamerHost.cs) | `Update`, `LateUpdate`, start och stop. |
-| [MapManager](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/Csw/MapManager.cs) | `Tick`, `FinishFrame`, `HandleFrame`, `StopSession`. |
-| [Inbox och native session](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/Csw/SceneCommandInbox.cs) | `Receive`, `TryDequeue`, `SubmitFrame`, `Dispose`. |
-| [SceneCommandPump](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/Csw/SceneCommandPump.cs) | `Pump`, `CanDeferPublication`, `CaptureNode`, `Publish`. |
-| [SceneResources](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/Csw/SceneResources.cs) | `Capture`, `Publish`, `Acquire` och leasefrigöring. |
-| [UnityScene](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/Csw/UnityScene.cs) | `Create`, `Update`, `BindResources`, `CommitFrame`. |
-| [GeometryBuilder](../../com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/GeometryBuilder.cs) | `CanBuild`, materialmallar och `CreateSceneMaterial`. |
+| [MapControl](../../com.saab.csw/Runtime/CSW.Unity/MapControl.cs) | `Update`, `LateUpdate`, start och stop. |
+| [MapSession](../../com.saab.csw/Runtime/CSW.Unity.StreamingMap/MapSession.cs) | `Tick`, `FinishFrame`, `HandleFrame`, `StopSession`. |
+| [Inbox och native session](../../com.saab.csw/Runtime/CSW.Unity.StreamingMap/Commands/SceneCommandInbox.cs) | `Receive`, `TryDequeue`, `SubmitFrame`, `Dispose`. |
+| [SceneCommandPump](../../com.saab.csw/Runtime/CSW.Unity.StreamingMap/Commands/SceneCommandPump.cs) | `Pump`, `CanDeferPublication`, `CaptureNode`, `Publish`. |
+| [SceneResources](../../com.saab.csw/Runtime/CSW.Unity.StreamingMap/Scene/SceneResources.cs) | `Capture`, `Publish`, `Acquire` och leasefrigöring. |
+| [UnityScene](../../com.saab.csw/Runtime/CSW.Unity.StreamingMap/Scene/UnityScene.cs) | `Create`, `Update`, `BindResources`, `CommitFrame`. |
+| [GeometryBuilder](../../com.saab.csw/Runtime/CSW.Unity/Builders/GeometryBuilder.cs) | `CanBuild`, materialmallar och `CreateSceneMaterial`. |
 
 Native referens: CSWUnreals `cswScene.cpp` (`fetchBuffers`,
 `processPendingBuffers`, buffertprocessorerna och `processFrames`) samt CSW:s

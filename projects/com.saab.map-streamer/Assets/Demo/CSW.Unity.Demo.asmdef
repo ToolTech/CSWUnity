@@ -1,0 +1,16 @@
+{
+    "name": "CSW.Unity.Demo",
+    "rootNamespace": "CSW.Unity.Demo",
+    "references": [
+        "CSW.Unity"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

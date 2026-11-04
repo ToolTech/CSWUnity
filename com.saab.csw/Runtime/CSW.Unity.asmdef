@@ -1,0 +1,16 @@
+{
+    "name": "CSW.Unity",
+    "rootNamespace": "CSW.Unity",
+    "references": [
+        "CSW.Unity.StreamingMap.Interop"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

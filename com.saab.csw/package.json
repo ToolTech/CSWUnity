@@ -1,0 +1,10 @@
+{
+  "name": "com.saab.csw",
+  "version": "0.1.0",
+  "displayName": "CSW",
+  "description": "todo",
+  "unity": "6000.0",
+  "author": {
+    "name": "SAAB AB"
+  }
+}

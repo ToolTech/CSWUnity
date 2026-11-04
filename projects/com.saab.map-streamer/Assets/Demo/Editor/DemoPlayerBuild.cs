@@ -15,6 +15,7 @@
 // Who	Date	Description
 //
 // AMO	261104	Added the demo player build with config.xml and the Start Demo.cmd launcher.	(2.12.327)
+// AMO	261104	Moved to namespace CSW.Unity.Demo.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -24,7 +25,7 @@ using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 
-namespace Saab.Foundation.Unity.MapStreamer.Demo
+namespace CSW.Unity.Demo
 {
 	/// <summary>Builds the Windows demo player into Builds/MapStreamer-Demo with config.xml and Start Demo.cmd.</summary>
 	/// <remarks>

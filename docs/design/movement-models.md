@@ -247,9 +247,9 @@ The legacy camera classes were removed in 5.0, before these services existed.
 Their last implementation is available at commit
 [`53751d5`](https://saab.ghe.com/saab/CSWUnity/tree/53751d5cd83cd95efa532a141d5339322dda1a86/com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer).
 
-- `CameraBridge` replaced `CameraControlBase` as the SceneManager camera
-  adapter.
-- Free flight is provided by the host's `FlightInput` through `CameraBridge`
+- `CameraBridge`, now `CSW.Unity.Camera`, replaced `CameraControlBase` as the
+  SceneManager camera adapter.
+- Free flight is provided by the host's `FlightInput` through `CSW.Unity.Camera`
   and moves to `FreeFlightModel`.
 - Direct input in the removed `CameraControl` and `CameraInputHandler` moves to
   input adapters.
@@ -258,7 +258,7 @@ Their last implementation is available at commit
 - Direct synchronous map queries are replaced by the asynchronous query
   service.
 - The camera-relative shader globals formerly written by `CameraShaderUpdater`
-  are written by `CameraBridge` and move to the shared coordinate/render
+  are written by `CSW.Unity.Camera` and move to the shared coordinate/render
   service.
 
 ## Related documentation

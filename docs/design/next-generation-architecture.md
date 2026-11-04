@@ -5,18 +5,19 @@ lane; the broader target architecture below remains incremental.
 
 ## Phase 1 implementation
 
-The package implements the runtime in `Saab.Foundation.Unity.MapStreamer.Csw`.
+The package implements the runtime in `CSW.Unity.StreamingMap` and `CSW.Unity`.
 The legacy Unity-owned `SceneManager` lane was removed in 5.0; see
 [Removed legacy architecture](current-architecture.md).
 
 | Concrete component | Phase 1 responsibility |
 | --- | --- |
-| `MapStreamerHost` | Explicit scene composition, platform lifetime, camera/input and optional module injection |
-| `MapManager` / internal session | Native manager/receiver ownership, map lifecycle, input submission and refresh backpressure |
+| `MapControl` | Explicit scene composition, platform references, camera and optional module injection |
+| `FlightInput` | Interim keyboard flight that moves `MapControl.Camera` |
+| `MapSession` (internal) |  Native manager/receiver ownership, map lifecycle, input submission and refresh backpressure |
 | `SceneCommandInbox` | Ordered ownership transfer from the native callback, bounded normal ingress and explicit overload failure |
 | `SceneCommandPump` | Edit-locked capture, bounded main-thread realization and correlated frame completion |
 | `UnityScene` | Occurrence hierarchy, presentation gates, pooling, resource leases and module notifications |
-| `SceneCoordinateContext` / `CameraBridge` | Typed CRS conversion, double global pose, camera-relative root transforms and committed shader parameters |
+| `SceneCoordinateContext` / `CSW.Unity.Camera` | Typed CRS conversion, double global pose, camera-relative root transforms and committed shader parameters |
 
 This is a presentation consumer, not a second traversal or loading engine.
 The native manager continues to select maps, ROI/LOD, scope and streamed
@@ -99,9 +100,10 @@ future capabilities must be validated separately; Phase 1 has no replacement
 for the synchronous map queries of the removed Unity `SceneManager`.
 
 The new generation is named **CSW Map Streamer**, with
-`csw-map-streamer` used as its technical working name. Existing
-`com.saab.map-streamer` package identifiers and serialized references remain
-in place during an incremental compatibility migration.
+`csw-map-streamer` used as its technical working name. The Unity package is
+`com.saab.csw`. Existing namespaces, the `com.saab.map-streamer` example-project
+path, and serialized references remain in place during an incremental
+compatibility migration.
 
 ## Goals
 
@@ -339,7 +341,7 @@ renderer (REQ-CSWU-PERF-010). A removed occurrence returns its GameObjects
 after its cleanup notifications, with the render resources detached and the
 renderer disabled, and a GameObject is destroyed only when its pool already
 holds `MaximumPooledObjects` free GameObjects. At the end of each update,
-`MapStreamerHost` clones free GameObjects until each pool holds
+`MapControl` clones free GameObjects until each pool holds
 `PooledObjectReserve` or `PoolPrewarmTime` is spent, so that frame publication
 seldom creates GameObjects. The node, parent, and state wrappers that capture
 obtains are released under the held edit access with their finalization
@@ -378,7 +380,7 @@ scope Off, resets append/indirect counts when no branch is active, and suppresse
 draw submission for inactive sets. Existing shaders/compute/include code and
 Hi-Z timing remain unchanged.
 
-`CameraBridge` is the package's only `_WorldOffset`/`_LocalToEUN` writer. The
+`CSW.Unity.Camera` is the package's only `_WorldOffset`/`_LocalToEUN` writer. The
 host neither discovers nor disables other components; a host project must not
 add a competing camera controller or shader-global writer.
 The following table describes the broader target placement:
@@ -387,7 +389,7 @@ The following table describes the broader target placement:
 | --- | --- |
 | `MapShadingModule` | Optional terrain-shading feature and profile |
 | `FoliageModule` | Optional GPU foliage feature with explicit compute/shader dependencies |
-| `CameraBridge` shader globals, formerly `CameraShaderUpdater` | Coordinate/render service shared by interested features |
+| `CSW.Unity.Camera` shader globals, formerly `CameraShaderUpdater` | Coordinate/render service shared by interested features |
 | `GfxCaps` flags | Capability report plus explicit feature-profile selection |
 | Terrain/Foliage ScriptableObjects | Versioned feature assets |
 

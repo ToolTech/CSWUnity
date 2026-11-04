@@ -80,16 +80,7 @@ StyleCopReport.xml
 *_h.h
 *.ilk
 *.meta
-!com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/Csw.meta
-!com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/Csw/*.meta
-!com.saab.map-streamer/Runtime/Saab.Foundation.Unity/Saab.Foundation.Unity.MapStreamer/BuildDiagnostics.cs.meta
-!com.saab.map-streamer/Tests/Fixtures.meta
-!com.saab.map-streamer/Tests/Fixtures/*.meta
-!com.saab.map-streamer/Tests/Runtime/Csw.meta
-!com.saab.map-streamer/Tests/Runtime/Csw/*.meta
-!com.saab.map-streamer/Tests/Runtime/GeometryBuilderMaterialTests.cs.meta
-!com.saab.map-streamer/Tests/Runtime/PlayMode/Csw.meta
-!com.saab.map-streamer/Tests/Runtime/PlayMode/Csw/*.meta
+!com.saab.csw/**/*.meta
 *.obj
 *.iobj
 *.pch

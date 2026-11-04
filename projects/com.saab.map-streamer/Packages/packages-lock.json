@@ -1,13 +1,13 @@
 {
   "dependencies": {
-    "com.saab.map-streamer": {
-      "version": "file:../../../com.saab.map-streamer",
+    "com.saab.csw": {
+      "version": "file:../../../com.saab.csw",
       "depth": 0,
       "source": "local",
       "dependencies": {}
     },
-    "com.saab.map-streamer.dependencies": {
-      "version": "file:../../../artifacts/unity-packages/com.saab.map-streamer.dependencies",
+    "com.saab.csw.dependencies": {
+      "version": "file:../../../artifacts/unity-packages/com.saab.csw.dependencies",
       "depth": 0,
       "source": "local",
       "dependencies": {}

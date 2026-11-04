@@ -1,7 +1,9 @@
 # CSWUnity documentation
 
-CSWUnity is the reusable Unity platform realization of the CSW Streaming Map
-presentation capability. It is delivered as Unity components and assets that
+CSWUnity is the project that encapsulates the reusable Unity platform
+realization of CSW StreamingMap, the technology of streaming maps that provides
+the synthetic world with map data. Its StreamingMap API is
+`CSW.Unity.StreamingMap`. It is delivered as Unity components and assets that
 can be installed and composed in another project that has selected Unity as
 its application architecture.
 
@@ -28,7 +30,7 @@ runtime dependency of CSWUnity.
 
 ## Architecture status
 
-- Streaming runs through the command-driven `MapStreamerHost`. The C# CSW
+- Streaming runs through the command-driven `MapControl`. The C# CSW
   SceneManager owns map loading, traversal and LOD selection, and CSWUnity
   realizes its ordered commands with the retained builder, pooling and optional
   shader-module patterns.

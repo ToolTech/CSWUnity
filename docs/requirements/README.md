@@ -2,17 +2,19 @@
 
 ## Purpose
 
-This directory is the requirements root of CSWUnity, the reusable Unity
-realization of the CSW Streaming Map presentation capability. It owns the
+This directory is the requirements root of CSWUnity, the project that
+encapsulates the Unity realization of the CSW StreamingMap technology, which
+provides the synthetic world with map data (REQ-CSW-TERM-001). Its StreamingMap
+API is `CSW.Unity.StreamingMap` (REQ-CSWU-PKG-010). It owns the
 requirements, use cases, open decisions, and milestones of the CSWUnity Unity
-package `com.saab.map-streamer`.
+package `com.saab.csw`.
 
 The requirements cover packaging and host integration, the command-driven
 streaming path through the C# CSW SceneManager, runtime initialization, scene
 control, streaming map input, rendering, movement models, external object
 integration, the synthetic world, and the CSWUnity realization of the CSW
-baseline. The directory also hosts the engine-neutral CSW baseline that CSWUnity
-and CSWUnreal share; see [Hosted CSW baseline](#hosted-csw-baseline).
+baseline. The directory also hosts the engine-neutral CSW baseline that all
+engine realizations share; see [Hosted CSW baseline](#hosted-csw-baseline).
 
 ## Owner
 
@@ -35,12 +37,30 @@ separately in [Implementation Status](implementation-status.md).
 
 ### Hosted CSW baseline
 
-The `generic/` folder hosts the engine-neutral CSW baseline that CSWUnity and
-CSWUnreal share. Its owner is CSW (owner code `CSW`), whose repository has no
-requirements root yet. The hosted IDs use the forms `REQ-CSW-<AREA>-NNN` and
+The `generic/` folder hosts the engine-neutral CSW baseline that CSWUnity,
+CSWUnreal, and a standalone Gizmo3D realization share. Its owner is CSW (owner
+code `CSW`), whose repository has no requirements root yet. The hosted IDs use
+the forms `REQ-CSW-<AREA>-NNN` and
 `UC-CSW-NNN`. They keep the owner code `CSW`, so they do not change when the
 documents move to the CSW repository
 ([OD-CSWU-006](architecture/next-generation-architecture.md#open-decisions)).
+
+Every engine realization presents the same CSW StreamingMap technology. The
+owner direction is therefore:
+
+- The CSW requirements are shared by all engine realizations. They cover
+  StreamingMap as the streaming technology, the SceneManager as the interface
+  to the data, camera control, map handling, and the other capabilities that
+  shall behave the same in every engine.
+- Each engine realization owns only the requirements that are specific to its
+  engine: CSWUnity for Unity, CSWUnreal for Unreal Engine, and a standalone
+  Gizmo3D realization for Gizmo3D.
+- This repository owns only the Unity-specific `CSWU` requirements. It does not
+  host Unreal Engine or Gizmo3D requirements.
+
+Many existing `CSWU` requirements are engine-neutral. They are being lifted to
+`REQ-CSW` requirements according to the ID policy; until an owner decision
+moves them, they remain valid `CSWU` requirements.
 
 The hosted documents do not depend on CSWU IDs or CSWUnity documents. CSWUnity
 requirements reference the `REQ-CSW` requirements that they realize, for example
@@ -74,13 +94,14 @@ owner has no milestones yet, so every hosted item is `Unassigned`.
 | Sensor integration | `CSWU` | `SENSOR` |
 | CSW baseline realization: API levels | `CSWU` | `BASE` |
 | CSW baseline realization: SceneManager mechanism and integration | `CSWU` | `SM` |
-| CSW baseline realization: MapManager | `CSWU` | `MM` |
+| CSW baseline realization: MapControl | `CSWU` | `MM` |
 | CSW baseline realization: Camera and coordinates | `CSWU` | `CV` |
 | CSW baseline realization: objects and events | `CSWU` | `OE` |
 | Documentation structure | `CSW` | `DOC` |
+| Terminology | `CSW` | `TERM` |
 | API levels and engine realizations | `CSW` | `ARCH` |
 | SceneManager mechanism | `CSW` | `SM` |
-| MapManager | `CSW` | `MM` |
+| MapControl | `CSW` | `MM` |
 | Camera, View, Observer, and positions | `CSW` | `CV` |
 | Objects and events | `CSW` | `OE` |
 | Baseline constraints | `CSW` | `BASE` |
@@ -171,7 +192,7 @@ without renumbering:
 | [Requirements standard](standard.md) | Rules for writing, identifying, approving, and verifying requirements, use cases, open decisions, and milestones | Governance | Not applicable |
 | [Milestones](milestones.md) | Milestone definitions; single source of truth for milestone scope | Milestones | M1–M5 |
 | [Implementation Status](implementation-status.md) | Implementation and verification progress of the Accepted requirements, with evidence | Implementation status | Not applicable |
-| [Next-Generation Architecture](architecture/next-generation-architecture.md) | Packaging and host integration, architectural boundaries, Unity realization and extension, performance and scalability, and reliability and validation of the next-generation CSWUnity package; open and resolved decisions | Principle, Mechanism, and Class | REQ-CSWU-PKG-001–007; REQ-CSWU-ARCH-001–010; REQ-CSWU-REAL-001–002, 004–008; REQ-CSWU-PERF-001–006, 009–010, 012; REQ-CSWU-QUAL-002–004; OD-CSWU-001–008 |
+| [Next-Generation Architecture](architecture/next-generation-architecture.md) | Packaging and host integration, architectural boundaries, Unity realization and extension, performance and scalability, and reliability and validation of the next-generation CSWUnity package; open and resolved decisions | Principle, Mechanism, and Class | REQ-CSWU-PKG-001–016; REQ-CSWU-ARCH-001–010; REQ-CSWU-REAL-001–002, 004–008; REQ-CSWU-PERF-001–006, 009–010, 012; REQ-CSWU-QUAL-002–004; OD-CSWU-001–008 |
 | [Scene Control Architecture](architecture/scene-control.md) | Principle and Mechanism requirements of the Scene Control area | Principle and Mechanism | REQ-CSWU-CTRL-001–003; REQ-CSWU-COORD-002, 004–008, 011; REQ-CSWU-ASSET-005; REQ-CSWU-SCENE-001, 004 (004 superseded) |
 | [Streaming Map Input Architecture](architecture/streaming-map-input.md) | Principle requirements of the Streaming Map Input area | Principle | REQ-CSWU-MAP-002–003, 010 |
 | [Runtime Initialization](architecture/runtime-initialization.md) | Composition, platform and SceneManager startup, lifecycle state, configuration, diagnostics, shutdown, and platform services of the CSWUnity runtime | Principle and Mechanism | REQ-CSWU-INIT-001–002, 006, 008–009 (002 superseded) |
@@ -179,7 +200,7 @@ without renumbering:
 | [External Object Integration](architecture/object-integration.md) | Core object contract, the feed, store, and adapter boundaries, ordering and motion, and Unity presentation of external world objects | Principle, Mechanism, and Class | REQ-CSWU-OBJ-001–011, 015, 017–021 |
 | [Rendering](architecture/rendering.md) | Rendering model, culling, LOD, and visibility, resources and threading, map and synthetic-world features, and rendering validation | Principle and Mechanism | REQ-CSWU-RENDER-001–005, 007, 009–013, 015, 018–019, 021–022 |
 | [Synthetic World](architecture/synthetic-world.md) | Capability maturity, world context and time, the environment contract, Unity realization, and sensor integration | Principle, Mechanism, and Class | REQ-CSWU-WORLD-001, 003–005, 007; REQ-CSWU-TIME-001–002; REQ-CSWU-ENV-001–012; REQ-CSWU-SENSOR-001–002 |
-| [CSW Baseline Realization](architecture/csw-baseline-realization.md) | CSWUnity realization of the generic CSW API levels, SceneManager mechanism, MapManager, Camera and View model, and Object and Event APIs | Principle, Mechanism, and Class | REQ-CSWU-BASE-001; REQ-CSWU-SM-001–004 (superseded); REQ-CSWU-MM-001; REQ-CSWU-OE-001 |
+| [CSW Baseline Realization](architecture/csw-baseline-realization.md) | CSWUnity realization of the generic CSW API levels, SceneManager mechanism, MapControl, Camera and View model, and Object and Event APIs | Principle, Mechanism, and Class | REQ-CSWU-BASE-001; REQ-CSWU-SM-001–004 (superseded); REQ-CSWU-MM-001; REQ-CSWU-OE-001 |
 | [CSW SceneManager Integration](architecture/csw-scenemanager-integration.md) | Accepted design and architecture requirements, derived from CSWUnreal, for the CSWUnity use of the C# CSW SceneManager: session, receiver handoff, buffer ownership and edit access, command processing and frame presentation, continuous refresh and hole-free level-of-detail transitions, refresh input, occurrence lifecycle, map list and camera synchronization modes, the camera frustum and level-of-detail factor, and the classes that carry these contracts | Principle, Mechanism, and Class | REQ-CSWU-SM-007–050 (017, 018, 031, 032, 034, 041, and 045 superseded) |
 | [Next-Generation Architecture Behavior](functional/next-generation-architecture.md) | Behavior requirements of the Next-Generation Architecture area | Behavior | REQ-CSWU-REAL-003; REQ-CSWU-PERF-007–008; REQ-CSWU-QUAL-001 |
 | [Scene Control](functional/scene-control.md) | Public control model of CSWUnity: control levels, map control, coordinate-system control, position and spatial-query control, and asset and scene-update control | Behavior | REQ-CSWU-MAPCTRL-001–005; REQ-CSWU-COORD-001, 003, 009–010; REQ-CSWU-POS-001–003; REQ-CSWU-QUERY-001–004; REQ-CSWU-ASSET-001–004; REQ-CSWU-SCENE-002–003 |
@@ -190,9 +211,9 @@ without renumbering:
 | [Rendering Behavior](functional/rendering.md) | Behavior requirements of the Rendering area | Behavior | REQ-CSWU-RENDER-006, 008, 014, 016–017, 020 |
 | [Synthetic World Behavior](functional/synthetic-world.md) | Behavior requirements of the Synthetic World area | Behavior | REQ-CSWU-WORLD-002, 006; REQ-CSWU-TIME-003; REQ-CSWU-SENSOR-003 |
 | [CSW Baseline Realization Behavior](functional/csw-baseline-realization.md) | Behavior requirements of the CSW Baseline Realization area | Behavior | REQ-CSWU-SM-005–006 (superseded); REQ-CSWU-CV-001 |
-| [Generic CSW Baseline](generic/requirements.md) | Hosted engine-neutral CSW baseline: documentation, API levels, SceneManager mechanism, MapManager, Camera and View, objects and events | Principle, Mechanism, Class, and Behavior | REQ-CSW-DOC-001; REQ-CSW-ARCH-001–003; REQ-CSW-SM-001–008; REQ-CSW-MM-001–002; REQ-CSW-CV-001–002; REQ-CSW-OE-001; REQ-CSW-BASE-001 |
-| [Coordinate Nomenclature and Mapping](generic/coordinate-nomenclature.md) | Hosted engine-neutral coordinate terminology and mapping contract for all viewer realizations | Principle, Mechanism, and Behavior | REQ-CSW-COORD-001–045 |
-| [Generic CSW Baseline Use Cases](generic/use-cases.md) | Hosted engine-neutral CSW baseline use cases | Use cases | UC-CSW-001–009 |
+| [Generic CSW Baseline](generic/requirements.md) | Hosted engine-neutral CSW baseline: documentation, terminology, API levels, API naming, SceneManager mechanism, MapControl, world composition, rendering control, Camera and View, diagnostics, objects and events | Principle, Mechanism, Class, and Behavior | REQ-CSW-DOC-001; REQ-CSW-TERM-001; REQ-CSW-ARCH-001–003; REQ-CSW-API-001–016; REQ-CSW-SM-001–008; REQ-CSW-MM-001–002; REQ-CSW-WC-001–003; REQ-CSW-RC-001; REQ-CSW-CV-001–017; REQ-CSW-DIAG-001; REQ-CSW-OE-001; REQ-CSW-BASE-001 |
+| [Coordinate Nomenclature and Mapping](generic/coordinate-nomenclature.md) | Hosted engine-neutral coordinate terminology and mapping contract for all viewer realizations | Principle, Mechanism, and Behavior | REQ-CSW-COORD-001–046 |
+| [Generic CSW Baseline Use Cases](generic/use-cases.md) | Hosted engine-neutral CSW baseline use cases | Use cases | UC-CSW-001–023 |
 | [Operator Use Cases](use-cases/operator.md) | Operator use cases | Use cases | UC-CSWU-001–006 |
 | [Programmer Use Cases](use-cases/programmer.md) | Programmer use cases | Use cases | UC-CSWU-007–012 |
 | [Tester Use Cases](use-cases/tester.md) | Tester use cases | Use cases | UC-CSWU-013–017 |
@@ -368,6 +389,20 @@ realizations. Platform-specific constraints are documented separately.
 | [UC-CSW-007](generic/use-cases.md#uc-csw-007-use-another-camera-for-a-view) | Use another Camera for a View | `generic/use-cases.md` | Unassigned |
 | [UC-CSW-008](generic/use-cases.md#uc-csw-008-position-a-camera-across-coordinate-layers) | Position a Camera across coordinate layers | `generic/use-cases.md` | Unassigned |
 | [UC-CSW-009](generic/use-cases.md#uc-csw-009-work-with-world-objects-and-events) | Work with world objects and events | `generic/use-cases.md` | Unassigned |
+| [UC-CSW-010](generic/use-cases.md#uc-csw-010-place-an-observer-on-the-ground) | Place an Observer on the ground | `generic/use-cases.md` | Unassigned |
+| [UC-CSW-011](generic/use-cases.md#uc-csw-011-follow-a-moving-object) | Follow a moving object | `generic/use-cases.md` | Unassigned |
+| [UC-CSW-012](generic/use-cases.md#uc-csw-012-move-within-a-reference-frame) | Move within a Reference Frame | `generic/use-cases.md` | Unassigned |
+| [UC-CSW-013](generic/use-cases.md#uc-csw-013-show-views-from-cameras-on-an-observer) | Show Views from Cameras on an Observer | `generic/use-cases.md` | Unassigned |
+| [UC-CSW-014](generic/use-cases.md#uc-csw-014-control-an-observer-with-input-devices) | Control an Observer with input devices | `generic/use-cases.md` | Unassigned |
+| [UC-CSW-015](generic/use-cases.md#uc-csw-015-fly-as-a-ufo) | Fly as a UFO | `generic/use-cases.md` | Unassigned |
+| [UC-CSW-016](generic/use-cases.md#uc-csw-016-fly-on-a-flying-carpet) | Fly on a flying carpet | `generic/use-cases.md` | Unassigned |
+| [UC-CSW-017](generic/use-cases.md#uc-csw-017-orbit-a-focus-object) | Orbit a focus object | `generic/use-cases.md` | Unassigned |
+| [UC-CSW-018](generic/use-cases.md#uc-csw-018-set-up-an-observer) | Set up an Observer | `generic/use-cases.md` | Unassigned |
+| [UC-CSW-019](generic/use-cases.md#uc-csw-019-specialize-an-observer-in-an-application-layer) | Specialize an Observer in an application layer | `generic/use-cases.md` | Unassigned |
+| [UC-CSW-020](generic/use-cases.md#uc-csw-020-compose-the-synthetic-world-from-maps-and-models) | Compose the synthetic world from maps and models | `generic/use-cases.md` | Unassigned |
+| [UC-CSW-021](generic/use-cases.md#uc-csw-021-populate-the-world-from-an-application-layer) | Populate the world from an application layer | `generic/use-cases.md` | Unassigned |
+| [UC-CSW-022](generic/use-cases.md#uc-csw-022-control-rendering-from-external-code) | Control rendering from external code | `generic/use-cases.md` | Unassigned |
+| [UC-CSW-023](generic/use-cases.md#uc-csw-023-place-an-object-at-a-frame-position) | Place an object at a Frame Position | `generic/use-cases.md` | Unassigned |
 
 ## Requirements Standard
 

@@ -25,29 +25,59 @@ configuration.
 
 ## Naming and migration
 
-The existing implementation, Unity package identifier, and example-project
-paths retain the established **Map Streamer** and `com.saab.map-streamer`
-names for compatibility.
+The reusable Unity package is `com.saab.csw` in the `com.saab.csw` folder.
+The existing implementation and example-project paths retain the established
+**Map Streamer** and `com.saab.map-streamer` names for compatibility.
 
-The new generation is named **CSW Map Streamer**, with `csw-map-streamer` used
-as the technical working name for new architecture and functionality. The
-transition is incremental: new documentation and components should use the
-CSW Map Streamer name, while existing public package identifiers and serialized
-references remain unchanged until a separately planned compatibility
-migration.
+Three names are used (REQ-CSW-TERM-001):
+
+- **StreamingMap** is the CSW technology of streaming maps, which provides the
+  synthetic world with map data.
+- **`CSW.Unity.StreamingMap`** is the API through which CSWUnity exposes
+  StreamingMap in Unity (REQ-CSWU-PKG-010).
+- **CSWUnity** is the project that encapsulates everything: the `com.saab.csw`
+  package with the StreamingMap API, the other Unity classes, utilities, tests,
+  the example project, and the documentation.
+
+StreamingMap replaces the earlier working name **CSW Map Streamer**
+(`csw-map-streamer`). The transition is incremental: new documentation and
+components use the StreamingMap name, while the example-project path
+`projects/com.saab.map-streamer` remains unchanged until a separately planned
+migration. The streaming component is `CSW.Unity.MapControl`.
 
 In code, the folder and the namespace carry the CSW name. Code that uses the
-CSW SceneManager is in the `Csw` folder and the
-`Saab.Foundation.Unity.MapStreamer.Csw` namespace, and its tests are in the
-`Csw` test folders and the `Saab.Foundation.Unity.MapStreamer.Tests.Csw`
-namespace. Their file and type names do not repeat `Csw`, for example
-`Csw/MapStreamerHost.cs`. GizmoSDK-to-Unity builders and managers that do not
-use the CSW SceneManager stay one level up, and the optional presentation
-modules stay in `Saab.Foundation.Unity.MapStreamer.Modules`.
+CSW SceneManager is in `com.saab.csw/Runtime/CSW.Unity.StreamingMap` and the
+`CSW.Unity.StreamingMap` namespace, in the subfolders `Commands`,
+`Coordinates`, `Diagnostics`, `Scene`, `Interop`, and `Modules`, and its tests
+are in the `StreamingMap` test folders. The GizmoSDK-to-Unity builders and
+managers are in `com.saab.csw/Runtime/CSW.Unity/Builders` and the `CSW.Unity`
+namespace, and all tests are in `CSW.Unity.Tests`. The assemblies are
+`CSW.Unity`, `CSW.Unity.StreamingMap.Interop`, `CSW.Unity.Tests`,
+`CSW.Unity.Tests.PlayMode`, `CSW.Unity.Demo`, and `CSW.Unity.Demo.Editor`.
+
+The target naming is set by REQ-CSW-API-001, REQ-CSW-API-005 to
+REQ-CSW-API-007, REQ-CSWU-PKG-008, and REQ-CSWU-PKG-010: the StreamingMap API
+is `CSW.Unity.StreamingMap.<ClassName>` in
+`com.saab.csw/Runtime/CSW.Unity.StreamingMap`; engine-independent CSW classes are
+`CSW.<ClassName>`, such as `CSW.Camera`; every other class coupled to Unity
+is `CSW.Unity.<ClassName>` in `com.saab.csw/Runtime/CSW.Unity`, and the Unity
+realization of a generic class keeps its simple name, such as `CSW.Unity.Window`
+for `CSW.Window`; C# code specific to Unreal, if any, is `CSW.Unreal.<ClassName>`;
+engine-independent utilities are `CSW.Utility.<ClassName>` in
+`com.saab.csw/Runtime/CSW.Utility`; broader libraries are in `CSW.Foundation`
+or `CSW.<LibName>`, and in `CSW.Unity.Foundation` or `CSW.Unity.<LibName>` when
+they bind to the Unity API. Every namespace with a specific coupling to Unity
+begins with `CSW.Unity`. `GfxCaps` has
+been moved to `CSW.Utility` and `TextureUtility` to `CSW.Unity`;
+`CSW.Unity.Conversion` replaces `UnityGizmoExtensions` and the axis mapping of
+`SceneCoordinateContext.Axes`. The former `Saab.Foundation.Unity.MapStreamer` namespaces have
+moved to `CSW.Unity.StreamingMap` and `CSW.Unity`, and the former
+`Saab.Unity.Initializer` is replaced by `CSW.Unity.Platform` and its default
+component `CSW.Unity.PlatformComponent`.
 
 The repository contains:
 
-- the reusable `com.saab.map-streamer` Unity package;
+- the reusable `com.saab.csw` Unity package;
 - a Unity example and validation project;
 - locked CSW/GizmoSDK dependency staging;
 - runtime and editor tests;
@@ -87,7 +117,7 @@ Exact NuGet versions and content hashes are committed in
 The example project already references the generated local package:
 
 ```text
-artifacts\unity-packages\com.saab.map-streamer.dependencies
+artifacts\unity-packages\com.saab.csw.dependencies
 ```
 
 Run the staging command before opening Unity after a fresh clone or after
@@ -202,7 +232,7 @@ The Windows baseline has also been validated by:
 
 ```text
 build\nuget-staging\                 Locked dependency project and profile
-com.saab.map-streamer\               Reusable Unity package
+com.saab.csw\                        Reusable Unity package
 docs\                                Requirements, designs, and how-to guides
 projects\com.saab.map-streamer\      Unity example and validation project
 tools\CSWUnity.NuGetStager\          NuGet-to-UPM staging tool

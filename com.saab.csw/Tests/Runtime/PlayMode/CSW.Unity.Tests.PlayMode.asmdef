@@ -1,0 +1,25 @@
+{
+    "name": "CSW.Unity.Tests.PlayMode",
+    "rootNamespace": "CSW.Unity.Tests",
+    "references": [
+        "CSW.Unity",
+        "CSW.Unity.StreamingMap.Interop"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "Gizmo3D.dll",
+        "GizmoBase.dll",
+        "Coordinate.dll",
+        "SceneManager.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false,
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ]
+}

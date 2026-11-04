@@ -4,7 +4,7 @@
 
 The MapGen generation and publication steps remain valid for the target
 architecture. The Unity configuration steps use the command-driven
-`MapStreamerHost`.
+`MapControl`.
 
 ## Goal
 
@@ -39,7 +39,9 @@ The detailed MapGen workflow is maintained in the
 1. Copy the published map URL.
 2. Set the URL in the host's **Map Url** field in the Unity Inspector, or leave
    the field empty and set the GizmoSDK user key `SceneManager/MapUrl` in
-   `config.xml`. A non-empty **Map Url** takes precedence.
+   `config.xml`. A non-empty **Map Url** takes precedence. Both may contain
+   GizmoSDK variables such as `%CSWUNITY_TEST_MAP%`; see
+   [Select the map URL](configure-runtime-initialization.md#select-the-map-url).
 3. Verify that the host's `Builders` contain builders for the node types
    required by the map.
 4. Enter Play mode.
@@ -50,7 +52,7 @@ which sends ordered commands that CSWUnity realizes as Unity objects.
 
 ## Verify the result
 
-- The map loads without a `CSW Map Streamer:` error, and `host.Manager.State`
+- The map loads without a `CSW MapControl:` error, and `MapControl.State`
   reaches `Running`.
 - The expected terrain, geometry, textures, and asset instances appear.
 - Camera movement updates streamed content and levels of detail.

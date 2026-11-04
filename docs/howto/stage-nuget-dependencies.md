@@ -97,7 +97,7 @@ The command:
 9. publishes the generated package to:
 
 ```text
-artifacts\unity-packages\com.saab.map-streamer.dependencies
+artifacts\unity-packages\com.saab.csw.dependencies
 ```
 
 Staging uses a temporary directory below `artifacts\nuget-staging`. The final
@@ -138,7 +138,7 @@ Add the generated package as a local UPM dependency:
 ```json
 {
   "dependencies": {
-    "com.saab.map-streamer.dependencies": "file:<path-to-repository>/artifacts/unity-packages/com.saab.map-streamer.dependencies"
+    "com.saab.csw.dependencies": "file:<path-to-repository>/artifacts/unity-packages/com.saab.csw.dependencies"
   }
 }
 ```

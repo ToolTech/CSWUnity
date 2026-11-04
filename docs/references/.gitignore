@@ -1,0 +1,5 @@
+# Third-party reference documents are copyrighted. Do not store them here;
+# list their sources in README.md.
+*.pdf
+*.htm
+*.html

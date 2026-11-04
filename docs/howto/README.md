@@ -10,7 +10,7 @@ CSWUnity.
 - [Configure runtime initialization](configure-runtime-initialization.md)
 - [Load a MapGen GZD map](load-mapgen-map.md)
 
-The guides describe the command-driven `MapStreamerHost`, which is the
+The guides describe the command-driven `MapControl`, which is the
 package's only streaming lane. The former Unity-owned `SceneManager` lane was
 removed in 5.0.
 

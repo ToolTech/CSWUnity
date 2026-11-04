@@ -61,11 +61,16 @@ order.
 - **Milestone:** M1
 - **Use cases:** None
 - **Verification:** Test proving that diagnostics reach the Unity logging
-  adapter with severity, source, and correlation information
+  adapter with severity, source, and correlation information, and that
+  messages below the configured message level do not
 
 CSWUnity shall route GizmoSDK and CSW SceneManager diagnostics to a configurable
 Unity logging adapter while preserving severity, source, and correlation
-information.
+information. As required by
+[REQ-CSW-DIAG-001](../generic/requirements.md#req-csw-diag-001-message-level),
+CSWUnity code shall send its own diagnostics as GizmoSDK messages instead of
+writing to the Unity log directly, so that a message below the configured
+message level is never sent and never reaches the adapter.
 
 ### REQ-CSWU-INIT-008: Unity lifecycle independence
 

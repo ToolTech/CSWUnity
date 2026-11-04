@@ -150,7 +150,7 @@ requirement in this document, the Accepted requirement governs.
 - Rendering and optional presentation modules.
 - How shaders and other presentation effects learn that the camera uses an
   infinite far plane and derive depth from it (REQ-CSWU-SM-049).
-- The MapManager realization of REQ-CSWU-MM-001.
+- The `CSW.Unity.MapControl` realization of REQ-CSWU-MM-001.
 
 ## Principles
 
@@ -1055,6 +1055,9 @@ camera through this factor.
 - **Depends on:** REQ-CSWU-SM-011, REQ-CSWU-SM-047
 - **Verification:** API review plus PlayMode tests of real map lifetimes and
   repeated stops (intended fixture: `NativeMapTests`)
+- **Superseded by:**
+  [REQ-CSWU-MM-001](csw-baseline-realization.md#req-cswu-mm-001-cswunitymapcontrol-realization),
+  [REQ-CSWU-PKG-013](next-generation-architecture.md#req-cswu-pkg-013-cswunityplatform)
 
 `MapStreamerHost` shall be the public sealed `MonoBehaviour` that hosts
 streaming in a Unity scene, with this contract:
@@ -1239,9 +1242,9 @@ effective mask shall keep its structure and shall not be built.
 ## Verification
 
 Each requirement states its own verification method. The intended fixtures
-are `SceneCommandTests` in the EditMode assembly `MAPSTREAMER.TESTS` and
+are `SceneCommandTests` in the EditMode assembly `CSW.Unity.Tests` and
 `NativeMapTests`, `SceneResourceTests`, and `PresentationModuleTests` in the
-PlayMode assembly `MAPSTREAMER.PLAYMODE.TESTS`, together with the named
+PlayMode assembly `CSW.Unity.Tests.PlayMode`, together with the named
 reviews. The area is verified when
 [Implementation Status](../implementation-status.md) records evidence for
 every requirement in this document.

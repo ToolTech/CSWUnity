@@ -214,7 +214,7 @@ Position and requested `GeoPosition` representation from a Unity object.
 - **Use cases:** UC-CSWU-001, UC-CSWU-162
 - **Depends on:** REQ-CSWU-SM-044
 - **Verification:** EditMode test of the default settings of the host and of
-  `MapManager` (intended fixture: `SceneCommandTests`)
+  `MapSession` (intended fixture: `SceneCommandTests`)
 
 By default, CSWUnity shall present the camera synchronized, as
 REQ-CSWU-SM-044 specifies. Unsynchronized presentation shall be used only when

@@ -1,7 +1,7 @@
 {
   "dependencies": {
-    "com.saab.map-streamer": "file:../../../com.saab.map-streamer",
-    "com.saab.map-streamer.dependencies": "file:../../../artifacts/unity-packages/com.saab.map-streamer.dependencies",
+    "com.saab.csw": "file:../../../com.saab.csw",
+    "com.saab.csw.dependencies": "file:../../../artifacts/unity-packages/com.saab.csw.dependencies",
     "com.unity.ai.navigation": "2.0.15",
     "com.unity.collab-proxy": "2.13.6",
     "com.unity.feature.development": "1.0.2",
@@ -49,6 +49,6 @@
     "com.unity.modules.xr": "1.0.0"
   },
   "testables": [
-    "com.saab.map-streamer"
+    "com.saab.csw"
   ]
 }

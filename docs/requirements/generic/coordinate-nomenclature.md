@@ -71,6 +71,13 @@ They do not prescribe language-specific wrapper types:
 | `Local3DPositionF` | single-precision point in one Local 3D Frame identity and generation |
 | `ViewerPosition` | placeholder that must be replaced by a native frame-specific name at a viewer API |
 
+In the generic CSW API, a position is carried by the class `CSW.Position`
+defined in REQ-CSW-API-004 of the [generic CSW baseline](requirements.md). Its
+value is a global position or a local position in a Local 3D Frame in which the
+map is realized, and it is floating, ground-clamped, or navigated along a
+`CSW.Path`. The offset and viewer
+identifiers above remain realization concepts.
+
 ### REQ-CSW-COORD-002: Explicit localization contract
 
 - **Status:** Pending
@@ -473,7 +480,9 @@ consistently match this document:
 
 `MapPos.LocalPosition` returned a bare `Vec3` without an explicit Local 3D
 Frame identity, generation, or checked narrowing result. The associated node
-supplied part of the context indirectly.
+supplied part of the context indirectly. `CSW.Position` of REQ-CSW-API-004
+succeeds `MapPos`. It keeps the global, ground-clamped, and node-relative local
+forms, and states the identity and generation of the local frame explicitly.
 
 The logical point mapping between the default GizmoSDK Local 3D axes and Unity
 is:
@@ -993,6 +1002,62 @@ Current CSWUnreal names also require semantic qualification:
 
 New use cases and future APIs shall use the terms in this document and shall
 state the applicable Map Coordinate Context explicitly.
+
+## Conversion naming
+
+Conversions between coordinate systems, GizmoSDK, and an engine use one naming
+pattern in CSWUnity and CSWUnreal. Global 3D Position, the native Gizmo3D
+scene frame, is the hub of the CRS conversions. The engine step converts
+between GizmoSDK values and engine values. Today the two stages are named
+differently in each engine:
+
+| Existing name | Engine | Name under REQ-CSW-COORD-046 |
+| --- | --- | --- |
+| `UnityGizmoExtensions.ToVec3D` / `ToVec3` / `ToMatrix4` | Unity | `CopyVec3D` / `CopyVec3` / `CopyMatrix4` |
+| `UnityGizmoExtensions.ToVector3` / `ToMatrix4x4` | Unity | `CopyVector3` / `CopyMatrix4x4` |
+| `GizmoUnityAxisMapping.ToUnityPosition` | Unity | `ToUnityPosition` |
+| `GizmoUnityAxisMapping.ToNativeDirection` | Unity | `ToGizmoDirection` |
+| `GizmoUnityAxisMapping.FromGeodetic` / `ToGeodetic` / `ToGeocentric` | Unity | Unchanged |
+| `cswVector3_::UEVector3` / `GZVector3` | Unreal | `CopyFVector` / `CopyGzVec3` |
+| `cswMatrix4_::UEMatrix4` / `GZMatrix4` | Unreal | `CopyFMatrix` / `CopyGzMatrix4` |
+| `GZ_2_UE()` / `GZ_2_UE_Local()` | Unreal | `ToUnrealPosition` |
+
+### REQ-CSW-COORD-046: Conversion naming
+
+- **Status:** Pending
+- **Kind:** Principle
+- **Milestone:** Unassigned
+- **Use cases:** None
+- **Verification:** API review of the conversion functions of CSWUnity and
+  CSWUnreal against the naming pattern, and per-function tests that each
+  named value kind is transformed by its own rule
+
+Conversion functions shall name their stage, their direction, and the kind of
+value that they convert, as follows:
+
+- **CRS step.** A conversion between a coordinate system and the Global 3D
+  Frame of the Map Coordinate Context shall be named `To<CS>` when it converts
+  from Global 3D to the coordinate system and `From<CS>` when it converts from
+  the coordinate system to Global 3D. `<CS>` is the name of the coordinate
+  system, such as `Geodetic`, `Geocentric`, `Projected`, `UTM`, `FlatEarth`,
+  or `MGRS`. Localization uses the same pattern with `Local3D`.
+- **Engine step.** A conversion between a GizmoSDK value and an engine value
+  shall be named `To<Engine><Kind>` towards the engine and `ToGizmo<Kind>`
+  towards GizmoSDK. `<Engine>` is `Unity` or `Unreal`. `<Kind>` is `Position`,
+  `Direction`, `Normal`, `Rotation`, `Scale`, or `Matrix`. The engine step
+  applies the Viewer Coordinate Mapping: the handedness change, which for
+  Unity negates Z, and for Unreal also the axis order and the change from
+  metres to centimetres.
+- **Copy.** A function that only copies components between a GizmoSDK type
+  and an engine type, with no axis, handedness, or unit change, shall be
+  named `Copy<TargetType>`, such as `CopyVec3D` or `CopyVector3`, and shall
+  not be named as a conversion.
+
+The engine step shall be collected in one class per engine: `CSW.Unity.Conversion`
+in C# for Unity, `cswUEConversion` in C++ for CSWUnreal, and
+`CSW.Unreal.Conversion` for any C# code that controls Unreal. No conversion
+shall be named only by its result type, such as `ToVector3`, because the name
+then does not say whether the value is transformed or copied.
 
 ## Verification
 

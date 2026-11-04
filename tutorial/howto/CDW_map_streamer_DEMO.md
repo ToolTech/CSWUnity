@@ -44,7 +44,7 @@ The repository contains files/folders similar to:
     ├── projects
     ├── tools
     ├── tutorial
-    └── com.saab.map-streamer
+    └── com.saab.csw
 
 ## 4.3 Open the Repository in File Explorer
 
@@ -69,7 +69,7 @@ The stager:
 - validates the Windows x64 managed and native dependency closure;
 - generates deterministic Unity plugin import settings; and
 - writes the local UPM package below
-  `artifacts\unity-packages\com.saab.map-streamer.dependencies`.
+  `artifacts\unity-packages\com.saab.csw.dependencies`.
 
 The example Unity project already references this generated local package.
 
