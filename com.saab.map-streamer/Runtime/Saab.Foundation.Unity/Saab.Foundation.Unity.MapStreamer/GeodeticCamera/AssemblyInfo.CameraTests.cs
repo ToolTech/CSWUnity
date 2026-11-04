@@ -17,7 +17,7 @@
 //
 // File         : AssemblyInfo.CameraTests.cs
 // Module       :
-// Description  : Grants the Editor camera test assembly internal access.
+// Description  : Grants the camera package test assembly internal access.
 // Author       : Daniel Sahlin
 //
 // Revision History...
@@ -30,4 +30,4 @@
 
 using System.Runtime.CompilerServices;
 
-[assembly: InternalsVisibleTo("Saab.Application.Unity.MapEditor.Tests.EditMode")]
+[assembly: InternalsVisibleTo("Saab.Foundation.Unity.MapStreamer.Tests.EditMode")]

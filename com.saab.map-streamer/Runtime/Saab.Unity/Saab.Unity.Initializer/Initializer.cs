@@ -162,8 +162,8 @@ namespace Saab.Unity.Initializer
 
             // Set up scene manager camera
 
-            SceneManager scenemanager = FindObjectOfType<SceneManager>();
-            CameraControlBase cameracontrol = FindObjectOfType<CameraControlBase>();
+            SceneManager scenemanager = FindFirstObjectByType<SceneManager>();
+            CameraControlBase cameracontrol = FindFirstObjectByType<CameraControlBase>();
 
             scenemanager.MapUrl = KeyDatabase.GetDefaultUserKey("SceneManager/MapUrl", scenemanager.MapUrl);
 

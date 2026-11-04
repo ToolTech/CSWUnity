@@ -25,6 +25,7 @@
 // Who      Date    Description
 //
 // DSA  260909  Created file
+// DSA  261020  Removed the learned zoom-out distance limit
 //
 //******************************************************************************
 
@@ -33,20 +34,20 @@ using GizmoSDK.GizmoBase;
 
 namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
 {
-    /// <summary>Composes surface acquisition, bounded scaling and camera-position application.</summary>
     internal sealed class CameraZoomGesture
     {
         private readonly ReferenceQuery _queryReference;
         private readonly Func<Vec3D> _readPosition;
-        private readonly Action<Vec3D> _applyPosition;
-        private double _maximumDistance = CameraZoomMath.MinimumDistance;
+        private readonly Func<Vec3D, bool> _applyPosition;
+        private double? _minimumDistance;
+        private double? _maximumDistance;
 
         internal delegate bool ReferenceQuery(float x, float y, out Vec3D position);
 
         internal CameraZoomGesture(
             ReferenceQuery queryReference,
             Func<Vec3D> readPosition,
-            Action<Vec3D> applyPosition)
+            Func<Vec3D, bool> applyPosition)
         {
             _queryReference = queryReference ?? throw new ArgumentNullException(nameof(queryReference));
             _readPosition = readPosition ?? throw new ArgumentNullException(nameof(readPosition));
@@ -58,14 +59,19 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
             if (!_queryReference(x, y, out Vec3D reference))
                 return false;
 
+            return Move(reference, amount);
+        }
+
+        internal bool Move(Vec3D reference, float amount)
+        {
             Vec3D cameraPosition = _readPosition();
             Vec3D offset = reference - cameraPosition;
             double distance = offset.Length();
-            double maximumDistance = Math.Max(_maximumDistance, distance);
             if (!CameraZoomMath.TryCalculateDistanceScale(
                     distance,
                     amount,
-                    maximumDistance,
+                    _minimumDistance,
+                    _maximumDistance,
                     out double scale))
                 return false;
 
@@ -73,9 +79,26 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
             if (!IsFinite(nextPosition))
                 return false;
 
-            _applyPosition(nextPosition);
+            return _applyPosition(nextPosition);
+        }
+
+        internal void SetDistanceLimits(double? minimumDistance, double? maximumDistance)
+        {
+            ValidateBound(minimumDistance, nameof(minimumDistance));
+            ValidateBound(maximumDistance, nameof(maximumDistance));
+            if (minimumDistance.HasValue && maximumDistance.HasValue
+                && minimumDistance.Value > maximumDistance.Value)
+                throw new ArgumentException("Minimum distance exceeds maximum distance.");
+
+            _minimumDistance = minimumDistance;
             _maximumDistance = maximumDistance;
-            return true;
+        }
+
+        private static void ValidateBound(double? value, string parameter)
+        {
+            if (value.HasValue && (double.IsNaN(value.Value)
+                || double.IsInfinity(value.Value) || value.Value <= 0))
+                throw new ArgumentOutOfRangeException(parameter);
         }
 
         private static bool IsFinite(Vec3D value)

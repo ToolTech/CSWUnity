@@ -39,17 +39,19 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
 
         internal static bool TryCalculatePanScale(
             float signedRayPlaneIncidence,
-            out float scale)
+            out float scale,
+            bool dampen = true)
         {
             scale = 0.0f;
 
             float incidenceMagnitude = Math.Abs(signedRayPlaneIncidence);
-            if (incidenceMagnitude <= 0.0f)
+            if (float.IsNaN(incidenceMagnitude) || float.IsInfinity(incidenceMagnitude)
+                || incidenceMagnitude <= 0.0f)
                 return false;
 
-            scale = Math.Min(
+            scale = dampen ? Math.Min(
                 1.0f,
-                incidenceMagnitude / FullScaleRayPlaneIncidence);
+                incidenceMagnitude / FullScaleRayPlaneIncidence) : 1.0f;
             return true;
         }
     }

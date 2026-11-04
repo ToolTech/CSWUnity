@@ -25,6 +25,7 @@
 // Who  Date    Description
 //
 // DSA  260909  Created file
+// DSA  261020  Added shared basis-rotation math and reused quaternion helpers
 //
 //******************************************************************************
 
@@ -39,10 +40,10 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
 
         internal static Vec2 Zero2 => default;
         internal static Vec3 Zero3 => default;
-        internal static Vec3 UnitX => new Vec3(1.0f, 0.0f, 0.0f);
-        internal static Vec3 UnitY => new Vec3(0.0f, 1.0f, 0.0f);
-        internal static Vec3 UnitZ => new Vec3(0.0f, 0.0f, 1.0f);
-        internal static Quaternion Identity => new Quaternion(1.0f, 0.0f, 0.0f, 0.0f);
+        internal static Vec3 UnitX => new(1.0f, 0.0f, 0.0f);
+        internal static Vec3 UnitY => new(0.0f, 1.0f, 0.0f);
+        internal static Vec3 UnitZ => new(0.0f, 0.0f, 1.0f);
+        internal static Quaternion Identity => new(1.0f, 0.0f, 0.0f, 0.0f);
 
         internal static float Dot(Quaternion left, Quaternion right)
             => left.x * right.x + left.y * right.y + left.z * right.z + left.w * right.w;
@@ -87,6 +88,18 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
                 axis.z * scale);
         }
 
+        internal static Quaternion FromBasisToBasis(
+            Vec3 e0, Vec3 n0, Vec3 u0, Vec3 e1, Vec3 n1, Vec3 u1)
+        {
+            e0 = Vec3.Normalize(e0); n0 = Vec3.Normalize(n0); u0 = Vec3.Normalize(u0);
+            e1 = Vec3.Normalize(e1); n1 = Vec3.Normalize(n1); u1 = Vec3.Normalize(u1);
+            // Destination * source-transpose, expressed as matrix columns.
+            return CreateFromBasis(
+                e1 * e0.x + n1 * n0.x + u1 * u0.x,
+                e1 * e0.y + n1 * n0.y + u1 * u0.y,
+                e1 * e0.z + n1 * n0.z + u1 * u0.z);
+        }
+
         internal static Quaternion CreateLookRotation(Vec3 forward, Vec3 up)
         {
             if (!TryNormalize(forward, out forward))
@@ -107,6 +120,11 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
             }
 
             Vec3 correctedUp = Vec3.Cross(forward, right);
+            return CreateFromBasis(right, correctedUp, forward);
+        }
+
+        private static Quaternion CreateFromBasis(Vec3 right, Vec3 correctedUp, Vec3 forward)
+        {
             float trace = right.x + correctedUp.y + forward.z;
             if (trace > 0.0f)
             {

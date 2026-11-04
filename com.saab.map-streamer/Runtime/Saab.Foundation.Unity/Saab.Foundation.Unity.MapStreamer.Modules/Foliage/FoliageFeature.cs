@@ -51,6 +51,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
         public Vector2 NodeOffset { get; private set; }
         //public ComputeBuffer MinXY { get; private set; }
         public ComputeBuffer TerrainPoints;
+        public ComputeBuffer TerrainPointCount;
         public Texture2D FeatureMap;
         public Texture2D Texture;
         public Texture surfaceHeight;
@@ -76,6 +77,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             surfaceHeight = null;
             Texture = null;
             TerrainPoints = null;
+            TerrainPointCount = null;
             FeatureMap = null;
         }
 
@@ -84,6 +86,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             if (surfaceHeight is RenderTexture rt)
                 rt?.Release();
             TerrainPoints?.Release();
+            TerrainPointCount?.Release();
             PlacementMatrix?.Release();
             PixelToObject?.Release();
         }
@@ -162,6 +165,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             };
 
             data.TerrainPoints = new ComputeBuffer(size < 1 ? 1 : size, _foliageStride, ComputeBufferType.Append);
+            data.TerrainPointCount = new ComputeBuffer(1, sizeof(uint), ComputeBufferType.Raw);
 
             FeaturePlacement(data);
 
@@ -248,6 +252,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
 
             node.TerrainPoints.SetCounterValue(0);
             _placement.Dispatch(_kernelPlacement, threadsX < 1 ? 1 : threadsX, threadsY < 1 ? 1 : threadsY, 1);
+            ComputeBuffer.CopyCount(node.TerrainPoints, node.TerrainPointCount, 0);
         }
 
         public Matrix4x4 GetClipToWorld(Camera camera)
@@ -273,6 +278,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
             public static readonly int CameraForwardVector = Shader.PropertyToID("CameraForwardVector");
             public static readonly int frustumPlanes = Shader.PropertyToID("frustumPlanes");
             public static readonly int InputBuffer = Shader.PropertyToID("InputBuffer");
+            public static readonly int InputCount = Shader.PropertyToID("InputCount");
             public static readonly int ObjToWorld = Shader.PropertyToID("ObjToWorld");
             public static readonly int TerrainPoints = Shader.PropertyToID("TerrainPoints");
             public static readonly int BufferCount = Shader.PropertyToID("BufferCount");
@@ -396,6 +402,7 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                 int groups = Mathf.CeilToInt(itemPoints / 128f);
 
                 _placement.SetBuffer(_kernelCull, PlacementParameterID.InputBuffer, item.TerrainPoints);
+                _placement.SetBuffer(_kernelCull, PlacementParameterID.InputCount, item.TerrainPointCount);
                 _placement.SetMatrix(PlacementParameterID.ObjToWorld, go.transform.localToWorldMatrix);
 
                 _placement.Dispatch(_kernelCull, groups < 1 ? 1 : groups, 1, 1);

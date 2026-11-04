@@ -1,7 +1,9 @@
 {
     "name": "MAPSTREAMER",
     "rootNamespace": "MAPSTREAMER",
-    "references": [],
+    "references": [
+        "MAPSTREAMER.INTEROP"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

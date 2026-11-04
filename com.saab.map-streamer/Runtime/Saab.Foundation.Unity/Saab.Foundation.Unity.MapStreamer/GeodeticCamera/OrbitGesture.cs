@@ -25,6 +25,7 @@
 // Who  Date    Description
 //
 // DSA  260908  Created file
+// DSA  261020  Removed idle orbit movement and simplified gesture handling
 //
 //******************************************************************************
 
@@ -35,23 +36,22 @@ using Vector3 = GizmoSDK.GizmoBase.Vec3;
 
 namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
 {
-    /// <summary>Owns orbit acquisition, input and accepted framing for one camera.</summary>
     internal sealed class OrbitGesture
     {
-        private const float DegreesPerPixel = 0.125f;
         private readonly FrameQuery _readFrame;
         private readonly TerrainQuery _queryTerrain;
         private readonly ForwardPointQuery _pointAlongView;
         private readonly OrbitFraming.PositionResolver _resolvePosition;
         private readonly Func<Vector3, Vector3, Quaternion> _facePivot;
         private readonly PosePreparation _preparePose;
+        private readonly bool _faceCenter;
         private readonly OrbitPivot _pivot = new OrbitPivot();
         private readonly OrbitFraming _framing = new OrbitFraming();
         private OrbitPivotMode _mode = OrbitPivotMode.ViewportCenter;
-        private OrbitPitchLimits _limits = OrbitPitchLimits.Default;
+        private OrbitPitchLimits _limits;
         private bool _active;
-        private Vector2 _previousPointer;
         private Vector3 _orbitPoint;
+        private int _revision;
 
         internal struct Frame
         {
@@ -62,19 +62,24 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
 
         internal delegate bool FrameQuery(out Frame frame);
         /// <summary>
-        /// Queries terrain only. Pointer positions and Frame.WorldPosition use
-        /// double-precision Unity-world axes; center positions are camera-relative.
-        /// Invalid results end the gesture instead of using a retained or forward pivot.
+        /// Queries terrain only; invalid results end the gesture.
         /// </summary>
+        /// <remarks>
+        /// Pointer positions and Frame.WorldPosition use double-precision Unity-world axes;
+        /// center positions are camera-relative.
+        /// </remarks>
         internal delegate NavigationQueryResult TerrainQuery(OrbitPivotMode mode, Vector2 screenPosition, out Vec3D position);
-        /// <summary>Resolves the legacy center fallback without moving the camera; failure ends the gesture.</summary>
+        /// <summary>
+        /// Resolves the center fallback without moving the camera; failure ends the gesture.
+        /// </summary>
         internal delegate bool ForwardPointQuery(float distance, out Vector3 point);
         /// <summary>
-        /// Validates without moving the camera. A resolved map-global pointer pose
-        /// requires its candidate ENU basis; center displacement retains the current
-        /// basis. Success supplies a synchronous, non-failing application to invoke
-        /// only after the gesture accepts the proposal.
+        /// Prepares a pose without moving; success supplies a synchronous, non-failing commit.
         /// </summary>
+        /// <remarks>
+        /// Resolved map-global poses need their destination ENU basis; center moves keep the current basis.
+        /// Invoke the commit only after the gesture accepts the proposal.
+        /// </remarks>
         internal delegate bool PosePreparation(
             Vec3D? resolvedPosition, Vector3 displacement, Quaternion orientation, out Action apply);
 
@@ -84,7 +89,8 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
             ForwardPointQuery pointAlongView,
             OrbitFraming.PositionResolver resolvePosition,
             Func<Vector3, Vector3, Quaternion> facePivot,
-            PosePreparation preparePose)
+            PosePreparation preparePose,
+            bool faceCenter = false)
         {
             _readFrame = readFrame;
             _queryTerrain = queryTerrain;
@@ -92,6 +98,7 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
             _resolvePosition = resolvePosition;
             _facePivot = facePivot;
             _preparePose = preparePose;
+            _faceCenter = faceCenter;
         }
 
         internal void SetPivotMode(OrbitPivotMode mode)
@@ -113,108 +120,129 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
         }
 
         /// <summary>
-        /// Begins or continues from bottom-left-origin screen pixels. Pointer
-        /// begin captures without motion; center begin faces its acquired pivot.
-        /// Rejected proposals consume input, but invalid input or a missing frame
-        /// ends the gesture. Delta time in seconds controls pointer roll leveling.
+        /// Pointer acquisition does not move the camera; center mode may turn to face the pivot.
         /// </summary>
-        internal void Move(Vector2 pointer, bool begin, int viewportWidth, int viewportHeight, float deltaTime)
+        internal bool Begin(Vector2 pointer, int viewportWidth, int viewportHeight)
         {
-            if (!IsFinite(pointer))
+            if (!IsFinite(pointer) || !_readFrame(out Frame frame))
             {
                 End();
-                return;
+                return false;
             }
-            if (!begin && !_active)
-                return;
-            if (!_readFrame(out Frame frame))
+
+            if (!TryBegin(pointer, frame, viewportWidth, viewportHeight))
+                return false;
+
+            return _mode != OrbitPivotMode.ViewportCenter || !_faceCenter
+                || MoveAroundCenter(frame, 0, 0);
+        }
+
+        internal bool Rotate(float headingRadians, float pitchRadians)
+        {
+            if (!_active)
+                return false;
+
+            if (!GizmoCameraMath.IsFinite(headingRadians) || !GizmoCameraMath.IsFinite(pitchRadians)
+                || !_readFrame(out Frame frame))
             {
                 End();
-                return;
+                return false;
             }
 
-            if (begin)
-            {
-                OrbitPivot.ResolveScreenPosition(
-                    _mode, pointer.x, pointer.y, viewportWidth, viewportHeight, out float x, out float y);
-                NavigationQueryResult result = _queryTerrain(_mode, new Vec2(x, y), out Vec3D position);
-                if (result == NavigationQueryResult.Invalid)
-                {
-                    End();
-                    return;
-                }
-                bool resolved = result == NavigationQueryResult.Hit;
-                Vec3D offset = position;
-                _active = _mode == OrbitPivotMode.ViewportCenter
-                    || _pivot.TryAcquireOffset(resolved, position, frame.WorldPosition, out offset);
-                if (!_active)
-                    return;
+            if (headingRadians == 0 && pitchRadians == 0)
+                return true;
 
-                _orbitPoint = new Vec3((float)offset.x, (float)offset.y, (float)offset.z);
-                if (_mode == OrbitPivotMode.ViewportCenter
-                    && (!resolved || _orbitPoint.LengthSq2() < 8 * float.Epsilon))
-                {
-                    if (!_pointAlongView(500.0f, out _orbitPoint) || !IsUsablePoint(_orbitPoint))
-                    {
-                        End();
-                        return;
-                    }
-                }
-                _previousPointer = pointer;
-                if (_mode == OrbitPivotMode.PointerSurface)
-                {
-                    _active = _framing.TryBegin(NormalizeGestureVector(_orbitPoint), frame.Orientation);
-                    return;
-                }
-            }
-            Vec2 delta = pointer - _previousPointer;
-            _previousPointer = pointer;
-            if (!IsFinite(delta))
+            return _mode == OrbitPivotMode.ViewportCenter && _faceCenter
+                ? MoveAroundCenter(frame, headingRadians, pitchRadians)
+                : MoveAroundPointer(headingRadians, pitchRadians);
+        }
+
+        private bool TryBegin(Vector2 pointer, Frame frame, int viewportWidth, int viewportHeight)
+        {
+            OrbitPivot.ResolveScreenPosition(
+                _mode, pointer.x, pointer.y, viewportWidth, viewportHeight, out float x, out float y);
+            NavigationQueryResult result = _queryTerrain(_mode, new Vec2(x, y), out Vec3D position);
+            if (result == NavigationQueryResult.Invalid)
             {
                 End();
-                return;
+                return false;
             }
-            if (!begin && _mode == OrbitPivotMode.ViewportCenter && delta.x == 0.0f && delta.y == 0.0f)
-                return;
+            bool resolved = result == NavigationQueryResult.Hit;
+            Vec3D offset = position;
+            _active = _mode == OrbitPivotMode.ViewportCenter
+                || _pivot.TryAcquireOffset(resolved, position, frame.WorldPosition, out offset);
+            if (!_active)
+                return false;
 
-            float headingDelta = delta.x * (float)Math.PI / 180 * DegreesPerPixel;
-            float pitchDelta = -delta.y * (float)Math.PI / 180 * DegreesPerPixel;
-            if (_mode == OrbitPivotMode.ViewportCenter)
+            _orbitPoint = new Vec3((float)offset.x, (float)offset.y, (float)offset.z);
+            if (_mode == OrbitPivotMode.ViewportCenter
+                && (!resolved || _orbitPoint.LengthSq2() < 8 * float.Epsilon)
+                && (!_pointAlongView(500.0f, out _orbitPoint) || !IsUsablePoint(_orbitPoint)))
             {
-                Vec3 direction = NormalizeGestureVector(new Vec3(
-                    Vec3.Dot(frame.East, -_orbitPoint),
-                    Vec3.Dot(frame.North, -_orbitPoint),
-                    Vec3.Dot(frame.Up, -_orbitPoint)));
-                float yaw = (float)Math.Atan2(direction.x, direction.y) + headingDelta;
-                if (yaw > 2 * (float)Math.PI) yaw -= 2 * (float)Math.PI;
-                if (yaw < 0) yaw += 2 * (float)Math.PI;
-                float pitch = _limits.ClampRadians((float)Math.Asin(direction.z) + pitchDelta);
-                Vec3 orbitVector = (frame.Up * (float)Math.Sin(pitch)
-                    + (frame.North * (float)Math.Cos(yaw) + frame.East * (float)Math.Sin(yaw))
-                    * (float)Math.Cos(pitch)) * _orbitPoint.Length();
-                Quaternion orientation = _facePivot(NormalizeGestureVector(-orbitVector), frame.Up);
-                if (_preparePose(null, _orbitPoint + orbitVector, orientation, out Action apply))
-                {
-                    apply();
-                    _orbitPoint = -orbitVector;
-                }
+                End();
+                return false;
             }
-            else if (_framing.TryCalculatePointerStep(
+            if (_mode == OrbitPivotMode.PointerSurface || !_faceCenter)
+                _active = _framing.TryBegin(NormalizeGestureVector(_orbitPoint), frame.Orientation);
+
+            _revision++;
+            return _active;
+        }
+
+        private bool MoveAroundCenter(Frame frame, float headingDelta, float pitchDelta)
+        {
+            int revision = _revision;
+            Vec3 direction = NormalizeGestureVector(new Vec3(
+                Vec3.Dot(frame.East, -_orbitPoint),
+                Vec3.Dot(frame.North, -_orbitPoint),
+                Vec3.Dot(frame.Up, -_orbitPoint)));
+            float eastDirection = direction.x;
+            float northDirection = direction.y;
+            float yaw = (float)Math.Atan2(eastDirection, northDirection) + headingDelta;
+            if (yaw > 2 * (float)Math.PI)
+                yaw -= 2 * (float)Math.PI;
+
+            if (yaw < 0)
+                yaw += 2 * (float)Math.PI;
+
+            float pitch = _limits.ClampRadians((float)Math.Asin(direction.z) + pitchDelta);
+            Vec3 orbitVector = (frame.Up * (float)Math.Sin(pitch)
+                + (frame.North * (float)Math.Cos(yaw) + frame.East * (float)Math.Sin(yaw))
+                * (float)Math.Cos(pitch)) * _orbitPoint.Length();
+            Quaternion orientation = _facePivot(NormalizeGestureVector(-orbitVector), frame.Up);
+            if (_preparePose(null, _orbitPoint + orbitVector, orientation, out Action apply)
+                && revision == _revision)
+            {
+                apply();
+                _orbitPoint = -orbitVector;
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool MoveAroundPointer(float headingDelta, float pitchDelta)
+        {
+            if (_framing.TryCalculatePointerStep(
                     _orbitPoint, _resolvePosition,
                     headingDelta, pitchDelta,
-                    _limits, 2 * (float)Math.PI * deltaTime, out var step)
+                    _limits, out var step)
                 && _preparePose(step.GlobalPosition, default, step.Orientation, out Action apply)
                 && step.TryCommit())
             {
                 apply();
                 _orbitPoint = step.PivotDirection * _orbitPoint.Length();
+                return true;
             }
+
+            return false;
         }
 
         private void End()
         {
             _active = false;
             _framing.Clear();
+            _revision++;
         }
 
         private static bool IsFinite(Vec2 value)

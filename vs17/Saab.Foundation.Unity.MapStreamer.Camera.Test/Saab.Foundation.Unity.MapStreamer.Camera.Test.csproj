@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="GizmoBase" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="MSTest.TestAdapter" />
+    <PackageReference Include="MSTest.TestFramework" />
+    <PackageReference Include="coverlet.collector" />
+  </ItemGroup>
+
+  <Import Project="CameraTestSources.props" />
+
+  <ItemGroup>
+    <Compile Include="$(CameraRuntimeDirectory)\CameraZoomMath.cs" Link="Production\CameraZoomMath.cs" />
+    <Compile Include="$(CameraRuntimeDirectory)\CameraZoomGesture.cs" Link="Production\CameraZoomGesture.cs" />
+    <Compile Include="$(CameraRuntimeDirectory)\GroundDragPositionAdapter.cs" Link="Production\GroundDragPositionAdapter.cs" />
+    <Compile Include="$(CameraRuntimeDirectory)\GroundDragGesture.cs" Link="Production\GroundDragGesture.cs" />
+    <Compile Include="$(CameraRuntimeDirectory)\GeodeticCameraControl.Movement.cs" Link="Production\GeodeticCameraControl.Movement.cs" />
+    <Compile Include="$(CameraRuntimeDirectory)\GeodeticCameraControl.OrbitQueries.cs" Link="Production\GeodeticCameraControl.OrbitQueries.cs" />
+  </ItemGroup>
+</Project>

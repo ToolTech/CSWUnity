@@ -1,0 +1,25 @@
+{
+    "name": "MAPSTREAMER.TESTS",
+    "rootNamespace": "Saab.Foundation.Unity.MapStreamer.Tests",
+    "references": [
+        "MAPSTREAMER",
+        "MAPSTREAMER.INTEROP"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "Gizmo3D.dll",
+        "GizmoBase.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false,
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ]
+}

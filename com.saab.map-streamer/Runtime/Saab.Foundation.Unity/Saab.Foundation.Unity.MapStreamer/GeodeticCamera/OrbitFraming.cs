@@ -17,7 +17,7 @@
 //
 // File         : OrbitFraming.cs
 // Module       :
-// Description  : Transports orbit framing and manages roll around a surface point.
+// Description  : Keeps the orbit point fixed on screen and preserves camera alignment with the local horizon.
 // Author       : Daniel Sahlin
 //
 // Revision History...
@@ -25,6 +25,7 @@
 // Who  Date    Description
 //
 // DSA  260901  Created file
+// DSA  261020  Fixed unwanted roll during orbit and pitch stalling near vertical; simplified constraints
 //
 //******************************************************************************
 
@@ -38,24 +39,28 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
 {
     internal sealed class OrbitFraming
     {
-        private const float MinimumLengthSquared = 1e-12f;
-        private const float SuppressedLevelingUpAlignment = 0.7071068f;
-        private const float FullLevelingUpAlignment = 0.5f;
+        private const float HorizonAlignmentTolerance = 1e-6f;
+        private const float ConstraintProbeAngle = 0.001f;
+        private const float MaximumConstraintCorrection = 0.25f;
+        private const int MaximumConstraintIterations = 16;
+        private const int MaximumConstraintBacktracks = 12;
 
         private Vector3 _pivotDirectionInCameraSpace;
         private bool _hasContinuousFraming;
         private Vector3 _previousPivotDirection;
         private Quaternion _continuousOrientation;
+        private float? _rightUpAlignment;
         private int _revision;
 
         /// <summary>
-        /// Resolves a proposed Unity-world camera displacement to map-global position
-        /// and map up at that position. Queries must not move the camera or framing state.
+        /// Resolves camera-world displacement to map-global position and local up without changing state.
         /// </summary>
         internal delegate bool PositionResolver(
             Vector3 displacement, out Vec3D globalPosition, out Vector3 upDirection);
 
-        /// <summary>Captures a pivot ray in camera space and the orientation to transport during the gesture.</summary>
+        /// <summary>
+        /// Captures a pivot ray in camera space and the orientation to transport during the gesture.
+        /// </summary>
         /// <param name="pivotDirection">Camera-to-pivot direction in world coordinates.</param>
         /// <param name="cameraOrientation">Camera-to-world rotation, including any roll.</param>
         /// <returns>False for a zero or near-zero direction or rotation; no gesture remains active.</returns>
@@ -69,6 +74,7 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
             _pivotDirectionInCameraSpace = default;
             _previousPivotDirection = default;
             _continuousOrientation = default;
+            _rightUpAlignment = null;
 
             if (!TryNormalize(pivotDirection, out Vector3 normalizedPivotDirection)
                 || !TryNormalize(cameraOrientation, out Quaternion normalizedCamera)
@@ -77,9 +83,7 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
                         normalizedPivotDirection,
                         Inverse(normalizedCamera)),
                     out _pivotDirectionInCameraSpace))
-            {
                 return false;
-            }
 
             _previousPivotDirection = normalizedPivotDirection;
             _continuousOrientation = normalizedCamera;
@@ -92,14 +96,11 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
             float headingDeltaRadians,
             float pitchDeltaRadians,
             OrbitPitchLimits pitchLimits,
-            float maxLevelingRadians,
             out PointerStep step)
         {
             step = default;
             if (!_hasContinuousFraming
                 || !TryNormalize(upDirection, out upDirection)
-                || !IsFinite(maxLevelingRadians)
-                || maxLevelingRadians < 0.0f
                 || !OrbitMotion.TryCalculatePointerMotion(
                     -_previousPivotDirection,
                     upDirection,
@@ -110,25 +111,13 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
                     out Vector3 orbitDirection,
                     out _,
                     out Quaternion motion))
-            {
                 return false;
-            }
 
             Vector3 pivotDirection = -orbitDirection;
             Quaternion candidate = Multiply(motion, _continuousOrientation);
             if (!TryNormalize(candidate, out candidate)
-                || !TryApplyLeveling(pivotDirection, upDirection, maxLevelingRadians, ref candidate)
                 || Vector3.Dot(Transform(_pivotDirectionInCameraSpace, candidate), pivotDirection) < 0.9999f)
-            {
                 return false;
-            }
-
-            if (pitchLimits.HasBothBounds
-                && Vector3.Dot(Transform(UnitY, _continuousOrientation), upDirection) > 0.0f
-                && Vector3.Dot(Transform(UnitY, candidate), upDirection) <= 0.0f)
-            {
-                return false;
-            }
 
             // Derive the accepted position ray from the captured ray and the
             // accepted orientation, so independent float updates cannot accumulate drift.
@@ -140,17 +129,17 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
         }
 
         /// <summary>
-        /// Proposes an orbit against the coordinate model at every candidate position.
-        /// Both finite bounds stop pitch at its first unsafe candidate and let
-        /// heading follow a locally reachable boundary without inverting the camera.
-        /// A failed position/basis query rejects the whole proposal without advancing state.
+        /// Calculates an orbit proposal without advancing accepted state.
         /// </summary>
+        /// <remarks>
+        /// Checks local up at each candidate. With both bounds, pitch stops at the first
+        /// unsafe point while heading can follow the boundary. Failed coordinate queries reject the whole proposal.
+        /// </remarks>
         /// <param name="orbitPoint">Camera-relative Unity-world offset to the captured pivot.</param>
         /// <param name="resolvePosition">Side-effect-free position and local-up query, including zero displacement.</param>
         /// <param name="headingDeltaRadians">Signed heading travel around the starting map up.</param>
-        /// <param name="pitchDeltaRadians">Signed travel along the screen-up orbit tangent.</param>
+        /// <param name="pitchDeltaRadians">Signed camera-right pitch when bounded; screen-up orbit-tangent travel otherwise.</param>
         /// <param name="pitchLimits">Both bounds enable candidate-frame upright protection.</param>
-        /// <param name="maxLevelingRadians">The unchanged per-step horizon correction budget.</param>
         /// <param name="step">Complete, uncommitted map-global position and orientation, or default on failure.</param>
         internal bool TryCalculatePointerStep(
             Vector3 orbitPoint,
@@ -158,7 +147,6 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
             float headingDeltaRadians,
             float pitchDeltaRadians,
             OrbitPitchLimits pitchLimits,
-            float maxLevelingRadians,
             out PointerStep step)
         {
             step = default;
@@ -167,71 +155,57 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
                 || !TryNormalize(orbitPoint, out Vector3 pivotDirection)
                 || Vector3.Dot(pivotDirection, _previousPivotDirection) < 0.9999f
                 || !IsFinite(headingDeltaRadians) || !IsFinite(pitchDeltaRadians)
-                || !IsFinite(maxLevelingRadians) || maxLevelingRadians < 0.0f
                 || !resolvePosition(Zero3, out Vec3D position, out Vector3 up)
                 || !IsFinite(position) || !TryNormalize(up, out up))
-            {
                 return false;
-            }
 
-            float distance = orbitPoint.Length();
-            var candidate = new PointerPose(_previousPivotDirection, _continuousOrientation, position, up);
+            var context = new PointerContext(orbitPoint, resolvePosition, pitchLimits);
+            float rightUp = _rightUpAlignment
+                ?? Vector3.Dot(Transform(UnitX, _continuousOrientation), up);
+            rightUp = Math.Max(-1.0f, Math.Min(1.0f, rightUp));
+            if (Math.Abs(rightUp) <= HorizonAlignmentTolerance)
+                rightUp = 0.0f;
+            var candidate = new PointerPose(_previousPivotDirection, _continuousOrientation, position, up, rightUp);
             if (!pitchLimits.HasBothBounds)
             {
                 // Omitted bounds explicitly retain the library's original pole-crossing policy.
                 if (!TryCalculateUnboundedPointerStep(
-                        up, headingDeltaRadians, pitchDeltaRadians, pitchLimits,
-                        maxLevelingRadians, out PointerStep unrestricted)
+                        up, headingDeltaRadians, pitchDeltaRadians, pitchLimits, out PointerStep unrestricted)
                     || !TryResolvePointerPose(
-                        unrestricted.Orientation, orbitPoint, distance, resolvePosition, out candidate))
+                        unrestricted.Orientation, context, out candidate))
                     return false;
             }
-            else
-            {
-                if (!TryCalculatePointerHeading(
-                        candidate, headingDeltaRadians, orbitPoint, distance,
-                        resolvePosition, pitchLimits, out candidate))
-                    return false;
-
-                if (pitchDeltaRadians != 0.0f)
-                {
-                    Vector3 cameraUp = Transform(UnitY, candidate.Orientation);
-                    if (!TryNormalize(Vector3.Cross(-candidate.Direction, cameraUp), out Vector3 pitchAxis)
-                        || !TryClipPointerArc(
-                            candidate, pitchAxis, pitchDeltaRadians, orbitPoint, distance,
-                            resolvePosition, pitchLimits, out candidate))
-                        return false;
-                }
-
-                Quaternion leveled = candidate.Orientation;
-                if (!TryApplyLeveling(candidate.Direction, candidate.Up, maxLevelingRadians, ref leveled))
-                    return false;
-
-                if (!leveled.Equals(candidate.Orientation))
-                {
-                    if (!TryResolvePointerPose(
-                            leveled, orbitPoint, distance, resolvePosition, out PointerPose final)
-                        || !IsPointerPoseAllowed(final, candidate, pitchLimits))
-                        return false;
-
-                    candidate = final;
-                }
-            }
+            else if (!TryCalculateBoundedPointerStep(
+                    candidate, headingDeltaRadians, pitchDeltaRadians, context, out candidate))
+                return false;
 
             if (_revision != revision)
                 return false;
 
             step = new PointerStep(
-                this, revision, candidate.Direction, candidate.Orientation, candidate.Position);
+                this, revision, candidate.Direction, candidate.Orientation, candidate.Position,
+                pitchLimits.HasBothBounds ? candidate.RightUpAlignment : (float?)null);
+            return true;
+        }
+
+        private bool TryCalculateBoundedPointerStep(
+            PointerPose start, float heading, float pitch, in PointerContext context, out PointerPose accepted)
+        {
+            if (!TryCalculatePointerHeading(start, heading, context, out accepted))
+                return false;
+
+            if (Math.Abs(pitch) > 0.0f
+                && (!TryNormalize(Transform(UnitX, accepted.Orientation), out Vector3 pitchAxis)
+                    || !TryClipPointerArc(accepted, pitchAxis, pitch, context, out accepted)))
+                return false;
             return true;
         }
 
         private bool TryCalculatePointerHeading(
-            PointerPose start, float angle, Vector3 orbitPoint, float distance,
-            PositionResolver resolvePosition, OrbitPitchLimits limits, out PointerPose accepted)
+            PointerPose start, float angle, in PointerContext context, out PointerPose accepted)
         {
             accepted = start;
-            if (angle == 0.0f)
+            if (Math.Abs(angle) <= 0.0f)
                 return true;
 
             // Whole turns carry no additional pointer-heading intent. Still scan
@@ -244,35 +218,23 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
             float increment = (float)(travel / intervals) * (angle < 0.0f ? -1.0f : 1.0f);
             for (int i = 0; i < intervals; i++)
             {
-                if (!TryResolvePointerPose(
-                        Multiply(CreateFromAxisAngle(accepted.Up, increment), accepted.Orientation),
-                        orbitPoint, distance, resolvePosition, out PointerPose next))
+                if (!TryResolveHeadingPose(
+                        Multiply(CreateFromAxisAngle(accepted.Up, increment), accepted.Orientation), accepted.Up,
+                        accepted.RightUpAlignment,
+                        context, out PointerPose next))
                     return false;
 
-                if (!IsPointerPoseAllowed(next, accepted, limits))
+                if (!IsPointerPoseAllowed(next, accepted, context.Limits))
                 {
                     if (!TryFollowPointerBoundary(
-                            accepted, next, Math.Abs(increment), orbitPoint, distance,
-                            resolvePosition, limits, out bool followed, out PointerPose corrected))
+                            accepted, next, Math.Abs(increment), context,
+                            out bool followed, out PointerPose corrected))
                         return false;
 
                     if (!followed)
                         return TryClipPointerArc(
-                            accepted, accepted.Up, increment, orbitPoint, distance,
-                            resolvePosition, limits, out accepted);
+                            accepted, accepted.Up, increment, context, out accepted);
                     next = corrected;
-                }
-                else if (!next.Up.Equals(accepted.Up))
-                {
-                    if (!TryClipPointerArc(
-                            accepted, accepted.Up, increment, orbitPoint, distance,
-                            resolvePosition, limits, out PointerPose swept))
-                        return false;
-                    if (!swept.Orientation.Equals(next.Orientation))
-                    {
-                        accepted = swept;
-                        return true;
-                    }
                 }
                 accepted = next;
             }
@@ -281,13 +243,11 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
 
         private bool TryFollowPointerBoundary(
             PointerPose previous, PointerPose headed, float maximumCorrection,
-            Vector3 orbitPoint, float distance, PositionResolver resolvePosition,
-            OrbitPitchLimits limits, out bool followed, out PointerPose accepted)
+            in PointerContext context, out bool followed, out PointerPose accepted)
         {
             followed = false;
             accepted = previous;
-            Vector3 cameraUp = Transform(UnitY, headed.Orientation);
-            if (!TryNormalize(Vector3.Cross(-headed.Direction, cameraUp), out Vector3 axis))
+            if (!TryNormalize(Transform(UnitX, headed.Orientation), out Vector3 axis))
                 return true;
 
             // Curvature can make pure heading leave an active boundary. Follow
@@ -297,45 +257,51 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
             float bestCorrection = maximumCorrection;
             for (float sign = -1.0f; sign <= 1.0f; sign += 2.0f)
             {
-                if (!TryResolvePointerPose(
-                        Multiply(CreateFromAxisAngle(axis, sign * bestCorrection), headed.Orientation),
-                        orbitPoint, distance, resolvePosition, out PointerPose corrected))
+                var arc = new PointerArc(headed, axis, sign, context);
+                if (!TryResolvePointerArcPose(arc, bestCorrection, out PointerPose corrected))
                     return false;
-                if (!IsPointerPoseAllowed(corrected, previous, limits))
+                if (!IsPointerPoseAllowed(corrected, previous, context.Limits))
                     continue;
 
-                float low = 0.0f;
-                float high = bestCorrection;
-                for (int iteration = 0; iteration < 24 && high - low > 1e-7f; iteration++)
-                {
-                    float middle = low + (high - low) * 0.5f;
-                    if (!TryResolvePointerPose(
-                            Multiply(CreateFromAxisAngle(axis, sign * middle), headed.Orientation),
-                            orbitPoint, distance, resolvePosition, out PointerPose trial))
-                        return false;
-                    if (IsPointerPoseAllowed(trial, previous, limits))
-                    {
-                        high = middle;
-                        corrected = trial;
-                    }
-                    else
-                        low = middle;
-                }
-
-                bestCorrection = high;
-                accepted = corrected;
+                if (!TryRefinePointerBoundary(
+                        arc, previous, bestCorrection, corrected, out bestCorrection, out accepted))
+                    return false;
                 followed = true;
             }
             return true;
         }
 
+        private bool TryRefinePointerBoundary(
+            in PointerArc arc, PointerPose previous, float maximumCorrection, PointerPose endpoint,
+            out float correction, out PointerPose accepted)
+        {
+            correction = maximumCorrection;
+            accepted = endpoint;
+            float low = 0.0f;
+            float high = maximumCorrection;
+            for (int iteration = 0; iteration < 24 && high - low > 1e-7f; iteration++)
+            {
+                float middle = low + (high - low) * 0.5f;
+                if (!TryResolvePointerArcPose(arc, middle, out PointerPose trial))
+                    return false;
+                if (IsPointerPoseAllowed(trial, previous, arc.Context.Limits))
+                {
+                    high = middle;
+                    accepted = trial;
+                }
+                else
+                    low = middle;
+            }
+            correction = high;
+            return true;
+        }
+
         private bool TryClipPointerArc(
             PointerPose start, Vector3 axis, float angle,
-            Vector3 orbitPoint, float distance, PositionResolver resolvePosition,
-            OrbitPitchLimits limits, out PointerPose accepted)
+            in PointerContext context, out PointerPose accepted)
         {
             accepted = start;
-            if (angle == 0.0f)
+            if (Math.Abs(angle) <= 0.0f)
                 return true;
 
             // Position and up may be nonlinear in the active CRS. Scan the actual
@@ -345,80 +311,88 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
             double travel = Math.Min(Math.Abs((double)angle), 2.0 * Math.PI);
             int intervals = Math.Max(1, (int)Math.Ceiling(travel / (Math.PI / 180.0)));
             float sign = angle < 0.0f ? -1.0f : 1.0f;
+            var arc = new PointerArc(start, axis, sign, context);
             float previousAngle = 0.0f;
             for (int i = 1; i <= intervals; i++)
             {
                 float nextAngle = (float)(travel * i / intervals);
-                if (!TryResolvePointerPose(
-                        Multiply(CreateFromAxisAngle(axis, sign * nextAngle), start.Orientation),
-                        orbitPoint, distance, resolvePosition, out PointerPose next))
+                if (!TryResolvePointerArcPose(arc, nextAngle, out PointerPose next)
+                    || !TryRefinePointerArcInterval(
+                        arc, previousAngle, nextAngle, accepted, next, out var sample))
                     return false;
 
-                float frameTravel = nextAngle - previousAngle + (accepted.Up - next.Up).Length();
-                float clearance = GetPointerPoseClearance(next, accepted, limits);
-                if (clearance >= 0.0f
-                    && Math.Max(clearance, GetPointerPoseClearance(accepted, accepted, limits))
-                        <= 0.5f * frameTravel * frameTravel + 1e-6f)
-                {
-                    if (!TryFindPointerArcMinimum(
-                            start, axis, sign, previousAngle, nextAngle, accepted,
-                            orbitPoint, distance, resolvePosition, limits,
-                            out float minimumAngle, out PointerPose minimum))
-                        return false;
-                    if (!IsPointerPoseAllowed(minimum, accepted, limits))
-                    {
-                        nextAngle = minimumAngle;
-                        next = minimum;
-                    }
-                }
+                if (!IsPointerPoseAllowed(sample.Pose, accepted, context.Limits))
+                    return TryClipPointerArcBoundary(arc, previousAngle, sample.Angle, accepted, out accepted);
 
-                if (!IsPointerPoseAllowed(next, accepted, limits))
-                {
-                    float low = previousAngle;
-                    float high = nextAngle;
-                    for (int iteration = 0; iteration < 24 && high - low > 1e-7f; iteration++)
-                    {
-                        float middle = low + (high - low) * 0.5f;
-                        if (middle == low || middle == high)
-                            break;
-
-                        if (!TryResolvePointerPose(
-                                Multiply(CreateFromAxisAngle(axis, sign * middle), start.Orientation),
-                                orbitPoint, distance, resolvePosition, out next))
-                            return false;
-
-                        if (IsPointerPoseAllowed(next, accepted, limits))
-                        {
-                            low = middle;
-                            accepted = next;
-                        }
-                        else
-                        {
-                            high = middle;
-                        }
-                    }
-                    return true;
-                }
-
-                accepted = next;
-                previousAngle = nextAngle;
+                accepted = sample.Pose;
+                previousAngle = sample.Angle;
             }
 
             if (Math.Abs((double)angle) > travel)
             {
-                if (!TryResolvePointerPose(
-                        Multiply(CreateFromAxisAngle(axis, angle), start.Orientation),
-                        orbitPoint, distance, resolvePosition, out PointerPose final)
-                    || !IsPointerPoseAllowed(final, accepted, limits))
+                if (!TryResolveHorizonPose(
+                        Multiply(CreateFromAxisAngle(axis, angle), start.Orientation), start.RightUpAlignment,
+                        context, out PointerPose final)
+                    || !IsPointerPoseAllowed(final, accepted, context.Limits))
                     return false;
                 accepted = final;
             }
             return true;
         }
 
+        private bool TryRefinePointerArcInterval(
+            in PointerArc arc, float low, float high, PointerPose reference, PointerPose endpoint,
+            out (float Angle, PointerPose Pose) sample)
+        {
+            sample = (high, endpoint);
+            float frameTravel = high - low + (reference.Up - endpoint.Up).Length();
+            double clearance = GetPointerPoseClearance(endpoint, reference, arc.Context.Limits);
+            if (clearance >= 0.0f
+                && Math.Max(clearance, GetPointerPoseClearance(reference, reference, arc.Context.Limits))
+                    <= 0.5f * frameTravel * frameTravel + 1e-6f)
+            {
+                if (!TryFindPointerArcMinimum(
+                        arc, low, high, reference, out float minimumAngle, out PointerPose minimum))
+                    return false;
+                if (!IsPointerPoseAllowed(minimum, reference, arc.Context.Limits))
+                    sample = (minimumAngle, minimum);
+            }
+            return true;
+        }
+
+        private bool TryClipPointerArcBoundary(
+            in PointerArc arc, float low, float high, PointerPose start, out PointerPose accepted)
+        {
+            accepted = start;
+            for (int iteration = 0; iteration < 24 && high - low > 1e-7f; iteration++)
+            {
+                float middle = low + (high - low) * 0.5f;
+                if (middle <= low || middle >= high)
+                    break;
+
+                if (!TryResolvePointerArcPose(arc, middle, out PointerPose next))
+                    return false;
+
+                if (IsPointerPoseAllowed(next, accepted, arc.Context.Limits))
+                {
+                    low = middle;
+                    accepted = next;
+                }
+                else
+                    high = middle;
+            }
+            return true;
+        }
+
+        private bool TryResolvePointerArcPose(in PointerArc arc, float angle, out PointerPose pose)
+        {
+            return TryResolveHorizonPose(
+                Multiply(CreateFromAxisAngle(arc.Axis, arc.Sign * angle), arc.Start.Orientation),
+                arc.Start.RightUpAlignment, arc.Context, out pose);
+        }
+
         private bool TryFindPointerArcMinimum(
-            PointerPose start, Vector3 axis, float sign, float low, float high, PointerPose reference,
-            Vector3 orbitPoint, float distance, PositionResolver resolvePosition, OrbitPitchLimits limits,
+            in PointerArc arc, float low, float high, PointerPose reference,
             out float minimumAngle, out PointerPose minimum)
         {
             minimumAngle = low;
@@ -429,18 +403,19 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
             const float ratio = 0.618034f;
             float left = high - (high - low) * ratio;
             float right = low + (high - low) * ratio;
-            if (!Resolve(left, out PointerPose leftPose) || !Resolve(right, out PointerPose rightPose))
+            if (!TryResolvePointerArcPose(arc, left, out PointerPose leftPose)
+                || !TryResolvePointerArcPose(arc, right, out PointerPose rightPose))
                 return false;
             for (int i = 0; i < 24 && high - low > 1e-7f; i++)
             {
-                if (GetPointerPoseClearance(leftPose, reference, limits)
-                    <= GetPointerPoseClearance(rightPose, reference, limits))
+                if (GetPointerPoseClearance(leftPose, reference, arc.Context.Limits)
+                    <= GetPointerPoseClearance(rightPose, reference, arc.Context.Limits))
                 {
                     high = right;
                     right = left;
                     rightPose = leftPose;
                     left = high - (high - low) * ratio;
-                    if (!Resolve(left, out leftPose))
+                    if (!TryResolvePointerArcPose(arc, left, out leftPose))
                         return false;
                 }
                 else
@@ -449,38 +424,205 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
                     left = right;
                     leftPose = rightPose;
                     right = low + (high - low) * ratio;
-                    if (!Resolve(right, out rightPose))
+                    if (!TryResolvePointerArcPose(arc, right, out rightPose))
                         return false;
                 }
             }
-            bool useLeft = GetPointerPoseClearance(leftPose, reference, limits)
-                <= GetPointerPoseClearance(rightPose, reference, limits);
+            bool useLeft = GetPointerPoseClearance(leftPose, reference, arc.Context.Limits)
+                <= GetPointerPoseClearance(rightPose, reference, arc.Context.Limits);
             minimumAngle = useLeft ? left : right;
             minimum = useLeft ? leftPose : rightPose;
             return true;
+        }
 
-            bool Resolve(float angle, out PointerPose pose)
+        private bool TryResolveHeadingPose(
+            Quaternion orientation, Vector3 sourceUp, float rightUp,
+            in PointerContext context, out PointerPose pose)
+        {
+            pose = default;
+            if (!TryNormalize(orientation, out orientation)
+                || !TryNormalize(Transform(sourceUp, Inverse(orientation)), out Vector3 targetUp))
+                return false;
+            float verticalLength = (float)Math.Sqrt(targetUp.y * targetUp.y + targetUp.z * targetUp.z);
+            float scale = verticalLength > 0.0f
+                ? (float)Math.Sqrt(Math.Max(0.0f, 1.0f - rightUp * rightUp)) / verticalLength : 0.0f;
+            targetUp = new Vector3(rightUp, targetUp.y * scale, targetUp.z * scale);
+            if (!TryNormalize(Vector3.Cross(targetUp, UnitX), out Vector3 first)
+                && !TryNormalize(Vector3.Cross(targetUp, UnitZ), out first))
+                return false;
+            Vector3 second = Vector3.Cross(targetUp, first);
+            Quaternion candidate = orientation;
+            // Heading retains local pitch and banking, so it follows an active
+            // elevation boundary rather than crossing it and stopping there.
+            for (int iteration = 0; iteration < MaximumConstraintIterations; iteration++)
             {
-                return TryResolvePointerPose(
-                    Multiply(CreateFromAxisAngle(axis, sign * angle), start.Orientation),
-                    orbitPoint, distance, resolvePosition, out pose);
+                if (!TryResolveHeadingError(candidate, targetUp, rightUp, context, out pose, out Vector3 error))
+                    return false;
+                if (error.LengthSq2() <= HorizonAlignmentTolerance * HorizonAlignmentTolerance)
+                    return true;
+
+                if (!TryCalculateHeadingCorrection(
+                        pose, error, targetUp, first, second, context, out Vector3 correction)
+                    || !TryImproveHeadingPose(pose, error, targetUp, correction, context, out candidate))
+                    return false;
             }
+            return false;
+        }
+
+        private bool TryCalculateHeadingCorrection(
+            PointerPose pose, Vector3 error, Vector3 targetUp, Vector3 first, Vector3 second,
+            in PointerContext context, out Vector3 correction)
+        {
+            correction = default;
+            Vector3 firstAxis = Transform(first, pose.Orientation);
+            Vector3 secondAxis = Transform(second, pose.Orientation);
+            if (!TryResolveHeadingError(
+                    Multiply(CreateFromAxisAngle(firstAxis, ConstraintProbeAngle), pose.Orientation),
+                    targetUp, pose.RightUpAlignment, context, out _, out Vector3 firstError)
+                || !TryResolveHeadingError(
+                    Multiply(CreateFromAxisAngle(secondAxis, ConstraintProbeAngle), pose.Orientation),
+                    targetUp, pose.RightUpAlignment, context, out _, out Vector3 secondError))
+                return false;
+            Vector3 firstGradient = (firstError - error) / ConstraintProbeAngle;
+            Vector3 secondGradient = (secondError - error) / ConstraintProbeAngle;
+            float aa = Vector3.Dot(firstGradient, first), ab = Vector3.Dot(secondGradient, first);
+            float ba = Vector3.Dot(firstGradient, second), bb = Vector3.Dot(secondGradient, second);
+            float determinant = aa * bb - ab * ba;
+            if (!IsFinite(determinant) || Math.Abs(determinant) <= 1e-12f)
+                return false;
+            float a = Vector3.Dot(error, first), b = Vector3.Dot(error, second);
+            correction = firstAxis * ((ab * b - bb * a) / determinant)
+                + secondAxis * ((ba * a - aa * b) / determinant);
+            return true;
+        }
+
+        private bool TryImproveHeadingPose(
+            PointerPose pose, Vector3 error, Vector3 targetUp, Vector3 correction,
+            in PointerContext context, out Quaternion candidate)
+        {
+            candidate = default;
+            float length = correction.Length();
+            if (!IsFinite(length) || length <= 0.0f)
+                return false;
+            Vector3 axis = correction / length;
+            float angle = Math.Min(MaximumConstraintCorrection, length);
+            for (int reduction = 0; reduction < MaximumConstraintBacktracks; reduction++, angle *= 0.5f)
+            {
+                if (!TryResolveHeadingError(
+                        Multiply(CreateFromAxisAngle(axis, angle), pose.Orientation),
+                        targetUp, pose.RightUpAlignment, context, out PointerPose trial, out Vector3 nextError))
+                    return false;
+                if (nextError.LengthSq2() < error.LengthSq2())
+                {
+                    candidate = trial.Orientation;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private bool TryResolveHeadingError(
+            Quaternion rotation, Vector3 targetUp, float rightUp, in PointerContext context,
+            out PointerPose pose, out Vector3 error)
+        {
+            error = default;
+            if (!TryResolvePointerPose(rotation, context, out pose, rightUp))
+                return false;
+            error = Transform(pose.Up, Inverse(pose.Orientation)) - targetUp;
+            return true;
+        }
+
+        private bool TryResolveHorizonPose(
+            Quaternion orientation, float rightUp, in PointerContext context, out PointerPose pose)
+        {
+            pose = default;
+            if (!TryNormalize(orientation, out orientation))
+                return false;
+            Quaternion candidate = orientation;
+            // Position depends on orientation through the captured ray. Resolve
+            // its horizontal right axis and the new CRS up together. Use the
+            // actual coordinate-model response, including large geocentric orbits.
+            for (int iteration = 0; iteration < MaximumConstraintIterations; iteration++)
+            {
+                if (!TryResolvePointerPose(candidate, context, out pose, rightUp))
+                    return false;
+                float error = Vector3.Dot(Transform(UnitX, pose.Orientation), pose.Up) - rightUp;
+                if (Math.Abs(error) <= HorizonAlignmentTolerance)
+                    return true;
+
+                if (!TryCalculateHorizonCorrection(
+                        candidate, pose, error, context, out Vector3 axis, out float angle)
+                    || !TryImproveHorizonPose(pose, error, axis, angle, context, out candidate))
+                    return false;
+            }
+            return false;
+        }
+
+        private bool TryCalculateHorizonCorrection(
+            Quaternion candidate, PointerPose pose, float error, in PointerContext context,
+            out Vector3 axis, out float angle)
+        {
+            axis = default;
+            angle = default;
+            Vector3 cameraUp = Transform(UnitY, pose.Orientation);
+            Vector3 forward = Transform(UnitZ, pose.Orientation);
+            if (!TryProbeHorizonGradient(candidate, cameraUp, pose.RightUpAlignment, error, context, out float upGradient)
+                || !TryProbeHorizonGradient(candidate, forward, pose.RightUpAlignment, error, context, out float forwardGradient))
+                return false;
+            Vector3 gradient = cameraUp * upGradient + forward * forwardGradient;
+            float length = gradient.Length();
+            if (!TryNormalize(gradient, out axis))
+                return false;
+            angle = Math.Max(-MaximumConstraintCorrection, Math.Min(MaximumConstraintCorrection, -error / length));
+            return true;
+        }
+
+        private bool TryImproveHorizonPose(
+            PointerPose pose, float error, Vector3 axis, float angle,
+            in PointerContext context, out Quaternion candidate)
+        {
+            candidate = default;
+            for (int reduction = 0; reduction < MaximumConstraintBacktracks; reduction++, angle *= 0.5f)
+            {
+                Quaternion next = Multiply(CreateFromAxisAngle(axis, angle), pose.Orientation);
+                if (!TryResolvePointerPose(next, context, out PointerPose trial, pose.RightUpAlignment))
+                    return false;
+                float nextError = Vector3.Dot(Transform(UnitX, trial.Orientation), trial.Up) - pose.RightUpAlignment;
+                if (Math.Abs(nextError) < Math.Abs(error))
+                {
+                    candidate = trial.Orientation;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private bool TryProbeHorizonGradient(
+            Quaternion candidate, Vector3 axis, float rightUp, float error,
+            in PointerContext context, out float derivative)
+        {
+            derivative = 0;
+            if (!TryResolvePointerPose(
+                    Multiply(CreateFromAxisAngle(axis, ConstraintProbeAngle), candidate),
+                    context, out PointerPose probe, rightUp))
+                return false;
+            derivative = (Vector3.Dot(Transform(UnitX, probe.Orientation), probe.Up) - rightUp - error) / ConstraintProbeAngle;
+            return IsFinite(derivative);
         }
 
         private bool TryResolvePointerPose(
-            Quaternion orientation, Vector3 orbitPoint, float distance,
-            PositionResolver resolvePosition, out PointerPose pose)
+            Quaternion orientation, in PointerContext context, out PointerPose pose, float rightUp = 0.0f)
         {
             pose = default;
             if (!TryNormalize(orientation, out orientation)
                 || !TryNormalize(
                     Transform(_pivotDirectionInCameraSpace, orientation), out Vector3 direction)
-                || !resolvePosition(
-                    orbitPoint - direction * distance, out Vec3D position, out Vector3 up)
+                || !context.ResolvePosition(
+                    context.OrbitPoint - direction * context.Distance, out Vec3D position, out Vector3 up)
                 || !IsFinite(position) || !TryNormalize(up, out up))
                 return false;
 
-            pose = new PointerPose(direction, orientation, position, up);
+            pose = new PointerPose(direction, orientation, position, up, rightUp);
             return true;
         }
 
@@ -490,16 +632,64 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
             return GetPointerPoseClearance(candidate, previous, limits) >= 0.0f;
         }
 
-        private static float GetPointerPoseClearance(
+        private static double GetPointerPoseClearance(
             PointerPose candidate, PointerPose previous, OrbitPitchLimits limits)
         {
             const float minimumUprightAlignment = 1e-5f;
-            float minimumAlignment = Math.Min(minimumUprightAlignment, previous.UprightDot);
+            const double elevationProjectionTolerance = 2e-8;
+            const double uprightProjectionTolerance = 1e-7;
+            double minimumAlignment = Math.Min(minimumUprightAlignment, previous.UprightDot);
+            double uprightTolerance = previous.UprightDot > 0.0
+                ? Math.Min(uprightProjectionTolerance, minimumAlignment * 0.5)
+                : uprightProjectionTolerance;
+            if (previous.UprightDot >= minimumUprightAlignment - 2 * uprightProjectionTolerance)
+                minimumAlignment = minimumUprightAlignment;
             float minimumElevation = (float)Math.Sin(limits.ClampRadians(-(float)Math.PI / 2.0f));
             float maximumElevation = (float)Math.Sin(limits.ClampRadians((float)Math.PI / 2.0f));
-            return Math.Min(candidate.UprightDot - minimumAlignment, Math.Min(
-                candidate.ElevationDot - Math.Min(minimumElevation, previous.ElevationDot),
-                Math.Max(maximumElevation, previous.ElevationDot) - candidate.ElevationDot));
+            // Float poses retain tiny projection noise after double normalization.
+            // Tolerance must not accumulate by treating roundoff as an external
+            // out-of-bounds pose on the next step.
+            double elevationClearance = Math.Min(
+                candidate.ElevationDot - (previous.ElevationDot < minimumElevation - 2 * elevationProjectionTolerance
+                    ? previous.ElevationDot : minimumElevation),
+                (previous.ElevationDot > maximumElevation + 2 * elevationProjectionTolerance
+                    ? previous.ElevationDot : maximumElevation) - candidate.ElevationDot);
+            // Keep a strictly positive upright margin when the accepted pose is upright.
+            return Math.Min(candidate.UprightDot - minimumAlignment + uprightTolerance,
+                elevationClearance + elevationProjectionTolerance);
+        }
+
+        private readonly struct PointerContext
+        {
+            internal readonly Vector3 OrbitPoint;
+            internal readonly float Distance;
+            internal readonly PositionResolver ResolvePosition;
+            internal readonly OrbitPitchLimits Limits;
+
+            internal PointerContext(
+                Vector3 orbitPoint, PositionResolver resolvePosition, OrbitPitchLimits limits)
+            {
+                OrbitPoint = orbitPoint;
+                Distance = orbitPoint.Length();
+                ResolvePosition = resolvePosition;
+                Limits = limits;
+            }
+        }
+
+        private readonly struct PointerArc
+        {
+            internal readonly PointerPose Start;
+            internal readonly Vector3 Axis;
+            internal readonly float Sign;
+            internal readonly PointerContext Context;
+
+            internal PointerArc(PointerPose start, Vector3 axis, float sign, in PointerContext context)
+            {
+                Start = start;
+                Axis = axis;
+                Sign = sign;
+                Context = context;
+            }
         }
 
         private readonly struct PointerPose
@@ -508,19 +698,34 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
             internal readonly Quaternion Orientation;
             internal readonly Vec3D Position;
             internal readonly Vector3 Up;
-            internal float ElevationDot => -Vector3.Dot(Direction, Up);
-            internal float UprightDot => Vector3.Dot(Transform(UnitY, Orientation), Up);
+            internal readonly double ElevationDot;
+            internal readonly double UprightDot;
+            internal readonly float RightUpAlignment;
 
-            internal PointerPose(Vector3 direction, Quaternion orientation, Vec3D position, Vector3 up)
+            internal PointerPose(Vector3 direction, Quaternion orientation, Vec3D position, Vector3 up, float rightUp)
             {
                 Direction = direction;
                 Orientation = orientation;
                 Position = position;
                 Up = up;
+                RightUpAlignment = rightUp;
+                ElevationDot = -NormalizedDot(direction, up);
+                UprightDot = NormalizedDot(Transform(UnitY, orientation), up);
+            }
+
+            private static double NormalizedDot(Vector3 left, Vector3 right)
+            {
+                // Float-normalized directions can still project beyond one near a pole.
+                double dot = (double)left.x * right.x + (double)left.y * right.y + (double)left.z * right.z;
+                double leftSquared = (double)left.x * left.x + (double)left.y * left.y + (double)left.z * left.z;
+                double rightSquared = (double)right.x * right.x + (double)right.y * right.y + (double)right.z * right.z;
+                return Math.Max(-1.0, Math.Min(1.0, dot / Math.Sqrt(leftSquared * rightSquared)));
             }
         }
 
-        /// <summary>A validated pose proposal; committing a stale or already committed proposal fails.</summary>
+        /// <summary>
+        /// A validated pose proposal; committing a stale or already committed proposal fails.
+        /// </summary>
         internal readonly struct PointerStep
         {
             private readonly OrbitFraming _owner;
@@ -528,16 +733,18 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
             internal Vector3 PivotDirection { get; }
             internal Quaternion Orientation { get; }
             internal Vec3D GlobalPosition { get; }
+            private float? RightUpAlignment { get; }
 
             internal PointerStep(
                 OrbitFraming owner, int revision, Vector3 pivotDirection,
-                Quaternion orientation, Vec3D globalPosition = default)
+                Quaternion orientation, Vec3D globalPosition = default, float? rightUpAlignment = null)
             {
                 _owner = owner;
                 _revision = revision;
                 PivotDirection = pivotDirection;
                 Orientation = orientation;
                 GlobalPosition = globalPosition;
+                RightUpAlignment = rightUpAlignment;
             }
 
             internal bool TryCommit()
@@ -547,165 +754,23 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
 
                 _owner._previousPivotDirection = PivotDirection;
                 _owner._continuousOrientation = Orientation;
+                _owner._rightUpAlignment = RightUpAlignment;
                 _owner._revision++;
                 return true;
             }
         }
 
-        private bool TryApplyLeveling(
-            Vector3 pivotDirection,
-            Vector3 upDirection,
-            float maxLevelingRadians,
-            ref Quaternion orientation)
-        {
-            if (!TryNormalize(
-                    Transform(
-                        upDirection,
-                        Inverse(orientation)),
-                    out Vector3 currentCameraSpaceUp))
-            {
-                return false;
-            }
-
-            float upAlignment = Math.Abs(Vector3.Dot(pivotDirection, upDirection));
-            if (maxLevelingRadians <= 0.0f
-                || upAlignment >= SuppressedLevelingUpAlignment
-                || !TryResolveCameraSpaceUp(
-                    _pivotDirectionInCameraSpace,
-                    Vector3.Dot(pivotDirection, upDirection),
-                    currentCameraSpaceUp,
-                    out Vector3 targetCameraSpaceUp))
-            {
-                return true;
-            }
-
-            if (upAlignment > FullLevelingUpAlignment)
-            {
-                float levelingBlend =
-                    (SuppressedLevelingUpAlignment - upAlignment)
-                    / (SuppressedLevelingUpAlignment - FullLevelingUpAlignment);
-                levelingBlend =
-                    levelingBlend * levelingBlend * (3.0f - 2.0f * levelingBlend);
-                maxLevelingRadians *= levelingBlend;
-            }
-
-            Vector3 currentProjectedUp =
-                currentCameraSpaceUp
-                - Vector3.Dot(currentCameraSpaceUp, _pivotDirectionInCameraSpace)
-                * _pivotDirectionInCameraSpace;
-            Vector3 targetProjectedUp =
-                targetCameraSpaceUp
-                - Vector3.Dot(targetCameraSpaceUp, _pivotDirectionInCameraSpace)
-                * _pivotDirectionInCameraSpace;
-            if (!TryNormalize(currentProjectedUp, out currentProjectedUp)
-                || !TryNormalize(targetProjectedUp, out targetProjectedUp))
-            {
-                return true;
-            }
-
-            float levelingAngle = (float)Math.Atan2(
-                Vector3.Dot(
-                    _pivotDirectionInCameraSpace,
-                    Vector3.Cross(currentProjectedUp, targetProjectedUp)),
-                Vector3.Dot(currentProjectedUp, targetProjectedUp));
-            float appliedAngle = Math.Max(
-                -maxLevelingRadians,
-                Math.Min(maxLevelingRadians, levelingAngle));
-            if (Math.Abs(appliedAngle) <= 1e-6f)
-                return true;
-
-            Quaternion worldCorrection = CreateFromAxisAngle(
-                pivotDirection,
-                -appliedAngle);
-            // Rotation around the world pivot direction changes only internal
-            // roll; the pointer ray remains fixed in camera space.
-            Quaternion candidate = Multiply(worldCorrection, orientation);
-            if (!TryNormalize(candidate, out orientation))
-                return false;
-
-            return true;
-        }
-
-        /// <summary>Discards the captured gesture. Repeated calls are safe; advancing requires a new TryBegin.</summary>
+        /// <summary>
+        /// Discards the captured gesture. Repeated calls are safe; advancing requires a new TryBegin.
+        /// </summary>
         internal void Clear()
         {
             _revision++;
             _pivotDirectionInCameraSpace = default;
             _previousPivotDirection = default;
             _continuousOrientation = default;
+            _rightUpAlignment = null;
             _hasContinuousFraming = false;
-        }
-
-        private bool TryResolveCameraSpaceUp(
-            Vector3 cameraSpacePivotDirection,
-            float pivotUpDot,
-            Vector3 currentCameraSpaceUp,
-            out Vector3 cameraSpaceUp)
-        {
-            cameraSpaceUp = default;
-
-            float projectionCoefficient = cameraSpacePivotDirection.y;
-            float depthCoefficient = cameraSpacePivotDirection.z;
-            float coefficientLengthSquared =
-                projectionCoefficient * projectionCoefficient
-                + depthCoefficient * depthCoefficient;
-            if (coefficientLengthSquared <= MinimumLengthSquared)
-                return false;
-
-            float coefficientLength = (float)Math.Sqrt(coefficientLengthSquared);
-            if (Math.Abs(pivotUpDot) > coefficientLength + 0.00001f)
-                return false;
-
-            float reachableDot = Math.Max(
-                -coefficientLength,
-                Math.Min(coefficientLength, pivotUpDot));
-            float baseProjection =
-                projectionCoefficient * reachableDot / coefficientLengthSquared;
-            float baseDepth =
-                depthCoefficient * reachableDot / coefficientLengthSquared;
-            float solutionScale = (float)Math.Sqrt(
-                Math.Max(
-                    0.0f,
-                    1.0f - reachableDot * reachableDot / coefficientLengthSquared));
-            float perpendicularProjection = -depthCoefficient / coefficientLength;
-            float perpendicularDepth = projectionCoefficient / coefficientLength;
-
-            Vector3 first = CreateCameraSpaceUp(
-                baseProjection + solutionScale * perpendicularProjection,
-                baseDepth + solutionScale * perpendicularDepth);
-            Vector3 second = CreateCameraSpaceUp(
-                baseProjection - solutionScale * perpendicularProjection,
-                baseDepth - solutionScale * perpendicularDepth);
-
-            bool firstValid =
-                TryNormalize(first, out first) && IsValidCameraSpaceUp(first);
-            bool secondValid =
-                TryNormalize(second, out second) && IsValidCameraSpaceUp(second);
-            if (!firstValid && !secondValid)
-                return false;
-
-            cameraSpaceUp = firstValid
-                && (!secondValid
-                    || Vector3.Dot(first, currentCameraSpaceUp)
-                    >= Vector3.Dot(second, currentCameraSpaceUp))
-                ? first
-                : second;
-            return true;
-        }
-
-        private Vector3 CreateCameraSpaceUp(float projectionLength, float depth)
-        {
-            return new Vector3(
-                0.0f,
-                projectionLength,
-                depth);
-        }
-
-        private bool IsValidCameraSpaceUp(Vector3 cameraSpaceUp)
-        {
-            return cameraSpaceUp.x * cameraSpaceUp.x
-                       + cameraSpaceUp.y * cameraSpaceUp.y > MinimumLengthSquared
-                   && cameraSpaceUp.y > 0.0f;
         }
 
         private static bool IsFinite(float value)

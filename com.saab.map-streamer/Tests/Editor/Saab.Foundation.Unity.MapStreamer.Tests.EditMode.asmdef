@@ -1,0 +1,24 @@
+{
+    "name": "Saab.Foundation.Unity.MapStreamer.Tests.EditMode",
+    "rootNamespace": "Saab.Foundation.Unity.MapStreamer.Tests",
+    "references": [
+        "GUID:3087ea34bbce2f44aa16d74d964a08ca"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "GizmoBase.dll",
+        "Gizmo3D.dll"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false,
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ]
+}

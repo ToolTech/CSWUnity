@@ -166,11 +166,18 @@ namespace Saab.Foundation.Unity.MapStreamer
                 {
                     var state = activeStateNode.node.State;
 
-                    if (!StateHelper.Build(state, out StateBuildOutput buildOutput, _textureManager))
+                    if (!StateHelper.Build(
+                            state,
+                            out Texture2D buildOutput,
+                            _textureManager))
+                    {
+                        state.ReleaseAlreadyLocked();
+                        GameObject.Destroy(material);
                         return false;
+                    }
 
                     activeStateNode.stateLoadInfo |= StateLoadInfo.Texture;
-                    activeStateNode.texture = buildOutput.Texture;
+                    activeStateNode.texture = buildOutput;
 
                     state.ReleaseAlreadyLocked();
                 }

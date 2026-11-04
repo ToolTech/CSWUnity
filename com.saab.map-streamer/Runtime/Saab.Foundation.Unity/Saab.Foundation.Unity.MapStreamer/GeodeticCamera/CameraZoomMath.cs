@@ -17,7 +17,7 @@
 //
 // File         : CameraZoomMath.cs
 // Module       :
-// Description  : Calculates bounded geodetic camera zoom distances.
+// Description  : Calculates safe geodetic camera zoom distances.
 // Author       : Daniel Sahlin
 //
 // Revision History...
@@ -25,24 +25,23 @@
 // Who  Date    Description
 //
 // DSA  260901  Created file
+// DSA  261020  Removed the zoom-out limit and rejected invalid zoom calculations
 //
 //******************************************************************************
 
 using System;
-using GizmoSDK.GizmoBase;
 
 namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
 {
     internal static class CameraZoomMath
     {
-        internal const double MinimumDistance = 1.0;
-
         private const double ZoomFactor = 0.2;
 
         internal static bool TryCalculateDistanceScale(
             double distance,
             float steps,
-            double maximumDistance,
+            double? minimumDistance,
+            double? maximumDistance,
             out double scale)
         {
             scale = default;
@@ -51,14 +50,11 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
                 || double.IsInfinity(distance)
                 || float.IsNaN(steps)
                 || float.IsInfinity(steps)
-                || double.IsNaN(maximumDistance)
-                || double.IsInfinity(maximumDistance)
-                || distance <= 0.0
-                || maximumDistance < MinimumDistance)
+                || distance <= 0.0)
                 return false;
 
-            if (steps > 0.0f && distance <= MinimumDistance
-                || steps < 0.0f && distance >= maximumDistance)
+            if (steps > 0.0f && minimumDistance.HasValue && distance <= minimumDistance.Value
+                || steps < 0.0f && maximumDistance.HasValue && distance >= maximumDistance.Value)
             {
                 scale = 1.0;
                 return true;
@@ -66,12 +62,20 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
 
             double adjustedDistance = distance * Math.Pow(1.0 - ZoomFactor, steps);
 
-            if (steps > 0.0f && adjustedDistance < MinimumDistance)
-                adjustedDistance = MinimumDistance;
-            else if (steps < 0.0f && adjustedDistance > maximumDistance)
-                adjustedDistance = maximumDistance;
+            if (steps > 0.0f && minimumDistance.HasValue && adjustedDistance < minimumDistance.Value)
+                adjustedDistance = minimumDistance.Value;
+            else if (steps < 0.0f && maximumDistance.HasValue && adjustedDistance > maximumDistance.Value)
+                adjustedDistance = maximumDistance.Value;
 
-            scale = adjustedDistance / distance;
+            double candidateScale = adjustedDistance / distance;
+            if (double.IsNaN(adjustedDistance)
+                || double.IsInfinity(adjustedDistance)
+                || double.IsNaN(candidateScale)
+                || double.IsInfinity(candidateScale)
+                || candidateScale <= 0.0)
+                return false;
+
+            scale = candidateScale;
             return true;
         }
     }

@@ -46,10 +46,9 @@ Open the unity project found under the under directory 'projects\com.saab.map-st
 The T&S BTA reference architecture in this repository uses Unity 2021.3.17f1. Other Saab projects can have different Unity-version requirements and should follow their own ProjectSettings/ProjectVersion.txt file and approved dependency set. New projects may prefer Unity 6000.3.21f1 LTS after compatibility with the required CSWUnity, GizmoSDK and package dependencies has been verified.
 
 <b>keybinds:</b>
-* WASD to move around
-* space, ctrl move up and down
-* Arrow keys to rotate the view
-* shift increase speed of movement
+* Shift + left mouse drag to pan.
+* Middle mouse drag, or Ctrl + Shift + left mouse drag, to orbit.
+* Mouse wheel to zoom.
 
 <b><u>Note Win64 only right now</u></b>
 Good Luck !

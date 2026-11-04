@@ -435,16 +435,14 @@ namespace Saab.Foundation.Unity.MapStreamer.Modules
                 return targetTexture.antiAliasing;
 
             RenderingPath renderingPath = camera.actualRenderingPath;
-            bool usesDeferredRendering =
-                renderingPath == RenderingPath.DeferredShading ||
-                renderingPath == RenderingPath.DeferredLighting;
+            bool usesDeferredRendering = renderingPath == RenderingPath.DeferredShading;
+
             return usesDeferredRendering ? 1 : QualitySettings.antiAliasing;
         }
 
         private static CameraEvent SelectGenerationEvent(RenderingPath renderingPath)
         {
-            return renderingPath == RenderingPath.DeferredShading ||
-                   renderingPath == RenderingPath.DeferredLighting
+            return renderingPath == RenderingPath.DeferredShading
                 ? CameraEvent.BeforeReflections
                 : CameraEvent.AfterDepthTexture;
         }

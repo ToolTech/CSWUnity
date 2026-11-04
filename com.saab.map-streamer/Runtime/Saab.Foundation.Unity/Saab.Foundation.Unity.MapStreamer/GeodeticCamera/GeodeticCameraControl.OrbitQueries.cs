@@ -40,7 +40,7 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
 {
     public partial class GeodeticCameraControl
     {
-        private NavigationQueryResult QueryOrbitTerrain(
+        private protected virtual NavigationQueryResult QueryOrbitTerrain(
             OrbitPivotMode mode, Vec2 screenPosition, out Vec3D position)
         {
             position = default;
@@ -83,7 +83,7 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
             return true;
         }
 
-        private bool TryGetLocalPosition(MapPos mp, out Vector3 localPosition)
+        private static bool TryGetLocalPosition(MapPos mp, out Vector3 localPosition)
         {
             localPosition = default;
             if (MapControl.SystemMap == null || mp == null || mp.node == null
@@ -106,8 +106,7 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
         {
             if (MapControl.SystemMap == null || !IsFinite(new Vec3D(position.X, position.Y, position.Z)))
                 return false;
-            if (_mapPos == null)
-                _mapPos = new MapPos();
+            _mapPos ??= new MapPos();
             _mapPos.node = null;
             return _mapPos.SetCartPos(position.X, position.Y, position.Z);
         }

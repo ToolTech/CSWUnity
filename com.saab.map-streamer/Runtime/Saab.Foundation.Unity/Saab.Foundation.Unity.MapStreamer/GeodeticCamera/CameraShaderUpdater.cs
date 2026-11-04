@@ -45,10 +45,18 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
         private void Awake()
         {
             _cameraControl = GetComponent<GeodeticCameraControl>();
-            _cameraControl.OnPreTraverse += smc_OnPreTraverse;
+            _cameraControl.OnPreTraverse += OnCameraPreTraverse;
         }
 
-        private void smc_OnPreTraverse(bool locked)
+        private void OnDestroy()
+        {
+            if (_cameraControl != null)
+            {
+                _cameraControl.OnPreTraverse -= OnCameraPreTraverse;
+            }
+        }
+
+        private void OnCameraPreTraverse(bool locked)
         {
             UpdateShaderPos();
             UpdateShaderOrientation();
@@ -71,10 +79,7 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
             if (!MapControl.SystemMap.GlobalToWorld(new Vec3D(_cameraControl.X, _cameraControl.Y, _cameraControl.Z), out LatPos latPos))
                 return;
 
-            if (_mapPos == null)
-            {
-                _mapPos = new MapPos();
-            }
+            _mapPos ??= new MapPos();
 
             _mapPos.SetLatPos(latPos.Latitude, latPos.Longitude, latPos.Altitude);
 

@@ -5,8 +5,9 @@ trigger:
 variables:
   ArticleFull: 8866027201
   ProjectID: MapStreamer
-  Major: 4
-  Minor: 7
+  Major: 5
+  Minor: 0
+  NuGetConfig: S3C_project.config
 
 # Build number format
 name: $(ArticleFull).$(Major).$(Minor).$(rev:r)
@@ -53,6 +54,40 @@ stages:
             inputs:
               PathtoPublish: CHANGELOG.md
               ArtifactName: wiki
+
+          - task: SaabUseDotNet@1
+            inputs:
+              packageType: sdk
+              version: 10.0.x
+              serviceConnection: TSArtifactory
+
+          - task: NuGetAuthenticate@1
+            inputs:
+              nuGetServiceConnections: S3C-nuget.org
+
+          - task: DownloadSecureFile@1
+            name: NuGetFeeds
+            inputs:
+              secureFile: '$(NuGetConfig)'
+
+          - task: DotNetCoreCLI@2
+            displayName: Restore camera tests
+            inputs:
+              command: restore
+              projects: vs17\Saab.Foundation.Unity.MapStreamer.Camera.Test\Saab.Foundation.Unity.MapStreamer.Camera.Test.csproj
+              feedsToUse: config
+              nugetConfigPath: '$(NuGetFeeds.secureFilePath)'
+              externalFeedCredentials: S3C-nuget.org
+
+          - task: DotNetCoreCLI@2
+            displayName: Run camera tests
+            continueOnError: true
+            inputs:
+              command: test
+              projects: vs17\Saab.Foundation.Unity.MapStreamer.Camera.Test\Saab.Foundation.Unity.MapStreamer.Camera.Test.csproj
+              arguments: '-c Release --no-restore'
+              publishTestResults: true
+              testRunTitle: MapStreamer camera
 
   - ${{ if or(eq(variables['Build.SourceBranch'], 'refs/heads/master'), startsWith(variables['Build.SourceBranch'], 'refs/heads/release/')) }}:
       - stage: PublishWiki

@@ -40,43 +40,7 @@ Shader "Custom/Foliage/Billboard"
 			#include "UnityStandardUtils.cginc"
 			#include "UnityPBSLighting.cginc"
 			#include "CompressionUtil.cginc"
-
-			struct FS_INPUT
-			{
-				float4 pos						: SV_POSITION;
-
-				float3 worldPos					: TEXCOORD0;
-				nointerpolation float3 center	: TEXCOORD1;
-
-				half2 uv						: TEXCOORD2;
-				nointerpolation uint layer		: TEXCOORD3;
-
-				nointerpolation half radius		: TEXCOORD4;
-
-				nointerpolation uint normal		: TEXCOORD5;	 // normal oct packed
-				nointerpolation uint colorA     : COLOR0;        // RGBA8 (tint + alpha)
-			};
-
-			struct FoliagePoint
-			{
-				float3 Position;    // 12 bytes
-				uint ColorA;        // 4 bytes
-
-				uint up;            // 4 bytes
-				uint right;         // 4 bytes
-
-				uint packed0;		// 4  -> 28  (Height16 | Random16)
-				uint packed1;		// 4  -> 32  (Visibility16 | unused/pad16)
-
-			}; // 32 bytes: AMD require data to be divisible by 16 bytes (caused by float3 => 16 bytes padding). Nvidia and Intel drivers automatically pads.
-
-			struct FoliageShaderData
-			{
-				float2 MaxMin;
-				float2 Offset;
-				float Weight;
-				float CullAreaWidth;
-			};
+			#include "FoliageShaderTypes.cginc"
 
 			// ---- Global ----
 			sampler2D _WindTexture;

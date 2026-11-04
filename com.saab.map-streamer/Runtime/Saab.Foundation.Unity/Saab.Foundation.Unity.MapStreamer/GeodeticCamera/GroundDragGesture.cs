@@ -34,7 +34,6 @@ using Saab.Foundation.Map;
 
 namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
 {
-    /// <summary>Owns ground-drag acquisition, retained references, movement and reset.</summary>
     internal sealed class GroundDragGesture
     {
         private readonly MapQuery _readMap;
@@ -47,8 +46,11 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
         private ProjectedNavigationPlane.PanGesture? _projected;
         private TangentFrame _tangent;
         private Vec2 _initialEnu;
+        private readonly bool _dampen;
 
-        /// <summary>Captured ECEF camera and Unity-world axes; Up and ReferencePoint define the retained plane.</summary>
+        /// <summary>
+        /// Captures the ECEF origin and Unity-world axes; Up and ReferencePoint define the drag plane.
+        /// </summary>
         internal struct TangentFrame
         {
             internal Vec3 East, North, Up, ReferencePoint;
@@ -56,7 +58,9 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
         }
 
         internal delegate bool MapQuery(bool beginning, out MapType mapType, out Vec3D cameraPosition);
-        /// <summary>The existing terrain-first, coordinate-model surface query, used only when beginning.</summary>
+        /// <summary>
+        /// Terrain-first surface query used only when acquiring the gesture.
+        /// </summary>
         internal delegate bool SurfaceQuery(float x, float y, out Vec3D position);
         internal delegate bool ProjectedRayQuery(float x, float y, out Vec3D origin, out Vec3 direction);
         /// <summary>
@@ -65,13 +69,16 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
         /// </summary>
         internal delegate bool PositionApplication(MapType mapType, Vec3D position, float east, float north);
         internal delegate bool FrameQuery(Vec3D reference, out TangentFrame frame);
-        /// <summary>Uses native Unity normalization and plane/ray intersection, returning signed incidence.</summary>
+        /// <summary>
+        /// Uses Unity ray/plane intersection and returns signed incidence.
+        /// </summary>
         internal delegate bool PlaneQuery(
             float x, float y, Vec3 normal, Vec3 point, out Vec3 intersection, out float incidence);
 
         internal GroundDragGesture(
             MapQuery readMap, SurfaceQuery querySurface, ProjectedRayQuery queryProjectedRay,
-            FrameQuery readFrame, PlaneQuery raycast, PositionApplication applyPosition)
+            FrameQuery readFrame, PlaneQuery raycast, PositionApplication applyPosition,
+            bool dampen = false)
         {
             _readMap = readMap;
             _querySurface = querySurface;
@@ -79,13 +86,19 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
             _readFrame = readFrame;
             _raycast = raycast;
             _applyPosition = applyPosition;
+            _dampen = dampen;
         }
 
-        /// <summary>Consumes bottom-left-origin screen pixels; regrab acquires without moving. Failure ends the gesture.</summary>
+        /// <summary>
+        /// Uses bottom-left screen pixels; regrab acquires without moving. Failure ends the gesture.
+        /// </summary>
         internal void Move(float x, float y, bool regrab)
         {
             if (regrab)
+            {
                 Clear();
+            }
+
             if (!_readMap(regrab, out MapType mapType, out Vec3D cameraPosition)
                 || (!regrab && _mapType != mapType))
             {
@@ -95,44 +108,55 @@ namespace Saab.Foundation.Unity.MapStreamer.GeodeticCamera
 
             if (regrab)
             {
-                if (!_querySurface(x, y, out Vec3D reference))
-                    return;
-                if (mapType == MapType.UTM || mapType == MapType.PROJ_SWEREF99)
-                {
-                    _projected = ProjectedNavigationPlane.BeginPan(cameraPosition, reference);
-                    _mapType = mapType;
-                }
-                else if (mapType == MapType.GEOCENTRIC && _readFrame(reference, out _tangent))
-                {
-                    _initialEnu = new Vec2(
-                        Vec3.Dot(_tangent.East, _tangent.ReferencePoint),
-                        Vec3.Dot(_tangent.North, _tangent.ReferencePoint));
-                    _mapType = mapType;
-                }
+                Begin(x, y, mapType, cameraPosition);
                 return;
             }
 
             if (_mapType == MapType.GEOCENTRIC)
             {
                 if (_raycast(x, y, _tangent.Up, _tangent.ReferencePoint, out Vec3 hit, out float incidence)
-                    && GroundDragMath.TryCalculatePanScale(incidence, out float scale))
+                    && GroundDragMath.TryCalculatePanScale(incidence, out float scale, _dampen))
                 {
-                    Vec2 currentEnu = new Vec2(
+                    Vec2 currentEnu = new(
                         Vec3.Dot(_tangent.East, hit), Vec3.Dot(_tangent.North, hit));
                     Vec2 offset = scale * (currentEnu - _initialEnu);
                     if (_applyPosition(mapType, _tangent.CameraEcef, -offset.x, -offset.y))
+                    {
                         return;
+                    }
                 }
             }
             else if (_projected != null
                 && _queryProjectedRay(x, y, out Vec3D origin, out Vec3 direction)
                 && _projected.TryCalculateNextPosition(
-                    origin, new Vec3D(direction.x, direction.y, direction.z), out Vec3D position))
+                    origin, new Vec3D(direction.x, direction.y, direction.z), out Vec3D position)
+                && _applyPosition(mapType, position, 0, 0))
             {
-                if (_applyPosition(mapType, position, 0, 0))
-                    return;
+                return;
             }
+
             Clear();
+        }
+
+        private void Begin(float x, float y, MapType mapType, Vec3D cameraPosition)
+        {
+            if (!_querySurface(x, y, out Vec3D reference))
+            {
+                return;
+            }
+
+            if (mapType == MapType.UTM || mapType == MapType.PROJ_SWEREF99)
+            {
+                _projected = ProjectedNavigationPlane.BeginPan(cameraPosition, reference, _dampen);
+                _mapType = mapType;
+            }
+            else if (mapType == MapType.GEOCENTRIC && _readFrame(reference, out _tangent))
+            {
+                _initialEnu = new Vec2(
+                    Vec3.Dot(_tangent.East, _tangent.ReferencePoint),
+                    Vec3.Dot(_tangent.North, _tangent.ReferencePoint));
+                _mapType = mapType;
+            }
         }
 
         internal void Clear()
