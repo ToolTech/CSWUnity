@@ -119,7 +119,7 @@ If changing the build configuration from Debug to Release, or from Release to De
 
 > Do not mix Debug and Release plugin DLLs.
 
-## 4.7 Build Using Batch Files
+## 4.7 OR Build Using Batch Files
 
 The SDK can also be built using the batch files available in the CSWUnity repository.
 
