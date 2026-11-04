@@ -54,6 +54,12 @@ The T&S BTA reference architecture in this repository uses Unity 2021.3.17f1. Ot
 <b><u>Note Win64 only right now</u></b>
 Good Luck !
 
+## Other Demos
+
+To Integrate weather effects like rain, snow, clouds, lightning, and fog in Unity, refer common component [CSWEnvironment](https://saab.ghe.com/saab/CSWEnvironment).
+
+For Example Demos of **drone navigation**, **tanks and vehicles**, **ballistics**, or **drone-to-drone communication** **etc**, refer [CSWExamples](https://saab.ghe.com/saab/CSWExamples).
+
 
 Technology Info
 ===============
@@ -68,4 +74,6 @@ The SceneGraph API also allows a fast intersector query to be performed to find 
 The demo shows an example of SBD maps (Streaming Binary Data) that are quad or octree based spatial data in 3D. The format allows very large databases (entire globe) to be divided on multiple servers and that can have details down to (mm) in resolution.
 
 ![Screenshot](https://gizmosdk.blob.core.windows.net/maps/stock/thumb.png)
+
 _[A screenshot showing how feature/height data can be used to present trees with accurate position and height]_  
+
