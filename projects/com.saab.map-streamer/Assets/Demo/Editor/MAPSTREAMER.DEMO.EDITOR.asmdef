@@ -1,0 +1,16 @@
+{
+    "name": "MAPSTREAMER.DEMO.EDITOR",
+    "rootNamespace": "Saab.Foundation.Unity.MapStreamer.Demo",
+    "references": [],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

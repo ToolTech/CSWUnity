@@ -230,6 +230,9 @@ artifacts\                            Generated local output; not committed
 | Arrow keys | Rotate |
 | `Shift` | Increase movement speed |
 
+To fly the camera over the map without input, see *Run the Demo Flight* in the
+[CDW Map Streamer demo](tutorial/howto/CDW_map_streamer_DEMO.md).
+
 ## Licensing and contact
 
 The open source code and documentation in this repository are provided under

@@ -152,7 +152,46 @@ The streaming map should load in the scene.
 | `Arrow Keys` | Rotate Camera |
 | `Shift` | Increase Movement Speed |
 
-## 4.10 Important Dependency Note
+## 4.10 Run the Demo Flight
+
+The demo flight flies the camera without input in a figure eight around the
+map origin, 6 km east-west and 2 km north-south. It passes over the crossing
+of the eight 200 m above the origin the first time and 350 m above it the
+second time, looks 25° down along the direction of travel, and renders with
+the infinite far plane.
+
+1. In the Unity Editor, select **MapStreamer > Build Demo Player**.
+   The build writes the Windows player to `Builds\MapStreamer-Demo` in the
+   project folder, together with `config.xml` and `Start Demo.cmd`.
+2. Double-click `Start Demo.cmd` in `Builds\MapStreamer-Demo`.
+   The flight starts a few seconds after the first map frame. `F1` shows the
+   streaming diagnostics, and `Esc` quits.
+
+Arguments after `Start Demo.cmd`, or after `MapStreamer-Demo.exe -csw-demo`,
+change the flight:
+
+| Argument | Default | Meaning |
+|---|---|---|
+| `-csw-demo-speed` | `60` | Ground speed in metres per second |
+| `-csw-demo-size` | `3000` | Half the east-west extent of the eight in metres |
+| `-csw-demo-altitude` | `200` | Height above the origin in metres at the first pass over the crossing |
+| `-csw-demo-pitch` | `-25` | View angle above the horizon in degrees |
+| `-csw-demo-infinite` | `1` | `1` renders with the infinite far plane, `0` with the far plane of the camera |
+
+For example, `"Start Demo.cmd" -csw-demo-speed 120 -screen-fullscreen 0`
+flies twice as fast in a window. Scripts can build the player without the
+Editor window, with the `Unity.exe` of the Unity version of the project:
+
+```bat
+Unity.exe -batchmode -quit -projectPath CSWUnity\projects\com.saab.map-streamer -executeMethod Saab.Foundation.Unity.MapStreamer.Demo.DemoPlayerBuild.Build -logFile build.log
+```
+
+To fly the demo in the Editor, add the **Demo Flight** component to the
+**SceneManager** object in **ExampleScene** and press **Play**. The fields of
+the component set the same values as the arguments, and the speed, size,
+altitude, and pitch can change while the flight runs.
+
+## 4.11 Important Dependency Note
 
 Do not copy additional CSW or GizmoSDK DLLs into the Unity project. The staged
 UPM package is the single dependency source. When package versions change,
