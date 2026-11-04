@@ -60,11 +60,6 @@ To show it:
 
 *Figure: Enable Hidden Items in File Explorer to access the AppData folder.*
 
-![Unity downloaded installation packages](UNITY_IMAGES/04_Unity_Downloaded_Packages.png)
-
-*Figure: Example Unity installation packages downloaded by Unity Hub.*
-
-
 ## 3.4 Install Unity Editor and Modules Manually
 
 Install the main Unity Editor executable first:
