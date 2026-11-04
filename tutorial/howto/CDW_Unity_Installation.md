@@ -36,7 +36,7 @@ Select the required Unity build modules depending on the target platform.
 
 *Figure: Example Unity build modules available during Unity Editor installation.*
 
-**Note:** For a commercial Unity license or help installing a specific Unity Editor version, contact Group IT Services.
+**Note:** For a commercial Unity Industry license or help installing a specific Unity Editor version, contact Group IT Services.
 
 ## 3.3 CDW Installation Limitation
 
