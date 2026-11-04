@@ -25,27 +25,18 @@ After successful login, the account information should appear in the top-right a
 *Figure: Unity Hub welcome/sign-in screen.*
 
 
+
+
 ## 3.2 Install Unity Editor
 
-The T&S BTA Map Streamer architecture in this repository uses:
-
-`Unity 2021.3.17f1`
-
-This version is recorded in
-`projects/com.saab.map-streamer/ProjectSettings/ProjectVersion.txt` and should
-be used when opening the existing demo project.
-
-Different Saab projects can have different Unity-version requirements. Always
-follow the target project's `ProjectSettings/ProjectVersion.txt` file and
-approved dependency set. For a new project, Unity `6000.3.21f1 LTS` may be
-preferred after compatibility with the required CSWUnity, GizmoSDK, rendering,
-and package dependencies has been verified.
+For a new project, Unity 6000.3.21f1 LTS or another approved **Unity 6xxx.x.xxf1 LTS** release is preferred, provided compatibility with the required CSWUnity version, GizmoSDK, render pipeline, and package dependencies has been verified.
 
 Select the required Unity build modules depending on the target platform.
 ![Unity build modules](UNITY_IMAGES/02_Unity_Build_Modules.png)
 
 *Figure: Example Unity build modules available during Unity Editor installation.*
 
+**Note:** For a commercial Unity Industry license or help installing a specific Unity Editor version, contact Group IT Services.
 
 ## 3.3 CDW Installation Limitation
 
@@ -53,7 +44,9 @@ On CDW, software may not be allowed to automatically install other downloaded so
 
 Unity Hub downloads can normally be found under:
 
-`C:/Users/UserProfile-ID/AppData/Roaming/UnityHub/downloads`
+`C:\Users\<UserProfileID>\AppData\Roaming\UnityHub\downloads`
+
+**Note:** Replace **UserProfileID** with your Windows username (for example, u123456).
 
 The `AppData` folder is hidden by default.
 
@@ -66,11 +59,6 @@ To show it:
 ![Show hidden items in File Explorer](UNITY_IMAGES/03_Show_Hidden_Items.png)
 
 *Figure: Enable Hidden Items in File Explorer to access the AppData folder.*
-
-![Unity downloaded installation packages](UNITY_IMAGES/04_Unity_Downloaded_Packages.png)
-
-*Figure: Example Unity installation packages downloaded by Unity Hub.*
-
 
 ## 3.4 Install Unity Editor and Modules Manually
 
@@ -106,11 +94,16 @@ For each package:
 
 Example for the T&S BTA project when installed through Unity Hub:
 
-`C:/Program Files/Unity/Hub/Editor/2021.3.17f1/Editor/Unity.exe`
+`C:\Program Files\Unity 6000.3.21f1\Editor\Unity.exe`
 ![Locate Unity Editor in Unity Hub](UNITY_IMAGES/07_Locate_Unity_Editor.png)
 
 *Figure: Use the Locate option in Unity Hub and select the installed Unity Editor.*
 
 
 The steps for opening and running the Map Streamer project are described in
-the [Map Streamer demo guide](CDW_map_streamer_DEMO.md).
+the CDW Map Streamer demo .
+
+
+<p align="right">
+<a href="CDW_map_streamer_DEMO.md" >CDW_map_streamer_DEMO ➡️</a>
+</p>

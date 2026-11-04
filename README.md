@@ -75,4 +75,3 @@ The demo shows an example of SBD maps (Streaming Binary Data) that are quad or o
 ![Screenshot](https://gizmosdk.blob.core.windows.net/maps/stock/thumb.png)
 
 _[A screenshot showing how feature/height data can be used to present trees with accurate position and height]_  
-

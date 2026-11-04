@@ -57,7 +57,7 @@ Suggested business justification:
 
 > Need GPU in CDW, as the CommonTech project requires graphical processing using Unity.
 
-> \*\*Note:\*\* A GPU-enabled CDW does not support Windows Subsystem for Linux (WSL). Currently, the Map Streamer demo has no dependency on WSL.
+> **Note:** A GPU-enabled CDW does not support Windows Subsystem for Linux (WSL). Currently, the Map Streamer demo has no dependency on WSL.
 
 ## 1.4 Hardware Requirements
 
@@ -96,3 +96,7 @@ file and approved dependency set.
 New projects may prefer Unity `6000.3.21f1 LTS`, provided compatibility with
 the required CSWUnity, GizmoSDK, rendering, and package dependencies has been
 verified. Do not upgrade an existing project solely on the basis of this guide.
+
+<p align="right">
+<a href="CDW_Visual_Studio_Installation.md" >CDW_Visual_Studio_Installation ➡️</a>
+</p>
