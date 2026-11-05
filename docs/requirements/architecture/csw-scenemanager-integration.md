@@ -1044,6 +1044,135 @@ With omni traversal, the rendered view may thus differ from the frustum that
 SceneManager traverses, but the level of detail shall follow the zoom of the
 camera through this factor.
 
+### REQ-CSWU-SM-051: Native preparation on loader threads
+
+- **Status:** Pending
+- **Kind:** Mechanism
+- **Milestone:** M1
+- **Use cases:** None
+- **Depends on:** REQ-CSWU-SM-009, REQ-CSWU-SM-010, REQ-CSWU-SM-012,
+  REQ-CSWU-SM-052
+- **Verification:** Native test in the CSW SceneManager that a dynamically
+  loaded geometry and its image carry prepared data when their `NewNode`
+  command is delivered, and that the data was prepared on the loader thread
+  with edit access paused, plus code review of the lock discipline
+
+The CSW SceneManager shall be able to prepare render data for every client in
+`preBuildReference` and `updateReference` of `cswSceneManager` itself. A client
+shall enable the preparation with the new capabilities
+`CSW_CAPABILITY_PREBUILD_MESH_EXPORT` for geometry and
+`CSW_CAPABILITY_PREBUILD_TEXTURE_EXPORT` for textures. Without them,
+SceneManager shall prepare nothing, as today.
+
+SceneManager shall store the prepared data in the format of REQ-CSWU-SM-052
+before it adds the `NewNode` or `UpdateNode` command of the node to its
+buffer. The prepared geometry shall be the build data attribute (`CSW_META`,
+`CSW_BUILD_DATA`) of the node.
+
+When the dynamic loader delivers a node with `GZ_DYNAMIC_LOADER_PRE_LOADED`,
+the node is not yet in the scene and only its loader thread can reach it.
+SceneManager shall then prepare it on that loader thread with edit access
+paused, so that all loaders (4 to 16) prepare in parallel. On every other
+path, such as `addMap`, `addRoiObject`, `refreshSubtree`, and the activations
+of a frame, SceneManager shall prepare the node while it holds edit access.
+`traverse` shall therefore know on which path it runs. The preparation shall
+not call the client, so no managed code runs on the loader threads.
+
+### REQ-CSWU-SM-052: Prepared data format
+
+- **Status:** Pending
+- **Kind:** Mechanism
+- **Milestone:** M1
+- **Use cases:** None
+- **Depends on:** REQ-CSWU-SM-012
+- **Verification:** Native test in the CSW SceneManager that compares the
+  prepared geometry with the mesh export of the same geometry, and the
+  prepared texture with the pixels of its image, plus a check that a shared
+  image is prepared once
+
+The prepared geometry shall be the result of the GizmoSDK mesh export of
+`gzGeometry` for triangles: one interleaved vertex buffer, one index buffer,
+and the export information. It shall have the layout that CSWUnity copies
+from the mesh export today: a position and a normal, an optional color, and
+optional texture coordinates of unit 0, with 16-bit indices when the vertex
+count fits and 32-bit indices otherwise. Geometry that the export rejects
+shall have no prepared data.
+
+The prepared texture of an image shall be its raw pixel data with its full
+mipmap chain, in a format that Unity uploads without conversion. SceneManager
+shall prepare a shared image once and attach the prepared texture to the
+image, not to each node that uses it.
+
+All prepared data shall be thread-safe GizmoSDK references to native memory.
+A client shall be able to read the data through a pointer and a size without
+a managed copy, and to release the data without edit access.
+
+### REQ-CSWU-SM-053: Consumption of prepared data
+
+- **Status:** Pending
+- **Kind:** Mechanism
+- **Milestone:** M1
+- **Use cases:** None
+- **Depends on:** REQ-CSWU-SM-012, REQ-CSWU-SM-014, REQ-CSWU-SM-026,
+  REQ-CSWU-SM-048, REQ-CSWU-SM-051, REQ-CSWU-SM-052
+- **Verification:** EditMode test of ownership transfer, release after
+  upload, and fallback (intended fixture: `SceneCommandTests`) plus the
+  PlayMode fast full-motion test with and without the capabilities (intended
+  fixture: `NativeMapTests`)
+
+CSWUnity shall enable both capabilities of REQ-CSWU-SM-051 together with
+those of REQ-CSWU-SM-012, before SceneManager starts processing.
+
+During capture under edit access (REQ-CSWU-SM-026), CSWUnity shall take
+ownership of the prepared data of a node and of its images, and remove the
+data from the native objects, so that SceneManager keeps no CPU copy. After
+it releases edit access, CSWUnity shall upload the data on the Unity main
+thread through `NativeArray` views of the native memory, without a managed
+copy: geometry with `Mesh.SetVertexBufferParams`, `Mesh.SetVertexBufferData`,
+`Mesh.SetIndexBufferParams`, and `Mesh.SetIndexBufferData`, and textures with
+`Texture2D.SetPixelData` and `Texture2D.Apply`. It shall release the prepared
+data immediately after the upload.
+
+A node without prepared data shall be captured as before this requirement.
+This applies when the capabilities are off and when the export rejected the
+geometry. An image whose prepared texture was already taken over shall be
+served from the texture cache of CSWUnity.
+
+### REQ-CSWU-SM-054: Managed construction delegates
+
+- **Status:** Pending
+- **Kind:** Mechanism
+- **Milestone:** M1
+- **Use cases:** None
+- **Depends on:** REQ-CSWU-SM-009, REQ-CSWU-SM-010, REQ-CSWU-SM-048
+- **Verification:** `SceneManager.TestRun -hooks` in the CSW SceneManager,
+  which loads and clears a map with all delegates set and checks the calls,
+  their threads, and the build data handed to destroy, plus code review of
+  the dispatcher lifetime
+
+The C# `SceneManager` shall always expose the native construction virtuals
+`checkCapability`, `preBuildReference`, `updateReference`, and
+`preDestroyReference` of `cswSceneManager` as the delegates `CheckCapability`,
+`PreBuildReference`, `UpdateReference`, and `PreDestroyReference`. It shall
+not expose them as virtual C# methods.
+
+The bridge shall create a native subclass of `cswSceneManager` that calls one
+static delegate dispatcher, registered as for `CommandReceiver`. It shall call
+the dispatcher for an instance only while that instance has the delegate set.
+Otherwise the native virtual shall run without a managed call, so no managed
+code runs on the loader threads by default. A set delegate shall replace the
+native virtual. If it throws, the exception shall be reported and the native
+virtual shall run instead.
+
+The delegates run on SceneManager and loader threads while native holds edit
+access. The dispatcher shall create their wrappers with the reference
+factories, as `DynamicLoader.OnDynamicLoad` does. A delegate shall release
+with `ReleaseAlreadyLocked` the wrappers it does not keep. The reference that
+`PreBuildReference` or `UpdateReference` returns shall become the build data
+of the node (`CSW_META`, `CSW_BUILD_DATA`), and the bridge shall store it
+before the managed wrapper can be finalized. `Platform.Initialize` shall
+register the dispatcher, and `Platform.Uninitialize` shall remove it and wait
+for running dispatches.
 ## Classes
 
 ### REQ-CSWU-SM-035: MapStreamerHost component
@@ -1152,7 +1281,16 @@ effective mask shall keep its structure and shall not be built.
 - The C# SceneManager exposes no preparation hooks. Geometry preparation that
   CSWUnreal performs on SceneManager threads therefore happens in CSWUnity
   during capture or after release. REQ-CSWU-SM-012 moves the triangle
-  conversion and indexing to SceneManager threads regardless.
+  conversion and indexing to SceneManager threads regardless. The Pending
+  REQ-CSWU-SM-054 proposes construction delegates on the C# SceneManager.
+- The Pending REQ-CSWU-SM-051 to REQ-CSWU-SM-053 propose a resolution of
+  OD-CSWU-005. The CSW SceneManager prepares meshes and textures in
+  `preBuildReference` itself, as the factories of CSWUnreal do. On the loader
+  threads it does so with edit access paused, so that the preparation runs in
+  parallel in native code. The Unity main thread only creates and uploads Unity
+  resources and GameObjects. The receiver callback still only takes ownership
+  and enqueues (REQ-CSWU-SM-013), because SceneManager calls it on its single
+  worker thread and not on the loader threads.
 - Unexpected input faults instead of being skipped (REQ-CSWU-SM-015,
   REQ-CSWU-SM-024, REQ-CSWU-SM-027, REQ-CSWU-SM-030, REQ-CSWU-SM-038), so that
   a defect cannot appear as a silent hole in the map. Holes where the

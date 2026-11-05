@@ -421,6 +421,17 @@ Att diskutera med bilderna framför oss:
 1. Var går den minsta säkra gränsen mellan native Capture och Unity-bygge?
    `TryLockEdit(0)` tar bort huvudtrådens låsväntan men kortar inte automatiskt
    själva mesh-/texturarbetet under låset.
+
+   Förslag (REQ-CSWU-SM-051 till REQ-CSWU-SM-053, Pending): cswSceneManager
+   förbereder mesh-export och texturpixlar i `preBuildReference`, som
+   CSWUnreals factories gör. För en nod som loadern levererar med
+   `GZ_DYNAMIC_LOADER_PRE_LOADED` sker det på loader-tråden med EDIT pausat,
+   alltså parallellt på 4–16 trådar, eftersom noden ännu inte sitter i scenen.
+   Andra vägar förbereder under hållet EDIT. Capture tar bara över färdiga
+   native-buffertar under EDIT, och huvudtråden laddar upp dem via
+   `NativeArray`-vyer utan managed kopia. Bara GameObjects och Unity-resurser
+   blir kvar på huvudtråden. Outputcallbacken körs på SceneManagers enda
+   worker-tråd och fortsätter bara att köa.
 2. Vilket builder-/factorykontrakt ska Unity-vägen erbjuda, inklusive egna
    builders och deras livscykel?
 3. Hur mycket arbete ska en slice innehålla innan andra SDK-trådar släpps fram?
