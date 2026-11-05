@@ -19,7 +19,7 @@ is recorded in
 | --- | --- | --- |
 | CSWUnreal | [`ce99499`][unreal-tree] | `Plugins/CSWPlugin/Source/CSWPlugin` |
 | CSW | [`2ee8edf`][csw-tree] | Native `cswSceneManager` and the C# SceneManager in `source/Presentation/Streaming/C#` |
-| `CSW.SceneManager` and `cswSceneManager` packages | `1.1.1.1-phase1.20261022.204509` | Binaries that CSWUnity uses |
+| `CSW.SceneManager` and `cswSceneManager` packages | `1.1.1.1-prepare.20261105.1` | Binaries that CSWUnity uses |
 | GizmoSDK `Gizmo3D` package | `2.12.347.1` | C# `Node` class that CSWUnity uses |
 
 At the CSW revision, [`SceneCommands.cs`][cs-commands] defines only the

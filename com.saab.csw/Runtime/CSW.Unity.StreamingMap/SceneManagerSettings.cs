@@ -19,6 +19,7 @@
 // AMO	261103	Added the infinite far plane, LOD factor and LOD reference field of view settings.	(2.12.327)
 // AMO	261103	Moved into the Csw namespace with the other CSW SceneManager code.	(2.12.327)
 // AMO	261104	Moved to namespace CSW.Unity.StreamingMap.	(2.12.327)
+// AMO	261105	Added mesh preparation on the loader threads, enabled by default.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -50,6 +51,8 @@ namespace CSW.Unity.StreamingMap
 		[Tooltip("Vertical field of view in degrees at which LodFactor applies unscaled. When set, the submitted factor is multiplied by the zoom tan(reference/2)/tan(fov/2), GizmoSDK's effective LOD factor, with and without OmniView. Zero disables zoom scaling, like CSWUnreal.")]
 		[Range(0, 179)]
 		public float LodReferenceFieldOfView;
+		[Tooltip("Copy new meshes on the native loader threads before their subtree is attached, so the main thread only uploads the prepared data. Disable to read every mesh from the graph on the main thread.")]
+		public bool PrepareMeshesOnLoaders;
 
 		public static readonly SceneManagerSettings Default = new SceneManagerSettings
 		{
@@ -62,6 +65,7 @@ namespace CSW.Unity.StreamingMap
 			InfiniteFarPlane = false,
 			LodFactor = 1,
 			LodReferenceFieldOfView = 0,
+			PrepareMeshesOnLoaders = true,
 		};
 	}
 }

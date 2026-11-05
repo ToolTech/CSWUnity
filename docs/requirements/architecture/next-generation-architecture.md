@@ -982,7 +982,7 @@ unresolved open decision cannot become Accepted.
 | OD-CSWU-002 | The first numeric performance profile and representative GZD map. | REQ-CSWU-PERF-001, REQ-CSWU-RENDER-019 |
 | OD-CSWU-003 | Whether optional rendering features ship in one package or separate packages. | REQ-CSWU-PKG-005, REQ-CSWU-REAL-006 |
 | OD-CSWU-004 | The final managed payload representation and lease strategy at the C# SceneManager boundary. | REQ-CSWU-ARCH-007, REQ-CSWU-PERF-006 |
-| OD-CSWU-005 | Which geometry and texture preparation stages can run outside the Unity main thread on each supported Unity version. The Pending REQ-CSWU-SM-051 to REQ-CSWU-SM-053 propose native preparation on the SceneManager loader threads. | REQ-CSWU-RENDER-010, REQ-CSWU-REAL-004, REQ-CSWU-SM-051, REQ-CSWU-SM-052, REQ-CSWU-SM-053 |
+| OD-CSWU-005 | Which geometry and texture preparation stages can run outside the Unity main thread on each supported Unity version. The Pending REQ-CSWU-SM-051 to REQ-CSWU-SM-053 prepare meshes on the SceneManager loader threads; texture preparation remains open. | REQ-CSWU-RENDER-010, REQ-CSWU-REAL-004, REQ-CSWU-SM-051, REQ-CSWU-SM-052, REQ-CSWU-SM-053 |
 | OD-CSWU-006 | Move the hosted CSW baseline in `generic/` to the requirements root of the CSW repository. Its IDs keep the owner code `CSW`, so they do not change when the documents move. | All `REQ-CSW` requirements and `UC-CSW` use cases |
 
 ## Resolved Decisions

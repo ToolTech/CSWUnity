@@ -28,7 +28,9 @@
 // AMO	261104	Created the session CSW.Unity.Camera through an optional CameraFactory and presented before render while it owns the projection.	(2.12.327)
 // AMO	261104	Sent start failures through CSW.Unity.Platform.SendException.	(2.12.327)
 // AMO	261104	Renamed from MapStreamerHost to CSW.Unity.MapControl, which owns the internal MapSession, reports its state and committed frames and moved the flight input to CSW.Unity.FlightInput.	(2.12.327)
-// AMO	261104	Documented the GizmoSDK expansion of %VARIABLE% and $(key) in the map URL.	(2.12.327)//
+// AMO	261104	Documented the GizmoSDK expansion of %VARIABLE% and $(key) in the map URL.	(2.12.327)
+// AMO	261105	Applied the loader-thread mesh preparation setting to new sessions.	(2.12.327)
+//
 //*****************************************************************************
 
 using CSW.Unity.StreamingMap;
@@ -184,6 +186,7 @@ namespace CSW.Unity
 					MaximumCommandsPerTick = Math.Max(1, MaximumCommandsPerTick),
 					BuildBudget = TimeSpan.FromSeconds(Math.Max(0.0001, Settings.MaxBuildTime)),
 					OmniView = Settings.OmniView,
+					PrepareMeshesOnLoaders = Settings.PrepareMeshesOnLoaders,
 					SynchronizeFrames = Settings.SynchronizeFrames,
 					FrameWaitTimeout = ToFrameWaitTimeout(Settings.FrameWaitTimeout)
 				};

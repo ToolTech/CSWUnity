@@ -18,6 +18,7 @@
 // AMO	261023	Removed the full-scene state-affinity lookup in favor of indexed source users.	(2.12.327)
 // AMO	261103	Used uniform vertex color in fallback material keys and colors.	(2.12.350)
 // AMO	261104	Moved to namespace CSW.Unity.StreamingMap.	(2.12.327)
+// AMO	261105	Built new meshes from loader-thread preparations.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -164,9 +165,11 @@ namespace CSW.Unity.StreamingMap
 		/// <summary>Copies borrowed graph inputs into caller-owned prepared render resources.</summary>
 		/// <remarks>
 		/// The caller holds graph edit access and retains the Geometry and State wrappers.
+		/// A new mesh uses the geometry's loader-thread preparation when one is available.
 		/// Dispose the returned snapshot after use, whether or not it is published.
 		/// </remarks>
-		internal ScenePreparedResources Capture(Geometry geometry, State state, bool update)
+		internal ScenePreparedResources Capture(Geometry geometry, State state, bool update,
+			PreparedMeshCache preparedMeshes = null)
 		{
 			var prepared = new ScenePreparedResources(this)
 			{
@@ -175,11 +178,21 @@ namespace CSW.Unity.StreamingMap
 			};
 			try
 			{
-				if (update || !_meshes.ContainsKey(prepared.MeshSource))
+				using (var preparedMesh = preparedMeshes?.TakeAlreadyLocked(prepared.MeshSource))
 				{
-					if (!GeometryHelper.Build(geometry, out prepared.Mesh, out prepared.Color))
-						throw new InvalidOperationException($"Geometry export failed for '{geometry.Name}'.");
-					prepared.HasMesh = true;
+					if (update || !_meshes.ContainsKey(prepared.MeshSource))
+					{
+						// An update may have changed the geometry after its preparation.
+						var used = !update && preparedMesh != null &&
+							GeometryHelper.Build(preparedMesh, out prepared.Mesh, out prepared.Color);
+						if (preparedMesh != null)
+							BuildDiagnostics.RecordPreparedUse(used);
+						if (!used && !GeometryHelper.Build(geometry, out prepared.Mesh, out prepared.Color))
+							throw new InvalidOperationException($"Geometry export failed for '{geometry.Name}'.");
+						prepared.HasMesh = true;
+					}
+					else if (preparedMesh != null)
+						BuildDiagnostics.RecordPreparedUse(false);
 				}
 
 				if (state != null && (update || !_states.ContainsKey(prepared.StateSource)))

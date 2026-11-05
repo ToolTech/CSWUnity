@@ -28,6 +28,7 @@
 // AMO	261104	Expects the timeout exception as a FATAL message.	(2.12.327)
 // AMO	261104	Drives CSW.Unity.MapControl, checks its forwarded frames and the CSW.Unity.FlightInput of the example scene.	(2.12.327)
 // AMO	261104	Analyzes holes, frame and commit timing, GC and locked finalizers during fast full motion.	(2.12.327)
+// AMO	261105	Reported main-thread mesh builds, loader-thread mesh preparation and per-frame marker times in load bursts during fast full motion.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -295,7 +296,24 @@ namespace CSW.Unity.Tests
 			public int Holes;
 			public int Sky;
 			public int SkyBackground;
+			public int Instances;
+			public int Meshes;
+			public double[] Markers;
 		}
+
+		// Main-thread markers recorded per frame during fast motion; "Main Thread" is Unity's CPU frame time.
+		private static readonly (ProfilerCategory category, string name)[] FrameMarkers =
+		{
+			(ProfilerCategory.Internal, "Main Thread"),
+			(ProfilerCategory.Render, "CSW-Tick"),
+			(ProfilerCategory.Render, "CSW-Capture"),
+			(ProfilerCategory.Render, "CSW-Publish"),
+			(ProfilerCategory.Render, "CSW-PublishResources"),
+			(ProfilerCategory.Render, "CSW-CommitFrame"),
+			(ProfilerCategory.Render, "SM-BuildGeometry"),
+			(ProfilerCategory.Render, "SM-BuildGeometry-Prepared"),
+			(ProfilerCategory.Render, "SM-ReadTexture"),
+		};
 
 		[UnityTest]
 		public IEnumerator FastFullMotionKeepsTheMapClosedSmoothAndFinalizerFree()
@@ -304,6 +322,8 @@ namespace CSW.Unity.Tests
 				Assert.Inconclusive("Fast-motion hole analysis needs asynchronous GPU readback.");
 			try
 			{
+				// CSWUNITY_PREPARE_MESHES=0 builds every mesh from the graph on the main thread for A/B runs.
+				_control.Settings.PrepareMeshesOnLoaders = Environment.GetEnvironmentVariable("CSWUNITY_PREPARE_MESHES") != "0";
 				StartHost(null);
 			}
 			catch (InvalidOperationException error) when (error.Message.StartsWith("No map URL", StringComparison.Ordinal))
@@ -475,6 +495,9 @@ namespace CSW.Unity.Tests
 				committedPosition = frame.GlobalPosition;
 			};
 			var allocated = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame");
+			var markers = FrameMarkers.Select(marker => ProfilerRecorder.StartNew(marker.category, marker.name)).ToArray();
+			var previousInstances = _control.Scene.InstanceCount;
+			var previousMeshes = _control.Scene.MeshCount;
 			var hook = _controlObject.AddComponent<PresentedFrameHook>();
 			hook.Display = Application.isBatchMode ? null : _target;
 			var moving = true;
@@ -485,6 +508,8 @@ namespace CSW.Unity.Tests
 			var poseTime = 0.0;
 			var previousPoseTime = 0.0;
 			var motionStart = UnityEngine.Time.realtimeSinceStartupAsDouble;
+			var meshesBefore = BuildDiagnostics.MeshTotal;
+			var preparedBefore = BuildDiagnostics.PreparedMeshTotal;
 			_control.FrameCommitted += onCommit;
 			hook.Presented = () =>
 			{
@@ -508,8 +533,13 @@ namespace CSW.Unity.Tests
 					CommitLag = Conversion.ToUnityPosition(position - committedPosition).magnitude,
 					Collections = collections - previousCollections,
 					Allocated = allocated.Valid ? allocated.LastValue : -1,
-					Probed = age >= 0 && age <= 1
+					Probed = age >= 0 && age <= 1,
+					Instances = _control.Scene.InstanceCount - previousInstances,
+					Meshes = _control.Scene.MeshCount - previousMeshes,
+					Markers = markers.Select(marker => marker.Valid ? marker.LastValue * 1e-6 : -1).ToArray()
 				};
+				previousInstances = _control.Scene.InstanceCount;
+				previousMeshes = _control.Scene.MeshCount;
 				previousCollections = collections;
 				previousEye = eye;
 				previousPoseTime = poseTime;
@@ -549,6 +579,8 @@ namespace CSW.Unity.Tests
 				hook.Presented = null;
 				_control.FrameCommitted -= onCommit;
 				allocated.Dispose();
+				foreach (var marker in markers)
+					marker.Dispose();
 				Object.Destroy(hook);
 			}
 
@@ -583,6 +615,10 @@ namespace CSW.Unity.Tests
 			var allocations = steady.Where(sample => sample.Allocated >= 0).Select(sample => sample.Allocated)
 				.OrderBy(value => value).ToArray();
 			var allocationMedian = allocations.Length > 0 ? allocations[allocations.Length / 2] : -1;
+			var meshesAfter = BuildDiagnostics.MeshTotal;
+			var preparedAfter = BuildDiagnostics.PreparedMeshTotal;
+			var meshBuilds = meshesAfter.TotalMeshes - meshesBefore.TotalMeshes;
+			var meshMilliseconds = (meshesAfter.TotalTime - meshesBefore.TotalTime).TotalMilliseconds;
 			var report = Invariant(
 				$"Fast motion: map={url}; box={half.x * 2:F0}x{half.y * 2:F0} m, radius={radius:F0} m, ",
 				$"cruise={cruise:F0} m; frames={samples.Count}, steady={steady.Count}, read={read.Count}; ",
@@ -600,9 +636,18 @@ namespace CSW.Unity.Tests
 				$"(frame {worst?.Frame} t={worst?.Time:F2} s), sky background={skyBackgroundTotal}/{skyTotal}; ",
 				$"locked finalizer probes={probes.Count}, released={probes.Count(probe => probe.released)}, ",
 				$"lock wait max={probes.Select(probe => probe.lockWait).DefaultIfEmpty(0).Max():F1} ms, ",
-				$"collect max={probes.Select(probe => probe.collect).DefaultIfEmpty(0).Max():F1} ms");
+				$"collect max={probes.Select(probe => probe.collect).DefaultIfEmpty(0).Max():F1} ms; ",
+				$"main meshes={meshBuilds} in {meshMilliseconds:F1} ms ",
+				$"(avg {(meshBuilds > 0 ? meshMilliseconds / meshBuilds : 0):F3} ms, worst all {meshesAfter.WorstTime.TotalMilliseconds:F2} ms); ",
+				$"loader prepare={_control.Settings.PrepareMeshesOnLoaders}: prepared={preparedAfter.Prepared - preparedBefore.Prepared} ",
+				$"in {(preparedAfter.PrepareTime - preparedBefore.PrepareTime).TotalMilliseconds:F1} ms, ",
+				$"used={preparedAfter.Used - preparedBefore.Used}, discarded={preparedAfter.Discarded - preparedBefore.Discarded}, ",
+				$"expired={preparedAfter.Expired - preparedBefore.Expired}, unprepared={preparedAfter.Unprepared - preparedBefore.Unprepared}");
 			TestContext.WriteLine(report);
 			Debug.Log("CSW map acceptance: " + report);
+			var frameLoad = FrameLoadReport(steady, samples);
+			TestContext.WriteLine(frameLoad);
+			Debug.Log("CSW map acceptance: " + frameLoad);
 			var directory = Environment.GetEnvironmentVariable("CSWUNITY_TEST_ARTIFACTS");
 			if (!string.IsNullOrWhiteSpace(directory))
 			{
@@ -646,6 +691,8 @@ namespace CSW.Unity.Tests
 			Assert.That(collectionFrames.All(sample => sample.Delta < 0.05), Is.True, "A garbage collection stalled a frame.");
 			Assert.That(allocationMedian, Is.LessThan(32 * 1024), "Steady flight must not allocate much managed memory per frame.");
 			Assert.That(probes.Max(probe => probe.collect), Is.LessThan(500), "A locked collection must not wait on finalizers.");
+			if (_control.Settings.PrepareMeshesOnLoaders)
+				Assert.That(preparedAfter.Used, Is.GreaterThan(0), "New meshes must use their loader-thread preparation.");
 			LeakNodeWrappers(64);
 			Assert.That(LockedFinalizerProbe().released, Is.False,
 				"The locked finalizer probe must detect GizmoSDK node wrappers left to their finalizers.");
@@ -669,6 +716,41 @@ namespace CSW.Unity.Tests
 		private static string Invariant(params FormattableString[] parts)
 		{
 			return string.Concat(parts.Select(FormattableString.Invariant));
+		}
+
+		/// <summary>Reports main-thread marker times per frame and in the 5 % frames that add the most instances and meshes.</summary>
+		/// <remarks>A recorder's LastValue is the previous frame, so the markers of the next sample belong to a sample's frame.</remarks>
+		private static string FrameLoadReport(List<MotionSample> steady, List<MotionSample> samples)
+		{
+			var byFrame = samples.Where(sample => sample.Markers != null).ToDictionary(sample => sample.Frame);
+			var frames = steady.Where(sample => byFrame.ContainsKey(sample.Frame + 1))
+				.Select(sample => (sample, markers: byFrame[sample.Frame + 1].Markers)).ToList();
+			if (frames.Count == 0)
+				return "Frame load: no marker samples";
+			var burst = frames.OrderByDescending(frame => frame.sample.Instances + frame.sample.Meshes)
+				.Take(Math.Max(1, frames.Count / 20)).ToList();
+			var parts = new List<string>
+			{
+				Invariant($"Frame load: frames={frames.Count}, burst={burst.Count} frames with ",
+					$"instances avg={burst.Average(frame => frame.sample.Instances):F0} max={burst.Max(frame => frame.sample.Instances)}, ",
+					$"meshes avg={burst.Average(frame => frame.sample.Meshes):F1} max={burst.Max(frame => frame.sample.Meshes)}")
+			};
+			for (var index = 0; index < FrameMarkers.Length; index++)
+			{
+				var values = frames.Select(frame => frame.markers[index]).Where(value => value >= 0).OrderBy(value => value).ToArray();
+				if (values.Length == 0)
+				{
+					parts.Add($"{FrameMarkers[index].name} n/a");
+					continue;
+				}
+				double Percentile(double fraction) =>
+					values[Math.Max(0, Math.Min(values.Length - 1, (int)Math.Ceiling(fraction * values.Length) - 1))];
+				var inBurst = burst.Select(frame => frame.markers[index]).Where(value => value >= 0).DefaultIfEmpty(0);
+				parts.Add(Invariant($"{FrameMarkers[index].name} p50={Percentile(0.5):F2} p95={Percentile(0.95):F2} ",
+					$"p99={Percentile(0.99):F2} max={values.Last():F2} sum={values.Sum():F0} burst avg={inBurst.Average():F2} ",
+					$"max={inBurst.Max():F2} ms"));
+			}
+			return string.Join("; ", parts);
 		}
 
 		/// <summary>Collects garbage on a worker while this thread holds the edit lock.</summary>

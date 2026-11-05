@@ -422,16 +422,15 @@ Att diskutera med bilderna framför oss:
    `TryLockEdit(0)` tar bort huvudtrådens låsväntan men kortar inte automatiskt
    själva mesh-/texturarbetet under låset.
 
-   Förslag (REQ-CSWU-SM-051 till REQ-CSWU-SM-053, Pending): cswSceneManager
-   förbereder mesh-export och texturpixlar i `preBuildReference`, som
-   CSWUnreals factories gör. För en nod som loadern levererar med
-   `GZ_DYNAMIC_LOADER_PRE_LOADED` sker det på loader-tråden med EDIT pausat,
-   alltså parallellt på 4–16 trådar, eftersom noden ännu inte sitter i scenen.
-   Andra vägar förbereder under hållet EDIT. Capture tar bara över färdiga
-   native-buffertar under EDIT, och huvudtråden laddar upp dem via
-   `NativeArray`-vyer utan managed kopia. Bara GameObjects och Unity-resurser
-   blir kvar på huvudtråden. Outputcallbacken körs på SceneManagers enda
-   worker-tråd och fortsätter bara att köa.
+   Förslag (REQ-CSWU-SM-051 till REQ-CSWU-SM-053, Pending): den dynamiska
+   loadern rapporterar `GZ_DYNAMIC_LOADER_PREPARE` utan EDIT innan den hänger
+   in ett laddat delträd, och cswSceneManager anropar `prepareReference` för
+   delträdets noder. CSWUnity kopierar då mesh-exporten till ohanterade block
+   i `PrepareReference`, parallellt på 4–16 loader-trådar, eftersom delträdet
+   ännu bara nås av sin loader-tråd. Capture tar över blocken under EDIT och
+   laddar upp dem med `Mesh.AllocateWritableMeshData` utan att läsa grafen.
+   Texturer läses fortfarande på huvudtråden. Outputcallbacken körs på
+   SceneManagers enda worker-tråd och fortsätter bara att köa.
 2. Vilket builder-/factorykontrakt ska Unity-vägen erbjuda, inklusive egna
    builders och deras livscykel?
 3. Hur mycket arbete ska en slice innehålla innan andra SDK-trådar släpps fram?

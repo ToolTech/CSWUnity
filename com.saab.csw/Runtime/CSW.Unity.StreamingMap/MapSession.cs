@@ -24,6 +24,7 @@
 // AMO	261104	Uses CSW.Unity.Camera and CameraFrame.	(2.12.327)
 // AMO	261104	Sends diagnostics through CSW.Unity.Platform.SendMessage at their message level.	(2.12.327)
 // AMO	261104	Renamed from MapManager to the internal CSW.Unity.StreamingMap.MapSession of CSW.Unity.MapControl.	(2.12.327)
+// AMO	261105	Prepared new meshes on the CSW loader threads by default.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -67,6 +68,9 @@ namespace CSW.Unity.StreamingMap
 		public TimeSpan BuildBudget { get; set; } = TimeSpan.FromMilliseconds(4);
 		/// <summary>Traverses in all directions by default, like CSWUnreal; Unity's renderer retains its own culling.</summary>
 		public bool OmniView { get; set; } = true;
+		/// <summary>Copies new meshes on the CSW loader threads before their subtree is attached.</summary>
+		/// <remarks>Applies to the next OpenMap. The main thread then only uploads the prepared data under edit access.</remarks>
+		public bool PrepareMeshesOnLoaders { get; set; } = true;
 		/// <summary>Consumes the refresh submitted by an earlier Tick through its EndFrame before submitting the next.</summary>
 		/// <remarks>Native processing overlaps rendering, so the committed camera lags the requested camera by one Tick.</remarks>
 		public bool SynchronizeFrames { get; set; }
@@ -101,8 +105,8 @@ namespace CSW.Unity.StreamingMap
 			State = MapControlState.Loading;
 			try
 			{
-				_session = new SceneManagerSession(_loaders);
-				_pump = new SceneCommandPump(_scene, _session.Inbox, _builders);
+				_session = new SceneManagerSession(_loaders, PrepareMeshesOnLoaders);
+				_pump = new SceneCommandPump(_scene, _session.Inbox, _builders, _session.PreparedMeshes);
 				_pump.GeoInfoReceived += HandleGeoInfo;
 				_pump.FrameConsumed += HandleFrame;
 				_pump.ErrorReceived += HandleError;

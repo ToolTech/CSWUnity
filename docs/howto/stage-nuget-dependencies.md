@@ -8,14 +8,21 @@ Restore a locked CSW and GizmoSDK NuGet graph, validate its Windows x64
 contents, and generate a Unity Package Manager-compatible dependency package
 used by the CSWUnity example project.
 
-The phase-1 dependency baseline is:
+The current dependency baseline is:
 
 - `CSW.SceneManager` and native `cswSceneManager`
-  `1.1.1.1-phase1.20261022.204509`, restored as a matching local package pair;
-- GizmoSDK `2.12.347.1`, selected transitively by `CSW.SceneManager`;
-- `GizmoDistribution` `2.12.347.1`, retained because the current CSWUnity
-  implementation uses it; and
+  `1.1.1.1-prepare.20261105.1`, restored as a matching local package pair;
+- GizmoSDK `2.12.350.1-prepare.20261105.1`, selected transitively by
+  `CSW.SceneManager`;
+- `GizmoDistribution` `2.12.350.1-prepare.20261105.1`, retained because the
+  current CSWUnity implementation uses it; and
 - Windows x64 Release native binaries.
+
+These local prereleases add the loader preparation state
+`GZ_DYNAMIC_LOADER_PREPARE` and the `PrepareReference` delegate
+(REQ-CSWU-SM-051). They are built from GizmoSDK `develop` and CSW `main`, so
+they also contain the shutdown-safe Graph/System handoff and the thread-safe
+command cohort described below.
 
 Exact package versions and hashes are recorded in
 `build\nuget-staging\packages.lock.json`.
@@ -30,14 +37,14 @@ Exact package versions and hashes are recorded in
 The repository's NuGet credentials remain user- or build-agent-owned. They are
 not stored in the staging configuration.
 
-## Restore the local phase-1 package pair
+## Restore the local package pair
 
 The current SceneManager output contract requires these local, unpublished
 packages from the native SceneManager build:
 
 ```text
-CSW.SceneManager.1.1.1.1-phase1.20261022.204509.nupkg
-cswSceneManager.1.1.1.1-phase1.20261022.204509.nupkg
+CSW.SceneManager.1.1.1.1-prepare.20261105.1.nupkg
+cswSceneManager.1.1.1.1-prepare.20261105.1.nupkg
 ```
 
 Obtain both packages from the native build owner and place them in an accessible
@@ -66,7 +73,7 @@ dotnet restore build\nuget-staging\GizmoDependencies.csproj --runtime win-x64 --
 
 Passing `--source` overrides the configured source list, so include every feed
 needed by the locked graph. In particular, the SDK source must supply
-`GizmoDistribution` and `gzDistribution` `2.12.347.1`: a feed prepared only for
+`GizmoDistribution` and `gzDistribution` `2.12.350.1-prepare.20261105.1`: a feed prepared only for
 native SceneManager consumers can omit these retained Unity dependencies.
 An existing package cache can hide an incomplete source list. If one local
 feed contains all 13 locked packages, a single `--source` is sufficient.

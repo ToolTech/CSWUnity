@@ -15,6 +15,7 @@
 // Who	Date	Description
 //
 // AMO	261104	Created the gzGeometry factory with the geometry builder selection of SceneCommandPump.	(2.12.327)
+// AMO	261105	Passed loader-thread mesh preparations to the resource capture.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -46,7 +47,7 @@ namespace CSW.Unity
 			}
 			if (!data.Builder)
 				throw new InvalidOperationException($"No geometry builder accepts '{data.Name}' ({data.IntersectMask}).");
-			data.Prepared = capture.Resources.Capture(geometry, capture.State, capture.IsUpdate);
+			data.Prepared = capture.Resources.Capture(geometry, capture.State, capture.IsUpdate, capture.PreparedMeshes);
 		}
 	}
 }

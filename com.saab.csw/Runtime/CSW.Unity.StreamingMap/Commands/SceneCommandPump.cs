@@ -24,6 +24,7 @@
 // AMO	261104	Copies values through CSW.Unity.Conversion.	(2.12.327)
 // AMO	261104	Uses CSW.Unity.CameraFrame.	(2.12.327)
 // AMO	261104	Selects the realization through CSW.Unity.Factory.	(2.12.327)
+// AMO	261105	Passed loader-thread mesh preparations to capture and expired unused ones under edit access.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -82,6 +83,7 @@ namespace CSW.Unity.StreamingMap
 		private readonly UnityScene _scene;
 		private readonly SceneCommandInbox _inbox;
 		private readonly FactoryCapture _capture;
+		private readonly PreparedMeshCache _preparedMeshes;
 		private readonly List<SceneChange> _frameChanges = new List<SceneChange>();
 		private readonly List<SceneChange> _capturedChanges = new List<SceneChange>();
 		private CommandBuffer _current;
@@ -98,13 +100,16 @@ namespace CSW.Unity.StreamingMap
 		internal event Action<string, uint, MessageLevel> ErrorReceived;
 		internal int PendingBuffers => _inbox.PendingBuffers + (_current != null ? 1 : 0);
 
-		internal SceneCommandPump(UnityScene scene, SceneCommandInbox inbox, GeometryBuilderBase[] builders)
+		internal SceneCommandPump(UnityScene scene, SceneCommandInbox inbox, GeometryBuilderBase[] builders,
+			PreparedMeshCache preparedMeshes = null)
 		{
 			_scene = scene;
 			_inbox = inbox;
+			_preparedMeshes = preparedMeshes;
 			_capture = new FactoryCapture
 			{
 				Resources = scene.Resources,
+				PreparedMeshes = preparedMeshes,
 				Builders = builders ?? Array.Empty<GeometryBuilderBase>()
 			};
 			_generation = scene.Generation;
@@ -143,6 +148,7 @@ namespace CSW.Unity.StreamingMap
 				{
 					try
 					{
+						_preparedMeshes?.ExpireAlreadyLocked();
 						var capturingFrame = _inFrame;
 						do
 						{

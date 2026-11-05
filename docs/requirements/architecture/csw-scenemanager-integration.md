@@ -66,7 +66,7 @@ Implementation progress is recorded in
 | --- | --- | --- |
 | CSWUnreal | [`ce99499`](https://saab.ghe.com/saab/CSWUnreal/tree/ce994991fb2482132176d1bee7394dec8a7c96f8) | CSWUnreal plugin, the reference user of SceneManager |
 | CSW | [`2ee8edf`](https://saab.ghe.com/saab/CSW/tree/2ee8edf02dddb9dcd928c2e346f57e8d0f26d491) | Native `cswSceneManager` and the C# SceneManager sources |
-| `CSW.SceneManager` and `cswSceneManager` packages | `1.1.1.1-phase1.20261022.204509` | C# SceneManager and native binaries that CSWUnity uses |
+| `CSW.SceneManager` and `cswSceneManager` packages | `1.1.1.1-prepare.20261105.1` | C# SceneManager and native binaries that CSWUnity uses |
 
 The typed C# output commands that CSWUnity consumes, such as `NewNode`,
 `UpdateNode`, `StartFrame`, and `EndFrame`, are present in the packages but not
@@ -1044,100 +1044,94 @@ With omni traversal, the rendered view may thus differ from the frustum that
 SceneManager traverses, but the level of detail shall follow the zoom of the
 camera through this factor.
 
-### REQ-CSWU-SM-051: Native preparation on loader threads
+### REQ-CSWU-SM-051: Loader-thread preparation hook
 
 - **Status:** Pending
 - **Kind:** Mechanism
 - **Milestone:** M1
 - **Use cases:** None
-- **Depends on:** REQ-CSWU-SM-009, REQ-CSWU-SM-010, REQ-CSWU-SM-012,
-  REQ-CSWU-SM-052
-- **Verification:** Native test in the CSW SceneManager that a dynamically
-  loaded geometry and its image carry prepared data when their `NewNode`
-  command is delivered, and that the data was prepared on the loader thread
-  with edit access paused, plus code review of the lock discipline
+- **Depends on:** REQ-CSWU-SM-009, REQ-CSWU-SM-010, REQ-CSWU-SM-054
+- **Verification:** GizmoSDK unit test of the `GZ_DYNAMIC_LOADER_PREPARE`
+  state, `SceneManager.TestRun -hooks` in the CSW SceneManager, which checks
+  that `PrepareReference` runs on the loader threads, plus code review of the
+  lock discipline
 
-The CSW SceneManager shall be able to prepare render data for every client in
-`preBuildReference` and `updateReference` of `cswSceneManager` itself. A client
-shall enable the preparation with the new capabilities
-`CSW_CAPABILITY_PREBUILD_MESH_EXPORT` for geometry and
-`CSW_CAPABILITY_PREBUILD_TEXTURE_EXPORT` for textures. Without them,
-SceneManager shall prepare nothing, as today.
+The GizmoSDK dynamic loader shall report the new state
+`GZ_DYNAMIC_LOADER_PREPARE` after it has loaded a subtree and before it
+attaches the subtree to the scene. It shall report the state without edit
+access, so that all loaders (4 to 16) can prepare in parallel. Only the loader
+thread can reach the subtree at that point.
 
-SceneManager shall store the prepared data in the format of REQ-CSWU-SM-052
-before it adds the `NewNode` or `UpdateNode` command of the node to its
-buffer. The prepared geometry shall be the build data attribute (`CSW_META`,
-`CSW_BUILD_DATA`) of the node.
+`cswSceneManager` shall handle the state by traversing the subtree and calling
+the new virtual `prepareReference` for each node. The traversal shall not
+enter nested dynamic loaders or reference nodes, and shall only enter children
+that the subtree owns alone (reference count 1). SceneManager shall not
+prepare when `CSW_CAPABILITY_CONVERT_TO_TRIANGLE` or
+`CSW_CAPABILITY_OPTIMIZE_GEOMETRY` is enabled, because these change the
+geometry after the preparation.
 
-When the dynamic loader delivers a node with `GZ_DYNAMIC_LOADER_PRE_LOADED`,
-the node is not yet in the scene and only its loader thread can reach it.
-SceneManager shall then prepare it on that loader thread with edit access
-paused, so that all loaders (4 to 16) prepare in parallel. On every other
-path, such as `addMap`, `addRoiObject`, `refreshSubtree`, and the activations
-of a frame, SceneManager shall prepare the node while it holds edit access.
-`traverse` shall therefore know on which path it runs. The preparation shall
-not call the client, so no managed code runs on the loader threads.
+The C# `SceneManager` shall expose `prepareReference` as the delegate
+`PrepareReference`, dispatched as the delegates of REQ-CSWU-SM-054. The
+default `prepareReference` shall do nothing, so no managed code runs on the
+loader threads unless a client sets the delegate. The delegate receives a new
+wrapper of the node and shall keep it or release it. It may release it without
+edit access, because the subtree is not yet in the scene.
 
-### REQ-CSWU-SM-052: Prepared data format
-
-- **Status:** Pending
-- **Kind:** Mechanism
-- **Milestone:** M1
-- **Use cases:** None
-- **Depends on:** REQ-CSWU-SM-012
-- **Verification:** Native test in the CSW SceneManager that compares the
-  prepared geometry with the mesh export of the same geometry, and the
-  prepared texture with the pixels of its image, plus a check that a shared
-  image is prepared once
-
-The prepared geometry shall be the result of the GizmoSDK mesh export of
-`gzGeometry` for triangles: one interleaved vertex buffer, one index buffer,
-and the export information. It shall have the layout that CSWUnity copies
-from the mesh export today: a position and a normal, an optional color, and
-optional texture coordinates of unit 0, with 16-bit indices when the vertex
-count fits and 32-bit indices otherwise. Geometry that the export rejects
-shall have no prepared data.
-
-The prepared texture of an image shall be its raw pixel data with its full
-mipmap chain, in a format that Unity uploads without conversion. SceneManager
-shall prepare a shared image once and attach the prepared texture to the
-image, not to each node that uses it.
-
-All prepared data shall be thread-safe GizmoSDK references to native memory.
-A client shall be able to read the data through a pointer and a size without
-a managed copy, and to release the data without edit access.
-
-### REQ-CSWU-SM-053: Consumption of prepared data
+### REQ-CSWU-SM-052: Prepared mesh format
 
 - **Status:** Pending
 - **Kind:** Mechanism
 - **Milestone:** M1
 - **Use cases:** None
-- **Depends on:** REQ-CSWU-SM-012, REQ-CSWU-SM-014, REQ-CSWU-SM-026,
-  REQ-CSWU-SM-048, REQ-CSWU-SM-051, REQ-CSWU-SM-052
-- **Verification:** EditMode test of ownership transfer, release after
-  upload, and fallback (intended fixture: `SceneCommandTests`) plus the
-  PlayMode fast full-motion test with and without the capabilities (intended
-  fixture: `NativeMapTests`)
+- **Depends on:** REQ-CSWU-SM-051
+- **Verification:** PlayMode fast full-motion test (fixture:
+  `NativeMapTests`), which builds the map from prepared meshes and checks
+  that it has no holes, plus code review of the layout checks
 
-CSWUnity shall enable both capabilities of REQ-CSWU-SM-051 together with
-those of REQ-CSWU-SM-012, before SceneManager starts processing.
+On the loader thread, CSWUnity shall copy a geometry with the GizmoSDK mesh
+export for triangles into one unmanaged interleaved vertex block and one
+unmanaged index block (`PreparedMesh`). The layout shall be the layout that
+`NodeGeometryHelper.Build` produces from the graph: a position and a normal,
+an optional color, and optional texture coordinates of unit 0, with 16-bit
+indices when the vertex count fits and 32-bit indices otherwise. The bounds
+shall be computed from the positions on the loader thread. Geometry that the
+export rejects shall have no prepared mesh.
 
-During capture under edit access (REQ-CSWU-SM-026), CSWUnity shall take
-ownership of the prepared data of a node and of its images, and remove the
-data from the native objects, so that SceneManager keeps no CPU copy. After
-it releases edit access, CSWUnity shall upload the data on the Unity main
-thread through `NativeArray` views of the native memory, without a managed
-copy: geometry with `Mesh.SetVertexBufferParams`, `Mesh.SetVertexBufferData`,
-`Mesh.SetIndexBufferParams`, and `Mesh.SetIndexBufferData`, and textures with
-`Texture2D.SetPixelData` and `Texture2D.Apply`. It shall release the prepared
-data immediately after the upload.
+The blocks shall be owned by CSWUnity and may be released on any thread.
+Textures are not prepared; they are still read from their images on the main
+thread.
 
-A node without prepared data shall be captured as before this requirement.
-This applies when the capabilities are off and when the export rejected the
-geometry. An image whose prepared texture was already taken over shall be
-served from the texture cache of CSWUnity.
+### REQ-CSWU-SM-053: Consumption of prepared meshes
 
+- **Status:** Pending
+- **Kind:** Mechanism
+- **Milestone:** M1
+- **Use cases:** None
+- **Depends on:** REQ-CSWU-SM-014, REQ-CSWU-SM-026, REQ-CSWU-SM-048,
+  REQ-CSWU-SM-051, REQ-CSWU-SM-052
+- **Verification:** PlayMode fast full-motion test with and without
+  preparation (fixture: `NativeMapTests`; `CSWUNITY_PREPARE_MESHES=0` turns
+  it off), which reports prepared, used, discarded, and expired meshes and
+  checks that new meshes use their preparation
+
+`SceneManagerSettings.PrepareMeshesOnLoaders` (default on) shall make
+`SceneManagerSession` set `PrepareReference` before SceneManager starts
+processing. The prepared meshes shall be kept by native geometry, together
+with the geometry wrapper, so that the native address cannot be reused while
+the entry exists.
+
+During capture under edit access (REQ-CSWU-SM-026), CSWUnity shall take the
+prepared mesh of a new geometry and upload it into the Unity mesh with
+`Mesh.AllocateWritableMeshData` and one memory copy per block, without a
+managed copy and without reading the graph. For an update, or when the mesh
+already exists, it shall discard the preparation and build from the graph as
+before this requirement. A geometry without a prepared mesh shall also be
+built from the graph.
+
+The wrappers shall be released with `ReleaseAlreadyLocked` and
+`GC.SuppressFinalize` (REQ-CSWU-SM-048). Preparations that capture has not
+taken within 20 s shall expire under edit access, and all preparations shall
+be released when the session ends.
 ### REQ-CSWU-SM-054: Managed construction delegates
 
 - **Status:** Pending
@@ -1283,14 +1277,14 @@ effective mask shall keep its structure and shall not be built.
   during capture or after release. REQ-CSWU-SM-012 moves the triangle
   conversion and indexing to SceneManager threads regardless. The Pending
   REQ-CSWU-SM-054 proposes construction delegates on the C# SceneManager.
-- The Pending REQ-CSWU-SM-051 to REQ-CSWU-SM-053 propose a resolution of
-  OD-CSWU-005. The CSW SceneManager prepares meshes and textures in
-  `preBuildReference` itself, as the factories of CSWUnreal do. On the loader
-  threads it does so with edit access paused, so that the preparation runs in
-  parallel in native code. The Unity main thread only creates and uploads Unity
-  resources and GameObjects. The receiver callback still only takes ownership
-  and enqueues (REQ-CSWU-SM-013), because SceneManager calls it on its single
-  worker thread and not on the loader threads.
+- The Pending REQ-CSWU-SM-051 to REQ-CSWU-SM-053 resolve OD-CSWU-005 for
+  meshes. The dynamic loader reports `GZ_DYNAMIC_LOADER_PREPARE` without edit
+  access before it attaches a loaded subtree, and CSWUnity copies the meshes
+  of the subtree into unmanaged blocks in `PrepareReference`, in parallel on
+  the loader threads. Capture only uploads the blocks into Unity meshes.
+  Textures are still read on the main thread. The receiver callback still only
+  takes ownership and enqueues (REQ-CSWU-SM-013), because SceneManager calls
+  it on its single worker thread and not on the loader threads.
 - Unexpected input faults instead of being skipped (REQ-CSWU-SM-015,
   REQ-CSWU-SM-024, REQ-CSWU-SM-027, REQ-CSWU-SM-030, REQ-CSWU-SM-038), so that
   a defect cannot appear as a silent hole in the map. Holes where the

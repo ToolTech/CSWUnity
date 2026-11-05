@@ -35,6 +35,7 @@
 // AMO	261028	Recorded mesh builds in the shared build diagnostics after removing the legacy SceneManager.	(2.12.327)
 // AMO	261103	Added uniform vertex color lookup for fallback materials.	(2.12.350)
 // AMO	261104	Moved to namespace CSW.Unity.	(2.12.327)
+// AMO	261105	Built meshes from data prepared on loader threads.	(2.12.327)
 //
 //******************************************************************************
 
@@ -57,6 +58,7 @@ namespace CSW.Unity
     {
         private static readonly ProfilerMarker _profilerMarker = new ProfilerMarker(ProfilerCategory.Render, "SM-BuildGeometry");
         private static readonly ProfilerMarker _profilerNativeWritableMeshData = new ProfilerMarker(ProfilerCategory.Render, "SM-BuildGeometry-NativeWritableMeshData");
+        private static readonly ProfilerMarker _profilerPrepared = new ProfilerMarker(ProfilerCategory.Render, "SM-BuildGeometry-Prepared");
 
         private static readonly VertexAttributeDescriptor[] _positionNormalDescriptors =
         {
@@ -140,6 +142,56 @@ namespace CSW.Unity
 
             color = colors[0];
             return true;
+        }
+
+        /// <summary>
+        /// Builds a mesh from data prepared off the main thread, without reading the geometry
+        /// </summary>
+        /// <returns>False without creating a mesh when the Unity layout differs from the prepared layout</returns>
+        public static bool Build(PreparedMesh prepared, out Mesh output, out Color uniformColor)
+        {
+            _profilerPrepared.Begin();
+            var startTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
+            output = null;
+            uniformColor = prepared.UniformColor;
+            var meshDataArray = Mesh.AllocateWritableMeshData(1);
+            var disposeMeshData = true;
+            try
+            {
+                var meshData = meshDataArray[0];
+                meshData.SetVertexBufferParams(
+                    prepared.VertexCount,
+                    CreateVertexDescriptors(prepared.HasColors, prepared.HasTexCoords));
+                meshData.SetIndexBufferParams(prepared.IndexCount, prepared.IndexFormat);
+                if (!prepared.CopyTo(meshData))
+                    return false;
+
+                meshData.subMeshCount = 1;
+                meshData.SetSubMesh(
+                    0,
+                    new SubMeshDescriptor(0, prepared.IndexCount, MeshTopology.Triangles)
+                    {
+                        firstVertex = 0,
+                        vertexCount = prepared.VertexCount,
+                        bounds = prepared.Bounds,
+                    },
+                    NativeMeshUpdateFlags);
+
+                output = new Mesh();
+                disposeMeshData = false;
+                Mesh.ApplyAndDisposeWritableMeshData(meshDataArray, output, NativeMeshUpdateFlags);
+                output.bounds = prepared.Bounds;
+                BuildDiagnostics.RecordMesh(
+                    prepared.DataBytes,
+                    System.Diagnostics.Stopwatch.GetTimestamp() - startTimestamp);
+                return true;
+            }
+            finally
+            {
+                if (disposeMeshData)
+                    meshDataArray.Dispose();
+                _profilerPrepared.End();
+            }
         }
 
         public static bool Build(Geometry geom, out Mesh output, out Color uniformColor)

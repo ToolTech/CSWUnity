@@ -15,6 +15,7 @@
 // Who	Date	Description
 //
 // AMO	261104	Created CSW.Unity.Factory after cswFactory in CSWUnreal.	(2.12.327)
+// AMO	261105	Carried the session's loader-thread mesh preparations in the capture context.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -211,6 +212,7 @@ namespace CSW.Unity
 		internal bool IsUpdate;
 		internal SceneInstanceHandle Parent;
 		internal SceneResources Resources;
+		internal PreparedMeshCache PreparedMeshes;
 		internal IReadOnlyList<GeometryBuilderBase> Builders;
 		internal SceneNodeData Data;
 

@@ -20,6 +20,7 @@
 // AMO	261103	Submitted the frame's infinite far plane selection with its camera settings.	(2.12.327)
 // AMO	261104	Moved to namespace CSW.Unity.StreamingMap.	(2.12.327)
 // AMO	261104	Uses CSW.Unity.CameraFrame.	(2.12.327)
+// AMO	261105	Prepared meshes on the loader threads through the SceneManager PrepareReference delegate.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -204,11 +205,13 @@ namespace CSW.Unity.StreamingMap
 		private bool _disposed;
 
 		internal SceneCommandInbox Inbox { get; } = new SceneCommandInbox();
+		/// <summary>Meshes prepared on the loader threads; null when loader preparation is disabled.</summary>
+		internal PreparedMeshCache PreparedMeshes { get; }
 		internal bool IsDisposed => _disposed;
 		internal bool HasPendingCommands => _manager?.HasPendingCommands ?? false;
 		internal bool IsRunning => _manager != null && _manager.IsRunning();
 
-		internal SceneManagerSession(uint loaders)
+		internal SceneManagerSession(uint loaders, bool prepareMeshes = true)
 		{
 			try
 			{
@@ -216,6 +219,11 @@ namespace CSW.Unity.StreamingMap
 				try
 				{
 					_manager = new CSW.SceneManager();
+					if (prepareMeshes)
+					{
+						PreparedMeshes = new PreparedMeshCache();
+						_manager.PrepareReference = PreparedMeshes.Prepare;
+					}
 					_receiver = new CommandReceiver();
 					_receiver.OnCommand += Inbox.Receive;
 					_manager.AddCommandReceiver(_receiver);
@@ -314,6 +322,8 @@ namespace CSW.Unity.StreamingMap
 					}
 				});
 				cleanup.Attempt(Inbox.DrainAlreadyLocked);
+				if (PreparedMeshes != null)
+					cleanup.Attempt(PreparedMeshes.ClearAlreadyLocked);
 			}
 			finally
 			{
