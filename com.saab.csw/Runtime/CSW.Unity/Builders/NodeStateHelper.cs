@@ -37,6 +37,7 @@
 // AMO	261103	Disposed the image homography wrapper after copying its matrix instead of leaving it to the finalizer.	(2.12.327)
 // AMO	261104	Moved to namespace CSW.Unity.	(2.12.327)
 // AMO	261104	Sends diagnostics through CSW.Unity.Platform.SendMessage at their message level.	(2.12.327)
+// AMO	261105	Added profiler markers for texture export, destination, copy and apply.	(2.12.327)
 //
 //******************************************************************************
 
@@ -96,6 +97,10 @@ namespace CSW.Unity
     public static class StateHelper
     {
         private static readonly ProfilerMarker _profilerMarker = new ProfilerMarker(ProfilerCategory.Render, "SM-ReadTexture");
+        private static readonly ProfilerMarker _exportMarker = new ProfilerMarker(ProfilerCategory.Render, "SM-Texture-Export");
+        private static readonly ProfilerMarker _destinationMarker = new ProfilerMarker(ProfilerCategory.Render, "SM-Texture-Destination");
+        private static readonly ProfilerMarker _copyMarker = new ProfilerMarker(ProfilerCategory.Render, "SM-Texture-Copy");
+        private static readonly ProfilerMarker _applyMarker = new ProfilerMarker(ProfilerCategory.Render, "SM-Texture-Apply");
 
         public static bool Build(State state, out StateBuildOutput output, TextureManager textureCache = null)
         {
@@ -369,24 +374,29 @@ namespace CSW.Unity
             var copyAttempted = false;
             var published = false;
             long textureDataBytes = 0;
+            bool canBeRecycled;
 
             try
             {
                 if (!gzTexture.HasImage())
                     return false;
 
-                var status = gzTexture.PrepareTextureExport(
-                    selection,
-                    out preparation);
-                if (status == TextureExport.Status.IncompleteMipChain &&
-                    selection ==
-                    TextureExport.SourceSelection.CompleteMipChain)
+                TextureExport.Status status;
+                using (_exportMarker.Auto())
                 {
-                    selection = TextureExport.SourceSelection.BaseOnly;
-                    baseLevelFallback = true;
                     status = gzTexture.PrepareTextureExport(
                         selection,
                         out preparation);
+                    if (status == TextureExport.Status.IncompleteMipChain &&
+                        selection ==
+                        TextureExport.SourceSelection.CompleteMipChain)
+                    {
+                        selection = TextureExport.SourceSelection.BaseOnly;
+                        baseLevelFallback = true;
+                        status = gzTexture.PrepareTextureExport(
+                            selection,
+                            out preparation);
+                    }
                 }
                 if (status != TextureExport.Status.Success ||
                     preparation == null)
@@ -429,12 +439,20 @@ namespace CSW.Unity
                         sourceInfo.Width,
                         sourceInfo.Height)
                     : sourceInfo.LevelCount;
-                destination = Texture2DCache.GetOrCreateTexture(
-                    (int)sourceInfo.Width,
-                    (int)sourceInfo.Height,
-                    unityFormat.GraphicsFormat,
-                    (int)mipCount,
-                    out var canBeRecycled);
+                _destinationMarker.Begin();
+                try
+                {
+                    destination = Texture2DCache.GetOrCreateTexture(
+                        (int)sourceInfo.Width,
+                        (int)sourceInfo.Height,
+                        unityFormat.GraphicsFormat,
+                        (int)mipCount,
+                        out canBeRecycled);
+                }
+                finally
+                {
+                    _destinationMarker.End();
+                }
                 if (!destination)
                     return false;
 
@@ -452,16 +470,18 @@ namespace CSW.Unity
                     return false;
 
                 copyAttempted = true;
-                status = preparation.Copy(exportDestination);
+                using (_copyMarker.Auto())
+                    status = preparation.Copy(exportDestination);
                 if (status != TextureExport.Status.Success)
                     return false;
 
                 preparation.Dispose();
                 preparation = null;
                 textureDataBytes = (long)rawTextureBytes;
-                destination.Apply(
-                    updateMipmaps: generateMipMaps,
-                    makeNoLongerReadable: !canBeRecycled);
+                using (_applyMarker.Auto())
+                    destination.Apply(
+                        updateMipmaps: generateMipMaps,
+                        makeNoLongerReadable: !canBeRecycled);
                 destination.wrapModeU =
                     GetUnityTextureWrapMode(gzTexture.WrapS);
                 destination.wrapModeV =

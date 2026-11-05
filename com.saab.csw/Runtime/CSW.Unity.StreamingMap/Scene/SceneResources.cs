@@ -19,6 +19,7 @@
 // AMO	261103	Used uniform vertex color in fallback material keys and colors.	(2.12.350)
 // AMO	261104	Moved to namespace CSW.Unity.StreamingMap.	(2.12.327)
 // AMO	261105	Built new meshes from loader-thread preparations.	(2.12.327)
+// AMO	261105	Added the CSW-Capture-State profiler marker.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -143,6 +144,8 @@ namespace CSW.Unity.StreamingMap
 	/// </remarks>
 	internal sealed class SceneResources : IDisposable
 	{
+		private static readonly global::Unity.Profiling.ProfilerMarker _stateMarker =
+			new global::Unity.Profiling.ProfilerMarker(global::Unity.Profiling.ProfilerCategory.Render, "CSW-Capture-State");
 		private readonly Dictionary<IntPtr, SceneMeshResource> _meshes =
 			new Dictionary<IntPtr, SceneMeshResource>();
 		private readonly HashSet<SceneMeshResource> _liveMeshes = new HashSet<SceneMeshResource>();
@@ -197,6 +200,7 @@ namespace CSW.Unity.StreamingMap
 
 				if (state != null && (update || !_states.ContainsKey(prepared.StateSource)))
 				{
+					using var sample = _stateMarker.Auto();
 					prepared.StateRevision = checked(++_nextRevision);
 					if (state.HasTexture(0) && state.GetMode(StateMode.TEXTURE) == StateModeActivation.ON &&
 						!StateHelper.Build(state, out prepared.State, _textures,

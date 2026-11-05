@@ -25,6 +25,7 @@
 // AMO	261104	Uses CSW.Unity.CameraFrame.	(2.12.327)
 // AMO	261104	Selects the realization through CSW.Unity.Factory.	(2.12.327)
 // AMO	261105	Passed loader-thread mesh preparations to capture and expired unused ones under edit access.	(2.12.327)
+// AMO	261105	Added profiler markers for capture and publish phases.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -79,6 +80,11 @@ namespace CSW.Unity.StreamingMap
 	internal sealed class SceneCommandPump : IDisposable
 	{
 		private static readonly ProfilerMarker _captureMarker = new ProfilerMarker(ProfilerCategory.Render, "CSW-Capture");
+		private static readonly ProfilerMarker _fetchMarker = new ProfilerMarker(ProfilerCategory.Render, "CSW-Capture-Fetch");
+		private static readonly ProfilerMarker _wrappersMarker = new ProfilerMarker(ProfilerCategory.Render, "CSW-Capture-Wrappers");
+		private static readonly ProfilerMarker _factoryMarker = new ProfilerMarker(ProfilerCategory.Render, "CSW-Capture-Factory");
+		private static readonly ProfilerMarker _releaseMarker = new ProfilerMarker(ProfilerCategory.Render, "CSW-Capture-Release");
+		private static readonly ProfilerMarker _deleteMarker = new ProfilerMarker(ProfilerCategory.Render, "CSW-Publish-Delete");
 		private static readonly ProfilerMarker _publishMarker = new ProfilerMarker(ProfilerCategory.Render, "CSW-Publish");
 		private readonly UnityScene _scene;
 		private readonly SceneCommandInbox _inbox;
@@ -153,7 +159,9 @@ namespace CSW.Unity.StreamingMap
 						do
 						{
 							SceneChange change = null;
+							_fetchMarker.Begin();
 							var command = _current.GetCommand();
+							_fetchMarker.End();
 							if (command != null)
 							{
 								try { change = Capture(command); }
@@ -290,14 +298,19 @@ namespace CSW.Unity.StreamingMap
 			SceneNodeData data = null;
 			try
 			{
+				_wrappersMarker.Begin();
 				node = command.Node;
 				parent = command.Parent;
 				if (node == null)
+				{
+					_wrappersMarker.End();
 					throw new InvalidOperationException("SceneManager emitted a hierarchy occurrence without a node.");
+				}
 				var key = new SceneInstanceKey(node.GetNativeReference(), command.PathID);
 				var parentKey = new SceneInstanceKey(parent?.GetNativeReference() ?? IntPtr.Zero, command.ParentPathID);
 				if (command is SceneCommandUpdateNode transformUpdate && transformUpdate.TransformOnly)
 				{
+					_wrappersMarker.End();
 					if (!_scene.TryGetInstance(key, out var handle) || !handle.ParentKey.Equals(parentKey))
 						throw new InvalidOperationException($"Transform-only update has an unknown occurrence or parent: {key}.");
 					return new SceneChange
@@ -310,6 +323,8 @@ namespace CSW.Unity.StreamingMap
 				state = command is SceneCommandNewNode created
 					? created.State
 					: ((SceneCommandUpdateNode)command).State;
+				_wrappersMarker.End();
+				_factoryMarker.Begin();
 				var factory = Factory.Select(node) ??
 					throw new InvalidOperationException($"No CSW.Unity.Factory realizes '{node.GetNativeTypeName()}'.");
 				data = new SceneNodeData { Key = key, Parent = parentKey };
@@ -325,6 +340,7 @@ namespace CSW.Unity.StreamingMap
 				finally
 				{
 					_capture.Clear();
+					_factoryMarker.End();
 				}
 				return new SceneChange { Kind = update ? SceneChangeKind.Update : SceneChangeKind.New, Node = data };
 			}
@@ -335,6 +351,7 @@ namespace CSW.Unity.StreamingMap
 			}
 			finally
 			{
+				using var sample = _releaseMarker.Auto();
 				ReleaseLocked(state);
 				ReleaseLocked(parent);
 				ReleaseLocked(node);
@@ -370,7 +387,8 @@ namespace CSW.Unity.StreamingMap
 					_scene.Update(change.Node);
 					break;
 				case SceneChangeKind.Delete:
-					_scene.Delete(change.Key);
+					using (_deleteMarker.Auto())
+						_scene.Delete(change.Key);
 					break;
 				case SceneChangeKind.Transform:
 				case SceneChangeKind.Activation:

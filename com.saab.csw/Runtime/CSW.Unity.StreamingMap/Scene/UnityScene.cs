@@ -24,6 +24,7 @@
 // AMO	261104	Takes the root reflection and copies from CSW.Unity.Conversion.	(2.12.327)
 // AMO	261104	Uses CSW.Unity.Camera and qualified UnityEngine.Camera.	(2.12.327)
 // AMO	261104	Calls the CSW.Unity.Factory construct, update and destroy hooks.	(2.12.327)
+// AMO	261105	Added profiler markers for publish phases.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -52,6 +53,12 @@ namespace CSW.Unity.StreamingMap
 			new ProfilerMarker(ProfilerCategory.Render, "CSW-PublishResources");
 		private static readonly ProfilerMarker _commitMarker =
 			new ProfilerMarker(ProfilerCategory.Render, "CSW-CommitFrame");
+		private static readonly ProfilerMarker _acquireMarker =
+			new ProfilerMarker(ProfilerCategory.Render, "CSW-Publish-Acquire");
+		private static readonly ProfilerMarker _attachMarker =
+			new ProfilerMarker(ProfilerCategory.Render, "CSW-Publish-Attach");
+		private static readonly ProfilerMarker _notifyMarker =
+			new ProfilerMarker(ProfilerCategory.Render, "CSW-Publish-Notify");
 		private readonly int _threadId = Thread.CurrentThread.ManagedThreadId;
 		private readonly Dictionary<SceneInstanceKey, SceneInstanceHandle> _instances =
 			new Dictionary<SceneInstanceKey, SceneInstanceHandle>();
@@ -184,10 +191,16 @@ namespace CSW.Unity.StreamingMap
 			if (data.Key.Equals(SceneInstanceKey.Root) || _instances.ContainsKey(data.Key))
 				throw new InvalidOperationException($"Duplicate scene occurrence {data.Key}.");
 			var parent = Parent(data.Parent);
+			_acquireMarker.Begin();
 			var handle = data.Kind == SceneNodeKind.Geometry && data.Builder
 				? _renderablePool.Acquire()
 				: _groupPool.Acquire();
-			handle.gameObject.SetActive(false);
+			_acquireMarker.End();
+			_attachMarker.Begin();
+			var gameObject = handle.gameObject;
+			// Pooled GameObjects are inactive unless an OnEnterPool subscriber activated one.
+			if (gameObject.activeSelf)
+				gameObject.SetActive(false);
 			handle.Key = data.Key;
 			handle.ParentKey = data.Parent;
 			handle.Generation = Generation;
@@ -205,15 +218,18 @@ namespace CSW.Unity.StreamingMap
 			handle.BoundaryCenter = data.BoundaryCenter;
 			handle.Builder = data.Builder;
 			handle.Feature = data.Builder ? data.Builder.Feature : PoolObjectFeature.None;
-			handle.gameObject.name = data.Parent.Equals(SceneInstanceKey.Root)
+			gameObject.name = data.Parent.Equals(SceneInstanceKey.Root)
 				? $"MapInstanceRoot {data.Name}"
 				: data.Name;
-			handle.transform.SetParent(parent.transform, false);
-			ApplyLocalTransform(handle.transform, data.LocalTransform);
 			if (handle.Renderer)
 				handle.Renderer.forceRenderingOff = true;
+			// The local transform is set inside the pool hierarchy and kept by the reparenting.
+			var transform = handle.transform;
+			ApplyLocalTransform(transform, data.LocalTransform);
+			transform.SetParent(parent.transform, false);
 			// Activated hidden under the build limits, so that frame commits only change rendering.
-			handle.gameObject.SetActive(true);
+			gameObject.SetActive(true);
+			_attachMarker.End();
 			_instances.Add(data.Key, handle);
 			parent.Children.Add(data.Key);
 			_pendingPresentation.Add(handle);
@@ -222,6 +238,7 @@ namespace CSW.Unity.StreamingMap
 			handle.IsReady = true;
 			handle.Factory = data.Factory;
 			handle.FactoryData = data.FactoryData;
+			using var sample = _notifyMarker.Auto();
 			data.Factory?.ConstructOccurrence(handle.gameObject, data.FactoryData);
 			NotifyCreated(handle, data.Kind);
 		}

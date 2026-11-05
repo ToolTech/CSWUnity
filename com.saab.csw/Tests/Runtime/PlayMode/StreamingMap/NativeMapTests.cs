@@ -29,6 +29,7 @@
 // AMO	261104	Drives CSW.Unity.MapControl, checks its forwarded frames and the CSW.Unity.FlightInput of the example scene.	(2.12.327)
 // AMO	261104	Analyzes holes, frame and commit timing, GC and locked finalizers during fast full motion.	(2.12.327)
 // AMO	261105	Reported main-thread mesh builds, loader-thread mesh preparation and per-frame marker times in load bursts during fast full motion.	(2.12.327)
+// AMO	261105	Reported all profiler markers in load bursts when CSWUNITY_PROFILE_ALL_MARKERS is set.	(2.12.327)
 //
 //*****************************************************************************
 
@@ -40,6 +41,7 @@ using System.IO;
 using System.Linq;
 using NUnit.Framework;
 using Unity.Profiling;
+using Unity.Profiling.LowLevel.Unsafe;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
@@ -299,12 +301,30 @@ namespace CSW.Unity.Tests
 			public int Instances;
 			public int Meshes;
 			public double[] Markers;
+			/// <summary>Every main-thread time marker when CSWUNITY_PROFILE_ALL_MARKERS=1, otherwise null.</summary>
+			public double[] AllMarkers;
+			/// <summary>Main-thread milliseconds of the test's own render and readback request in this frame.</summary>
+			public double TestRender;
 		}
 
 		// Main-thread markers recorded per frame during fast motion; "Main Thread" is Unity's CPU frame time.
+		// The Unity markers split the rest of the frame: editor loop, scripts, culling, drawing and present waits.
 		private static readonly (ProfilerCategory category, string name)[] FrameMarkers =
 		{
 			(ProfilerCategory.Internal, "Main Thread"),
+			(ProfilerCategory.Internal, "PlayerLoop"),
+			(ProfilerCategory.Internal, "EditorLoop"),
+			(ProfilerCategory.Scripts, "Update.ScriptRunBehaviourUpdate"),
+			(ProfilerCategory.Scripts, "PreLateUpdate.ScriptRunBehaviourLateUpdate"),
+			(ProfilerCategory.Render, "PostLateUpdate.UpdateAllRenderers"),
+			(ProfilerCategory.Render, "PostLateUpdate.FinishFrameRendering"),
+			(ProfilerCategory.Render, "Camera.Render"),
+			(ProfilerCategory.Render, "Culling"),
+			(ProfilerCategory.Render, "Drawing"),
+			(ProfilerCategory.Render, "Render.OpaqueGeometry"),
+			(ProfilerCategory.Render, "Shadows.RenderShadowMap"),
+			(ProfilerCategory.Render, "Gfx.WaitForPresentOnGfxThread"),
+			(ProfilerCategory.Internal, "GC.Collect"),
 			(ProfilerCategory.Render, "CSW-Tick"),
 			(ProfilerCategory.Render, "CSW-Capture"),
 			(ProfilerCategory.Render, "CSW-Publish"),
@@ -314,6 +334,35 @@ namespace CSW.Unity.Tests
 			(ProfilerCategory.Render, "SM-BuildGeometry-Prepared"),
 			(ProfilerCategory.Render, "SM-ReadTexture"),
 		};
+
+		/// <summary>Starts a recorder of a marker by name, so a Unity marker is found whatever its category.</summary>
+		/// <remarks>Markers other than "Main Thread" are recorded only on the main thread.</remarks>
+		private static ProfilerRecorder StartFrameMarker((ProfilerCategory category, string name) marker,
+			Dictionary<string, ProfilerRecorderHandle> available)
+		{
+			var options = ProfilerRecorderOptions.Default;
+			if (marker.name != "Main Thread")
+				options |= ProfilerRecorderOptions.CollectOnlyOnCurrentThread;
+			if (!available.TryGetValue(marker.name, out var handle))
+				return ProfilerRecorder.StartNew(marker.category, marker.name, 1, options);
+			var recorder = new ProfilerRecorder(handle, 1, options);
+			recorder.Start();
+			return recorder;
+		}
+
+		private static Dictionary<string, ProfilerRecorderHandle> AvailableMarkers()
+		{
+			var handles = new List<ProfilerRecorderHandle>();
+			ProfilerRecorderHandle.GetAvailable(handles);
+			var available = new Dictionary<string, ProfilerRecorderHandle>();
+			foreach (var handle in handles)
+			{
+				var name = ProfilerRecorderHandle.GetDescription(handle).Name;
+				if (!string.IsNullOrEmpty(name) && !available.ContainsKey(name))
+					available.Add(name, handle);
+			}
+			return available;
+		}
 
 		[UnityTest]
 		public IEnumerator FastFullMotionKeepsTheMapClosedSmoothAndFinalizerFree()
@@ -495,7 +544,23 @@ namespace CSW.Unity.Tests
 				committedPosition = frame.GlobalPosition;
 			};
 			var allocated = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame");
-			var markers = FrameMarkers.Select(marker => ProfilerRecorder.StartNew(marker.category, marker.name)).ToArray();
+			var availableMarkers = AvailableMarkers();
+			var markers = FrameMarkers.Select(marker => StartFrameMarker(marker, availableMarkers)).ToArray();
+			var testRender = new System.Diagnostics.Stopwatch();
+			// CSWUNITY_PROFILE_ALL_MARKERS=1 records every main-thread time marker to find what grows in load bursts.
+			var allNames = new List<string>();
+			var allMarkers = new List<ProfilerRecorder>();
+			if (Environment.GetEnvironmentVariable("CSWUNITY_PROFILE_ALL_MARKERS") == "1")
+				foreach (var pair in availableMarkers)
+				{
+					if (ProfilerRecorderHandle.GetDescription(pair.Value).UnitType != ProfilerMarkerDataUnit.TimeNanoseconds)
+						continue;
+					var recorder = new ProfilerRecorder(pair.Value, 1,
+						ProfilerRecorderOptions.Default | ProfilerRecorderOptions.CollectOnlyOnCurrentThread);
+					recorder.Start();
+					allMarkers.Add(recorder);
+					allNames.Add(pair.Key);
+				}
 			var previousInstances = _control.Scene.InstanceCount;
 			var previousMeshes = _control.Scene.MeshCount;
 			var hook = _controlObject.AddComponent<PresentedFrameHook>();
@@ -536,7 +601,8 @@ namespace CSW.Unity.Tests
 					Probed = age >= 0 && age <= 1,
 					Instances = _control.Scene.InstanceCount - previousInstances,
 					Meshes = _control.Scene.MeshCount - previousMeshes,
-					Markers = markers.Select(marker => marker.Valid ? marker.LastValue * 1e-6 : -1).ToArray()
+					Markers = markers.Select(marker => marker.Valid ? marker.LastValue * 1e-6 : -1).ToArray(),
+					AllMarkers = allMarkers.Count > 0 ? allMarkers.Select(marker => marker.LastValue * 1e-6).ToArray() : null
 				};
 				previousInstances = _control.Scene.InstanceCount;
 				previousMeshes = _control.Scene.MeshCount;
@@ -544,9 +610,11 @@ namespace CSW.Unity.Tests
 				previousEye = eye;
 				previousPoseTime = poseTime;
 				samples.Add(sample);
+				testRender.Restart();
 				_camera.Render();
 				AsyncGPUReadback.Request(_target, 0, TextureFormat.RGBA32,
 					request => Analyze(request, sample, eye, view));
+				sample.TestRender = testRender.Elapsed.TotalMilliseconds;
 				if (elapsed >= Duration)
 				{
 					moving = false;
@@ -580,6 +648,8 @@ namespace CSW.Unity.Tests
 				_control.FrameCommitted -= onCommit;
 				allocated.Dispose();
 				foreach (var marker in markers)
+					marker.Dispose();
+				foreach (var marker in allMarkers)
 					marker.Dispose();
 				Object.Destroy(hook);
 			}
@@ -648,6 +718,12 @@ namespace CSW.Unity.Tests
 			var frameLoad = FrameLoadReport(steady, samples);
 			TestContext.WriteLine(frameLoad);
 			Debug.Log("CSW map acceptance: " + frameLoad);
+			if (allNames.Count > 0)
+			{
+				var allLoad = AllMarkerReport(steady, samples, allNames);
+				TestContext.WriteLine(allLoad);
+				Debug.Log("CSW map acceptance: " + allLoad);
+			}
 			var directory = Environment.GetEnvironmentVariable("CSWUNITY_TEST_ARTIFACTS");
 			if (!string.IsNullOrWhiteSpace(directory))
 			{
@@ -750,7 +826,30 @@ namespace CSW.Unity.Tests
 					$"p99={Percentile(0.99):F2} max={values.Last():F2} sum={values.Sum():F0} burst avg={inBurst.Average():F2} ",
 					$"max={inBurst.Max():F2} ms"));
 			}
+			var renders = frames.Select(frame => frame.sample.TestRender).OrderBy(value => value).ToArray();
+			parts.Add(Invariant($"Test-Render p50={renders[renders.Length / 2]:F2} max={renders.Last():F2} ",
+				$"burst avg={burst.Average(frame => frame.sample.TestRender):F2} ms"));
 			return string.Join("; ", parts);
+		}
+
+		/// <summary>Reports the main-thread markers with the largest average time in the 5 % heaviest load frames.</summary>
+		private static string AllMarkerReport(List<MotionSample> steady, List<MotionSample> samples, List<string> names)
+		{
+			var byFrame = samples.Where(sample => sample.AllMarkers != null).ToDictionary(sample => sample.Frame);
+			var frames = steady.Where(sample => byFrame.ContainsKey(sample.Frame + 1))
+				.Select(sample => (sample, markers: byFrame[sample.Frame + 1].AllMarkers)).ToList();
+			if (frames.Count == 0)
+				return "Burst markers: no samples";
+			var burst = frames.OrderByDescending(frame => frame.sample.Instances + frame.sample.Meshes)
+				.Take(Math.Max(1, frames.Count / 20)).ToList();
+			var rows = Enumerable.Range(0, names.Count).Select(index =>
+			{
+				var sorted = frames.Select(frame => frame.markers[index]).OrderBy(value => value).ToArray();
+				return (name: names[index], median: sorted[sorted.Length / 2],
+					burst: burst.Average(frame => frame.markers[index]));
+			}).Where(row => row.burst >= 0.05).OrderByDescending(row => row.burst).Take(60);
+			return "Burst markers (burst avg / median ms): " +
+				string.Join("; ", rows.Select(row => Invariant($"{row.name} {row.burst:F2}/{row.median:F2}")));
 		}
 
 		/// <summary>Collects garbage on a worker while this thread holds the edit lock.</summary>
