@@ -87,6 +87,7 @@ owner has no milestones yet, so every hosted item is `Unassigned`.
 | Runtime initialization and lifecycle | `CSWU` | `INIT` |
 | Movement models | `CSWU` | `MOVE` |
 | External object integration | `CSWU` | `OBJ` |
+| Players and ground clamping | `CSWU` | `PLAY` |
 | Rendering | `CSWU` | `RENDER` |
 | Synthetic-world capabilities and realization | `CSWU` | `WORLD` |
 | World time | `CSWU` | `TIME` |
@@ -198,6 +199,7 @@ without renumbering:
 | [Runtime Initialization](architecture/runtime-initialization.md) | Composition, platform and SceneManager startup, lifecycle state, configuration, diagnostics, shutdown, and platform services of the CSWUnity runtime | Principle and Mechanism | REQ-CSWU-INIT-001–002, 006, 008–009 (002 superseded) |
 | [Movement Models](architecture/movement-models.md) | Common movement contract, the required movement models, extensibility, and movement diagnostics and tests | Principle, Mechanism, and Class | REQ-CSWU-MOVE-001–004, 006–007, 012–015, 017 |
 | [External Object Integration](architecture/object-integration.md) | Core object contract, the feed, store, and adapter boundaries, ordering and motion, and Unity presentation of external world objects | Principle, Mechanism, and Class | REQ-CSWU-OBJ-001–011, 015, 017–021 |
+| [Players and Ground Clamping](architecture/players.md) | Engine-neutral Player SDK, its manager and Unity binding, and ground clamping driven by level-of-detail signals; open decisions of the area | Principle, Mechanism, and Class | REQ-CSWU-PLAY-001–009; OD-CSWU-009–010 |
 | [Rendering](architecture/rendering.md) | Rendering model, culling, LOD, and visibility, resources and threading, map and synthetic-world features, and rendering validation | Principle and Mechanism | REQ-CSWU-RENDER-001–005, 007, 009–013, 015, 018–019, 021–022 |
 | [Synthetic World](architecture/synthetic-world.md) | Capability maturity, world context and time, the environment contract, Unity realization, and sensor integration | Principle, Mechanism, and Class | REQ-CSWU-WORLD-001, 003–005, 007; REQ-CSWU-TIME-001–002; REQ-CSWU-ENV-001–012; REQ-CSWU-SENSOR-001–002 |
 | [CSW Baseline Realization](architecture/csw-baseline-realization.md) | CSWUnity realization of the generic CSW API levels, SceneManager mechanism, MapControl, Camera and View model, and Object and Event APIs | Principle, Mechanism, and Class | REQ-CSWU-BASE-001; REQ-CSWU-SM-001–004 (superseded); REQ-CSWU-MM-001; REQ-CSWU-OE-001 |
@@ -208,6 +210,7 @@ without renumbering:
 | [Runtime Initialization Behavior](functional/runtime-initialization.md) | Behavior requirements of the Runtime Initialization area | Behavior | REQ-CSWU-INIT-003–005, 007 (003 and 007 superseded) |
 | [Movement Models Behavior](functional/movement-models.md) | Behavior requirements of the Movement Models area | Behavior | REQ-CSWU-MOVE-005, 008–011, 016 |
 | [External Object Integration Behavior](functional/object-integration.md) | Behavior requirements of the External Object Integration area | Behavior | REQ-CSWU-OBJ-012–014, 016 |
+| [Players and Ground Clamping Behavior](functional/players.md) | Behavior requirements of the Players and Ground Clamping area | Behavior | REQ-CSWU-PLAY-010–013 |
 | [Rendering Behavior](functional/rendering.md) | Behavior requirements of the Rendering area | Behavior | REQ-CSWU-RENDER-006, 008, 014, 016–017, 020 |
 | [Synthetic World Behavior](functional/synthetic-world.md) | Behavior requirements of the Synthetic World area | Behavior | REQ-CSWU-WORLD-002, 006; REQ-CSWU-TIME-003; REQ-CSWU-SENSOR-003 |
 | [CSW Baseline Realization Behavior](functional/csw-baseline-realization.md) | Behavior requirements of the CSW Baseline Realization area | Behavior | REQ-CSWU-SM-005–006 (superseded); REQ-CSWU-CV-001 |
@@ -325,6 +328,7 @@ realizations. Platform-specific constraints are documented separately.
 | Map exploration and coordinates | [Scene control](functional/scene-control.md), [Streaming Map input](functional/streaming-map-input.md), [CSW SceneManager integration](architecture/csw-scenemanager-integration.md) |
 | Synthetic environment | [Synthetic world](architecture/synthetic-world.md) |
 | External objects | [External object integration](architecture/object-integration.md) |
+| Players and ground clamping | [Players and ground clamping](architecture/players.md) |
 | Camera and flying carpet | [Movement models](architecture/movement-models.md) |
 | Efficient presentation | [Rendering](architecture/rendering.md) |
 | Package integration | [Next-generation architecture](architecture/next-generation-architecture.md), [Runtime initialization](architecture/runtime-initialization.md), [CSW SceneManager integration](architecture/csw-scenemanager-integration.md) |
