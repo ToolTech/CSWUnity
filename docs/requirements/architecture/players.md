@@ -21,8 +21,8 @@ of the area. Its Behavior requirements are in
 The asynchronous spatial queries of REQ-CSWU-QUERY-001 to REQ-CSWU-QUERY-004
 remain the general query service. This area specifies continuous clamping of
 registered Players. External objects of the
-[External Object Integration](object-integration.md) area may use these
-mechanisms, as [OD-CSWU-010](#open-decisions) decides.
+[External Object Integration](object-integration.md) area are presented as
+Players, as REQ-CSWU-PLAY-014 specifies.
 
 ## Class model
 
@@ -30,7 +30,7 @@ mechanisms, as [OD-CSWU-010](#open-decisions) decides.
 
 - **Status:** Pending
 - **Kind:** Principle
-- **Milestone:** Unassigned
+- **Milestone:** M3
 - **Use cases:** UC-CSW-009, UC-CSW-011, UC-CSW-021
 - **Depends on:** REQ-CSW-API-003, REQ-CSW-API-004, REQ-CSW-API-013
 - **Verification:** API review of the C# surface, plus an EditMode test that
@@ -47,7 +47,7 @@ unmanaged pointer, so that the same contract can be realized in CSWUnreal.
 
 - **Status:** Pending
 - **Kind:** Class
-- **Milestone:** Unassigned
+- **Milestone:** M3
 - **Use cases:** UC-CSW-010, UC-CSW-011, UC-CSW-023
 - **Depends on:** REQ-CSWU-PLAY-001
 - **Verification:** API review plus an EditMode test that sets and reads each
@@ -60,8 +60,8 @@ A `CSW.Player` shall have the following ground-clamp settings:
   `GroundAligned`, in which its up direction also follows the ground normal.
 - **Height above the ground:** zero by default.
 - **Clamp mask:** the intersection mask of REQ-CSWU-PLAY-007.
-- **Level-of-detail source:** `Visual` or `Fixed`, as REQ-CSWU-PLAY-008
-  specifies.
+- **Level-of-detail source:** `Visual` by default, or `Fixed`, as
+  REQ-CSWU-PLAY-008 specifies.
 
 A `CSW.Player` shall report its clamp state as resolved, provisional, or
 unavailable, with the meaning of REQ-CSW-API-004, together with the last
@@ -73,7 +73,7 @@ ground, as REQ-CSWU-PLAY-011 specifies.
 
 - **Status:** Pending
 - **Kind:** Class
-- **Milestone:** Unassigned
+- **Milestone:** M3
 - **Use cases:** UC-CSW-021, UC-CSWU-005
 - **Depends on:** REQ-CSWU-PLAY-001, REQ-CSWU-MM-001
 - **Verification:** API review plus an EditMode test that registers and
@@ -97,7 +97,7 @@ and cached item of the Player.
 
 - **Status:** Pending
 - **Kind:** Class
-- **Milestone:** Unassigned
+- **Milestone:** M3
 - **Use cases:** UC-CSW-011, UC-CSWU-005
 - **Depends on:** REQ-CSWU-PLAY-001, REQ-CSWU-COORD-006
 - **Verification:** PlayMode test in which a component follows a clamped
@@ -116,7 +116,7 @@ Player without a visual model is clamped in the same way.
 
 - **Status:** Pending
 - **Kind:** Mechanism
-- **Milestone:** Unassigned
+- **Milestone:** M3
 - **Use cases:** UC-CSW-010, UC-CSW-023
 - **Depends on:** REQ-CSWU-QUERY-004, REQ-CSWU-SM-009, REQ-CSWU-SM-023
 - **Verification:** EditMode test with a synthetic level-of-detail graph that
@@ -135,7 +135,7 @@ edit access of REQ-CSWU-SM-009 in which it intersected.
 
 - **Status:** Pending
 - **Kind:** Mechanism
-- **Milestone:** Unassigned
+- **Milestone:** M3
 - **Use cases:** UC-CSW-010, UC-CSW-023
 - **Depends on:** REQ-CSWU-PLAY-005, REQ-CSWU-PERF-012
 - **Verification:** PlayMode test in which only the Players under a changed
@@ -156,7 +156,7 @@ commit has applied its activations and before the frame is rendered.
 
 - **Status:** Pending
 - **Kind:** Mechanism
-- **Milestone:** Unassigned
+- **Milestone:** M3
 - **Use cases:** UC-CSW-010
 - **Depends on:** REQ-CSWU-PLAY-005
 - **Verification:** EditMode test in which a Player over a building is clamped
@@ -171,7 +171,7 @@ other Players, or its own visual model unless the application selects them.
 
 - **Status:** Pending
 - **Kind:** Mechanism
-- **Milestone:** Unassigned
+- **Milestone:** M3
 - **Use cases:** UC-CSW-010, UC-CSW-011
 - **Depends on:** REQ-CSWU-PLAY-005, REQ-CSWU-SM-050
 - **Verification:** PlayMode test comparing the clamped height of a Player
@@ -185,14 +185,15 @@ A clamp shall use one of two level-of-detail sources:
 - **Fixed:** a stated level-of-detail factor that is independent of the
   camera, so that simulations and network peers obtain the same height.
 
-The default source and whether `Fixed` is required in the first realization
-are decided by [OD-CSWU-009](#open-decisions).
+`Visual` shall be the default. The application shall be able to select `Fixed`
+for each Player, and both sources shall be available in the first
+realization ([OD-CSWU-009](#resolved-decisions)).
 
 ### REQ-CSWU-PLAY-009: Hit-triangle cache
 
 - **Status:** Pending
 - **Kind:** Mechanism
-- **Milestone:** Unassigned
+- **Milestone:** M3
 - **Use cases:** UC-CSW-011
 - **Depends on:** REQ-CSWU-PLAY-005, REQ-CSWU-PLAY-006
 - **Verification:** EditMode test in which a Player moving inside one ground
@@ -206,15 +207,36 @@ ground normal shall be computed from the cached triangle without an
 intersection. When the Player leaves the triangle, it shall enter the dirty
 set.
 
-## Open Decisions
+## External objects
 
-The following design choices are unresolved. A requirement that depends on an
-unresolved open decision cannot become Accepted.
+### REQ-CSWU-PLAY-014: External objects as Players
 
-| ID | Decision needed | Affects |
-| --- | --- | --- |
-| OD-CSWU-009 | The default level-of-detail source of a Player, `Visual` or `Fixed`, and whether `Fixed` is required in the first realization. | REQ-CSWU-PLAY-002, REQ-CSWU-PLAY-008 |
-| OD-CSWU-010 | Whether an external object of the External Object Integration area is presented as a `CSW.Player`, or uses the ground clamping of this area as a service through its presenter. | REQ-CSWU-PLAY-003, REQ-CSWU-OBJ-015, REQ-CSWU-OBJ-018, REQ-CSWU-OBJ-020 |
+- **Status:** Pending
+- **Kind:** Principle
+- **Milestone:** M4
+- **Use cases:** UC-CSWU-005
+- **Depends on:** REQ-CSWU-PLAY-003, REQ-CSWU-OBJ-018, REQ-CSWU-OBJ-020
+- **Verification:** PlayMode test in which a ground-clamped external object
+  from a feed follows terrain level-of-detail changes through the same
+  `CSW.PlayerManager` as an application Player
+
+An external object of the [External Object Integration](object-integration.md)
+area that has a pose in the world shall be presented as a `CSW.Player`
+registered with the `CSW.PlayerManager` of its map, so that it is moved,
+clamped, and bound to Unity by the same mechanisms and events as a Player that
+the application controls ([OD-CSWU-010](#resolved-decisions)). Its object
+identity of REQ-CSWU-OBJ-001 shall stay the public identity of the external
+object, and its feed shall remain the authority for its pose.
+
+## Resolved Decisions
+
+The following open decisions of this area are resolved. Their IDs are not
+reused.
+
+| ID | Decision needed | Resolution | Date | Affects |
+| --- | --- | --- | --- | --- |
+| OD-CSWU-009 | The default level-of-detail source of a Player, `Visual` or `Fixed`, and whether `Fixed` is required in the first realization. | `Visual` by default, so that a Player stands on the rendered ground; `Fixed` is selectable for each Player in the first realization. | 2026-11-13 | REQ-CSWU-PLAY-002, REQ-CSWU-PLAY-008 |
+| OD-CSWU-010 | Whether an external object of the External Object Integration area is presented as a `CSW.Player`, or uses the ground clamping of this area as a service through its presenter. | An external object is presented as a `CSW.Player`. | 2026-11-13 | REQ-CSWU-PLAY-003, REQ-CSWU-PLAY-014, REQ-CSWU-OBJ-015, REQ-CSWU-OBJ-018, REQ-CSWU-OBJ-020 |
 
 ## Verification
 

@@ -158,6 +158,10 @@ milestones yet. They are `Unassigned` and are mentioned here only as context.
   - REQ-CSWU-QUAL-003
   - REQ-CSWU-CV-001
   - REQ-CSWU-SM-033
+  - REQ-CSWU-PLAY-001, REQ-CSWU-PLAY-002, REQ-CSWU-PLAY-003, REQ-CSWU-PLAY-004,
+    REQ-CSWU-PLAY-005, REQ-CSWU-PLAY-006, REQ-CSWU-PLAY-007, REQ-CSWU-PLAY-008,
+    REQ-CSWU-PLAY-009, REQ-CSWU-PLAY-010, REQ-CSWU-PLAY-011, REQ-CSWU-PLAY-012,
+    REQ-CSWU-PLAY-013
 - **Use cases:** UC-CSWU-101, UC-CSWU-102, UC-CSWU-103, UC-CSWU-104,
   UC-CSWU-105, UC-CSWU-110, UC-CSWU-111, UC-CSWU-112, UC-CSWU-113, UC-CSWU-114,
   UC-CSWU-115, UC-CSWU-116, UC-CSWU-120, UC-CSWU-121, UC-CSWU-122, UC-CSWU-123,
@@ -176,6 +180,9 @@ milestones yet. They are `Unassigned` and are mentioned here only as context.
   - Movement models reproduce recorded input within the published tolerances.
   - Camera, intersection, and ground-clamp operations remain responsive while
     map streaming is active.
+  - Ground-clamped Players stand on the presented ground in every rendered
+    frame during fast camera motion, and are clamped again only when the level
+    of detail under them changes or they leave their cached ground triangle.
 - **Out of scope:** External objects (M4); synthetic world and environment (M5);
   the deferred camera candidates in
   [Camera and Movement](use-cases/camera.md#deferred-candidates).
@@ -197,6 +204,7 @@ milestones yet. They are `Unassigned` and are mentioned here only as context.
     REQ-CSWU-OBJ-017, REQ-CSWU-OBJ-018, REQ-CSWU-OBJ-019, REQ-CSWU-OBJ-020,
     REQ-CSWU-OBJ-021
   - REQ-CSWU-OE-001
+  - REQ-CSWU-PLAY-014
 - **Use cases:** UC-CSWU-005, UC-CSWU-008, UC-CSWU-009
 - **Exit criteria:**
   - Equivalent object scenarios delivered through two transport adapters produce
@@ -204,6 +212,8 @@ milestones yet. They are `Unassigned` and are mentioned here only as context.
   - Create, partial update, event, remove, duplicate, out-of-order, reconnect,
     and authority-conflict cases have deterministic outcomes.
   - A moving object remains aligned with UTM, geodetic, and geocentric maps.
+  - A ground-clamped external object is clamped through the same
+    `CSW.PlayerManager` as an application Player.
   - Transport callbacks perform no Unity access, and removal during queued
     interpolation or resource construction cannot publish a stale Unity object.
 - **Out of scope:** Synthetic world and environment content (M5).
@@ -263,11 +273,7 @@ The following CSWUnity items fit no milestone yet. Their `Milestone` field is
 
 - **Requirements:** REQ-CSWU-PKG-008, REQ-CSWU-PKG-009, REQ-CSWU-PKG-010,
   REQ-CSWU-PKG-011, REQ-CSWU-PKG-012, REQ-CSWU-PKG-013, REQ-CSWU-PKG-014,
-  REQ-CSWU-PKG-015, REQ-CSWU-PKG-016, REQ-CSWU-RENDER-021,
-  REQ-CSWU-PLAY-001, REQ-CSWU-PLAY-002, REQ-CSWU-PLAY-003, REQ-CSWU-PLAY-004,
-  REQ-CSWU-PLAY-005, REQ-CSWU-PLAY-006, REQ-CSWU-PLAY-007, REQ-CSWU-PLAY-008,
-  REQ-CSWU-PLAY-009, REQ-CSWU-PLAY-010, REQ-CSWU-PLAY-011, REQ-CSWU-PLAY-012,
-  REQ-CSWU-PLAY-013
+  REQ-CSWU-PKG-015, REQ-CSWU-PKG-016, REQ-CSWU-RENDER-021
 - **Use cases:** UC-CSWU-012, UC-CSWU-013, UC-CSWU-016, UC-CSWU-017
 
 All hosted CSW requirements and use cases are also `Unassigned`, because the CSW

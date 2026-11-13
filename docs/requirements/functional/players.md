@@ -20,7 +20,7 @@ contains requirements of the following group:
 
 - **Status:** Pending
 - **Kind:** Behavior
-- **Milestone:** Unassigned
+- **Milestone:** M3
 - **Use cases:** UC-CSW-010, UC-CSW-023
 - **Depends on:** REQ-CSWU-PLAY-006
 - **Verification:** PlayMode test in which a frame commit replaces the level
@@ -36,7 +36,7 @@ ground.
 
 - **Status:** Pending
 - **Kind:** Behavior
-- **Milestone:** Unassigned
+- **Milestone:** M3
 - **Use cases:** UC-CSW-010, UC-CSW-023
 - **Depends on:** REQ-CSWU-PLAY-002, REQ-CSWU-PLAY-006
 - **Verification:** PlayMode test that unloads and reloads the ground under a
@@ -54,7 +54,7 @@ When ground is found again, its state shall become resolved, and it shall raise
 
 - **Status:** Pending
 - **Kind:** Behavior
-- **Milestone:** Unassigned
+- **Milestone:** M3
 - **Use cases:** UC-CSW-011, UC-CSW-021
 - **Depends on:** REQ-CSWU-PLAY-003, REQ-CSWU-PLAY-006, REQ-CSWU-PLAY-009
 - **Verification:** PlayMode test of stationary and moving Players during
@@ -69,7 +69,7 @@ of such Players.
 
 - **Status:** Pending
 - **Kind:** Behavior
-- **Milestone:** Unassigned
+- **Milestone:** M3
 - **Use cases:** UC-CSWU-005
 - **Depends on:** REQ-CSWU-PLAY-003
 - **Verification:** PlayMode test that removes Players and stops the session
